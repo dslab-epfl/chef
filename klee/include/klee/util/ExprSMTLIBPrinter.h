@@ -158,8 +158,38 @@ namespace klee {
 			void setArrayValuesToGet(const std::vector<const Array*>& a);
 
 			/// \return True if human readable mode is switched on
+
 			bool isHumanReadable();
 
+                public:
+                        //Print SMTLIBv2 options e.g. (set-option :option-name <value>) command
+                        virtual void printOptions();
+
+                        //Print SMTLIBv2 logic to use e.g. (set-logic QF_ABV)
+                        virtual void printSetLogic();
+
+                        //Print SMTLIBv2 assertions for constant arrays
+                        virtual void printArrayDeclarations();
+
+                        virtual void printPush();
+
+                        virtual void printPop();
+
+                        //Print SMTLIBv2 for all constraints in the query
+                        virtual void printConstraints();
+
+                        //Print SMTLIBv2 assert statement for the "mangled" query
+                        virtual void printQuery();
+
+                        ///Print the SMTLIBv2 command to check satisfiability and also optionally request for values
+                        /// \sa setArrayValuesToGet()
+                        virtual void printAction();
+
+                        ///Print the SMTLIBv2 command to exit
+                        virtual void printExit();
+
+                        ///Print the SMTLIBv2 command to reset the state of the solver
+                        virtual void printReset();
 
 		protected:
 			///Contains the arrays found during scans
@@ -185,28 +215,6 @@ namespace klee {
 
 			//Print an initial SMTLIBv2 comment before anything else is printed
 			virtual void printNotice();
-
-			//Print SMTLIBv2 options e.g. (set-option :option-name <value>) command
-			virtual void printOptions();
-
-			//Print SMTLIBv2 logic to use e.g. (set-logic QF_ABV)
-			virtual void printSetLogic();
-
-			//Print SMTLIBv2 assertions for constant arrays
-			virtual void printArrayDeclarations();
-
-			//Print SMTLIBv2 for all constraints in the query
-			virtual void printConstraints();
-
-			//Print SMTLIBv2 assert statement for the "mangled" query
-			virtual void printQuery();
-
-			///Print the SMTLIBv2 command to check satisfiability and also optionally request for values
-			/// \sa setArrayValuesToGet()
-			virtual void printAction();
-
-			///Print the SMTLIBv2 command to exit
-			virtual void printExit();
 
 			///Print a Constant in the format specified by the current "Constant Display Mode"
 			void printConstant(const ref<ConstantExpr>& e);
