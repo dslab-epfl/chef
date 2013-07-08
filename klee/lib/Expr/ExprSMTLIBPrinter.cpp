@@ -459,7 +459,7 @@ namespace klee
     }
 
 
-    void ExprSMTLIBPrinter::printArrayDeclarations()
+    void ExprSMTLIBPrinter::printArrayDeclarations(std::set<const Array*> &ignoreList)
     {
         //Assume scan() has been called
         if(humanReadable)
@@ -468,6 +468,10 @@ namespace klee
         //declare arrays
         for(set<const Array*>::iterator it = usedArrays.begin(); it != usedArrays.end(); it++)
         {
+            if (ignoreList.find(*it) != ignoreList.end()) {
+                continue;
+            }
+
             *o << "(declare-fun " << (*it)->name << " () "
                     "(Array (_ BitVec " << (*it)->getDomain() << ") "
                     "(_ BitVec " << (*it)->getRange() << ") ) )" << endl;

@@ -161,6 +161,10 @@ namespace klee {
 
 			bool isHumanReadable();
 
+                        const std::set<const Array*> &getUsedArrays() const {
+                            return usedArrays;
+                        }
+
                 public:
                         //Print SMTLIBv2 options e.g. (set-option :option-name <value>) command
                         virtual void printOptions();
@@ -169,7 +173,13 @@ namespace klee {
                         virtual void printSetLogic();
 
                         //Print SMTLIBv2 assertions for constant arrays
-                        virtual void printArrayDeclarations();
+                        virtual void printArrayDeclarations(std::set<const Array*> &ignoreList);
+
+                        virtual void printArrayDeclarations() {
+                            std::set<const Array*> ignoreList;
+                            printArrayDeclarations(ignoreList);
+                        }
+
 
                         virtual void printPush();
 
