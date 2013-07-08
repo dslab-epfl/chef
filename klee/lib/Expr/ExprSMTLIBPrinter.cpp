@@ -854,7 +854,8 @@ namespace klee
     void ExprSMTLIBPrinter::mangleQuery()
     {
         //Negating the query
-        queryAssert = Expr::createIsZero(query->expr);
+        //queryAssert = Expr::createIsZero(query->expr);
+        queryAssert = query->expr;
     }
 
     bool ExprSMTLIBPrinter::setSMTLIBboolOption(SMTLIBboolOptions option, SMTLIBboolValues value)
