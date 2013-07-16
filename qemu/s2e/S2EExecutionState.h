@@ -216,6 +216,14 @@ public:
         return &m_deviceState;
     }
 
+    static const klee::MemoryObject *getDirtyMask() {
+        return m_dirtyMask;
+    }
+
+    static const klee::MemoryObject *getConcreteRegs() {
+        return m_cpuSystemState;
+    }
+
     TranslationBlock *getTb() const;
 
     uint64_t getTotalInstructionCount();

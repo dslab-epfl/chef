@@ -81,10 +81,6 @@ namespace klee {
 extern llvm::cl::opt<bool> DebugLogStateMerge;
 }
 
-namespace {
-CPUTLBEntry s_cputlb_empty_entry = { -1, -1, -1, -1 };
-}
-
 extern llvm::cl::opt<bool> PrintModeSwitch;
 extern llvm::cl::opt<bool> PrintForkingStatus;
 extern llvm::cl::opt<bool> ConcolicMode;
@@ -1787,7 +1783,9 @@ bool S2EExecutionState::merge(const ExecutionState &_b)
             return false;
         }
         if(ai->second != bi->second && !ai->first->isValueIgnored &&
-                    ai->first != m_cpuSystemState && ai->first != m_dirtyMask) {
+            ai->first != S2EExecutionState::getConcreteRegs() &&
+            ai->first != S2EExecutionState::getDirtyMask()) {
+
             const MemoryObject *mo = ai->first;
             if(DebugLogStateMerge)
                 s << "\t\tmutated: " << mo->id << " (" << mo->name << ")\n";
@@ -1881,17 +1879,20 @@ bool S2EExecutionState::merge(const ExecutionState &_b)
     // dirty mask can only affect performance but not correcntess.
     // NOTE: this requires flushing TLB
     {
-        const ObjectState* os = addressSpace.findObject(m_dirtyMask);
-        ObjectState* wos = addressSpace.getWriteable(m_dirtyMask, os);
+        const MemoryObject *dirtyMask = S2EExecutionState::getDirtyMask();
+        const ObjectState* os = addressSpace.findObject(dirtyMask);
+        ObjectState* wos = addressSpace.getWriteable(dirtyMask, os);
         uint8_t* dirtyMaskA = wos->getConcreteStore();
-        const uint8_t* dirtyMaskB = b.addressSpace.findObject(m_dirtyMask)->getConcreteStore();
+        const uint8_t* dirtyMaskB = b.addressSpace.findObject(dirtyMask)->getConcreteStore();
 
-        for(unsigned i = 0; i < m_dirtyMask->size; ++i) {
+        for(unsigned i = 0; i < dirtyMask->size; ++i) {
             if(dirtyMaskA[i] != dirtyMaskB[i])
                 dirtyMaskA[i] = 0;
         }
     }
 
+    tlb_flush(env, 1);
+#if 0
     // Flush TLB
     {
         CPUArchState * cpu;
@@ -1907,6 +1908,7 @@ bool S2EExecutionState::merge(const ExecutionState &_b)
 
         memset (cpu->tb_jmp_cache, 0, TB_JMP_CACHE_SIZE * sizeof (void *));
     }
+#endif
 
     return true;
 }
