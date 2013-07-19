@@ -1875,12 +1875,18 @@ bool S2EExecutionState::merge(const ExecutionState &_b)
     if(DebugLogStateMerge)
         s << "\t\tcreated " << selectCountMem << " select expressions in memory\n";
 
+    //XXX: Need to roll back the state of the incremental solver to the last
+    //common constraint.
     constraints = ConstraintManager();
     for(std::set< ref<Expr> >::iterator it = commonConstraints.begin(),
                 ie = commonConstraints.end(); it != ie; ++it)
         constraints.addConstraint(*it);
 
     constraints.addConstraint(OrExpr::create(inA, inB));
+
+    this->constraints = constraints;
+
+    //XXX: do we need to recompute concolic values?
 
     // Merge dirty mask by clearing bits that differ. Clearning bits in
     // dirty mask can only affect performance but not correcntess.
