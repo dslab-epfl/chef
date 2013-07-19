@@ -2194,20 +2194,38 @@ bool S2EExecutor::merge(klee::ExecutionState &_base, klee::ExecutionState &_othe
     S2EExecutionState& other = static_cast<S2EExecutionState&>(_other);
 
     /* Ensure that both states are inactive, otherwise merging will not work */
-    if(base.m_active)
+    bool s1 = false, s2 = false;
+    if(base.m_active) {
+        s1 = true;
         doStateSwitch(&base, NULL);
-    else if(other.m_active)
-        doStateSwitch(&other, NULL);
+    }
 
+    if(other.m_active) {
+        s2 = true;
+        doStateSwitch(&other, NULL);
+    }
+
+    bool result;
     if(base.merge(other)) {
         m_s2e->getMessagesStream(&base)
                 << "Merged with state " << other.getID() << '\n';
-        return true;
+        result = true;
     } else {
         m_s2e->getDebugStream(&base)
                 << "Merge with state " << other.getID() << " failed" << '\n';
-        return false;
+        result = false;
     }
+
+    //Reactivate the state
+    if (s1) {
+        doStateSwitch(NULL, &base);
+    }
+
+    if (s2) {
+        doStateSwitch(NULL, &other);
+    }
+
+    return result;
 }
 
 void S2EExecutor::terminateStateEarly(klee::ExecutionState &state, const llvm::Twine &message)
