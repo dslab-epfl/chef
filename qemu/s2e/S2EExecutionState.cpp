@@ -1745,10 +1745,7 @@ bool S2EExecutionState::merge(const ExecutionState &_b)
 
     /* Check CPUArchState */
     {
-        uint8_t* cpuStateA = m_cpuSystemObject->getConcreteStore() - CPU_CONC_LIMIT;
-        uint8_t* cpuStateB = b.m_cpuSystemObject->getConcreteStore() - CPU_CONC_LIMIT;
-        if(memcmp(cpuStateA + CPU_CONC_LIMIT, cpuStateB + CPU_CONC_LIMIT,
-                  CPU_OFFSET(current_tb) - CPU_CONC_LIMIT)) {
+        if (compareArchitecturalConcreteState(b)) {
             if(DebugLogStateMerge)
                 s << "merge failed: different concrete cpu state" << "\n";
             return false;
