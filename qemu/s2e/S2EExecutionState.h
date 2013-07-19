@@ -249,7 +249,6 @@ public:
     /** Yield the state. */
     bool isYielded() const { return m_yielded; }
     void yield(bool new_yield_state) {
-        assert (m_yielded == !new_yield_state);
         m_yielded = new_yield_state;
     }
 
