@@ -505,6 +505,7 @@ s2eobj-y += s2e/Plugins/ExecutionTracers/MemoryTracer.o
 s2eobj-y += s2e/Plugins/MemoryChecker.o
 s2eobj-y += s2e/Plugins/StackChecker.o
 s2eobj-y += s2e/Plugins/Searchers/CooperativeSearcher.o
+s2eobj-y += s2e/Plugins/Searchers/MergingSearcher.o
 s2eobj-y += s2e/Plugins/HostFiles.o
 s2eobj-y += s2e/Plugins/LibraryCallMonitor.o
 s2eobj-y += s2e/Plugins/Searchers/MaxTbSearcher.o
