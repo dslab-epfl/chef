@@ -1674,8 +1674,11 @@ bool S2EExecutionState::merge(const ExecutionState &_b)
         s << "Attempting merge with state " << b.getID() << '\n';
 
     if(pc != b.pc) {
-        if(DebugLogStateMerge)
-            s << "merge failed: different pc" << '\n';
+        if(DebugLogStateMerge) {
+            s << "merge failed: different KLEE pc\n"
+                    << *(*pc).inst << "\n"
+                    << *(*b.pc).inst << "\n";
+        }
         return false;
     }
 
@@ -1710,12 +1713,15 @@ bool S2EExecutionState::merge(const ExecutionState &_b)
     std::set< ref<Expr> > bConstraints(b.constraints.begin(),
                                        b.constraints.end());
     std::set< ref<Expr> > commonConstraints, aSuffix, bSuffix;
+
     std::set_intersection(aConstraints.begin(), aConstraints.end(),
                           bConstraints.begin(), bConstraints.end(),
                           std::inserter(commonConstraints, commonConstraints.begin()));
+
     std::set_difference(aConstraints.begin(), aConstraints.end(),
                         commonConstraints.begin(), commonConstraints.end(),
                         std::inserter(aSuffix, aSuffix.end()));
+
     std::set_difference(bConstraints.begin(), bConstraints.end(),
                         commonConstraints.begin(), commonConstraints.end(),
                         std::inserter(bSuffix, bSuffix.end()));
@@ -1807,12 +1813,16 @@ bool S2EExecutionState::merge(const ExecutionState &_b)
     // Create state predicates
     ref<Expr> inA = ConstantExpr::alloc(1, Expr::Bool);
     ref<Expr> inB = ConstantExpr::alloc(1, Expr::Bool);
+
     for(std::set< ref<Expr> >::iterator it = aSuffix.begin(),
-                 ie = aSuffix.end(); it != ie; ++it)
+        ie = aSuffix.end(); it != ie; ++it) {
         inA = AndExpr::create(inA, *it);
+    }
+
     for(std::set< ref<Expr> >::iterator it = bSuffix.begin(),
-                 ie = bSuffix.end(); it != ie; ++it)
+        ie = bSuffix.end(); it != ie; ++it) {
         inB = AndExpr::create(inB, *it);
+    }
 
     // XXX should we have a preference as to which predicate to use?
     // it seems like it can make a difference, even though logically
