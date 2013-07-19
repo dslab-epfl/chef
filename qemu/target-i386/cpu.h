@@ -745,8 +745,6 @@ typedef struct CPUX86State {
     uint8_t nmi_injected;
     uint8_t nmi_pending;
 
-    CPU_COMMON
-
     uint64_t pat;
 
     /* processor features (e.g. for CPUID insn) */
@@ -806,6 +804,13 @@ typedef struct CPUX86State {
     uint64_t xcr0;
 
     TPRAccess tpr_access_type;
+
+    /**
+     * S2E: the common parts must go at the end, in order to facilitate
+     * state merging.
+     */
+    CPU_COMMON
+
 } CPUX86State;
 
 #if defined(CONFIG_S2E) && !defined(S2E_LLVM_LIB)
