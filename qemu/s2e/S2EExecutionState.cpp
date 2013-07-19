@@ -1898,25 +1898,6 @@ bool S2EExecutionState::merge(const ExecutionState &_b)
         }
     }
 
-    tlb_flush(env, 1);
-#if 0
-    // Flush TLB
-    {
-        CPUArchState * cpu;
-        cpu = (CPUArchState *) (m_cpuSystemObject->getConcreteStore() - CPU_CONC_LIMIT);
-        cpu->current_tb = NULL;
-
-        for (int mmu_idx = 0; mmu_idx < NB_MMU_MODES; mmu_idx++) {
-            for(int i = 0; i < CPU_TLB_SIZE; i++)
-                cpu->tlb_table[mmu_idx][i] = s_cputlb_empty_entry;
-            for(int i = 0; i < CPU_S2E_TLB_SIZE; i++)
-                cpu->s2e_tlb_table[mmu_idx][i].objectState = 0;
-        }
-
-        memset (cpu->tb_jmp_cache, 0, TB_JMP_CACHE_SIZE * sizeof (void *));
-    }
-#endif
-
     return true;
 }
 
