@@ -1920,6 +1920,14 @@ CPUArchState *S2EExecutionState::getConcreteCpuState() const
     return cpu;
 }
 
+int S2EExecutionState::compareArchitecturalConcreteState(const S2EExecutionState &other) {
+    unsigned common_size = sizeof(CPUArchState) - CPU_OFFSET(s2e_common_start);
+
+    return memcmp(m_cpuRegistersObject->getConcreteStore(),
+            other.m_cpuRegistersObject->getConcreteStore(),
+            m_cpuRegistersState->size - common_size);
+}
+
 
 //Fast function to read bytes from physical (uses caching)
 void S2EExecutionState::dmaRead(uint64_t hostAddress, uint8_t *buf, unsigned size)

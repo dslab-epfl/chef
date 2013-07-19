@@ -432,6 +432,8 @@ public:
 
     CPUArchState *getConcreteCpuState() const;
 
+    int compareArchitecturalConcreteState(const S2EExecutionState &other);
+
     virtual void addConstraint(klee::ref<klee::Expr> e);
 
     /** Creates new unconstrained symbolic value */
