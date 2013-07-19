@@ -444,3 +444,25 @@ s2e_sm_succ_count:
     db 0x00
     dd 0x00
     ret
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+s2e_invoke_plugin:
+    push ebp
+    mov ebp, esp
+
+    mov eax, [ebp + 0x8] ; pluginName
+    mov ecx, [ebp + 0xc] ; data
+    mov edx, [ebp + 0x10]; dataSize
+
+    db 0x0f
+    db 0x3f ; S2EOP
+    db 0x00 ; Built-in instructions
+    db 0x0B ; invoke plugin
+    db 0x00
+    db 0x00
+    dd 0x00
+
+    leave
+    ret
+
