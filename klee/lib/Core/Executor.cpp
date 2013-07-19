@@ -1742,7 +1742,17 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     BasicBlock *bb = si->getParent();
 
     cond = simplifyExpr(state, toUnique(state, cond));
-    if (!isa<ConstantExpr>(cond)) {
+
+    if (concolicMode) {
+        klee::ref<klee::Expr> concreteCond = state.concolics.evaluate(cond);
+        klee::ref<klee::Expr> condition = EqExpr::create(concreteCond , cond);
+        StatePair sp = fork(state, condition, true);
+        assert(sp.first == &state);
+        if (sp.second) {
+            sp.second->pc = sp.second->prevPC;
+        }
+        cond = concreteCond;
+    } else {
         // TODO: proper support for symbolic switches
         cond = toConstant(state, cond, "Symbolic switch condition");
     }
