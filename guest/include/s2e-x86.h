@@ -337,17 +337,6 @@ static inline int s2e_get_ram_object_bits(void)
     return bits;
 }
 
-/** Declare a merge point: S2E will try to merge
- *  all states when they reach this point.
- *
- * NOTE: This requires the merge searcher to be enabled. */
-static inline void s2e_merge_point(void)
-{
-    __asm__ __volatile__(
-        S2E_INSTRUCTION_SIMPLE(70)
-    );
-}
-
 /** Open file from the guest.
  *
  * NOTE: This requires the HostFiles plugin. */
