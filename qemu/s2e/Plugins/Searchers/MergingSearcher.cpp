@@ -192,6 +192,14 @@ void MergingSearcher::handleOpcodeInvocation(S2EExecutionState *state,
     // Skip the opcode
     state->regs()->write<target_ulong>(CPU_OFFSET(eip), state->getPc() + 10);
 
+    // Clear temp flags.
+    // This assumes we were called through the custom instructions,
+    // implying that the flags can be clobbered.
+    state->regs()->write(CPU_OFFSET(cc_op), 0);
+    state->regs()->write(CPU_OFFSET(cc_src), 0);
+    state->regs()->write(CPU_OFFSET(cc_dst), 0);
+    state->regs()->write(CPU_OFFSET(cc_tmp), 0);
+
     //The TLB state must be identical when we merge
     tlb_flush(env, 1);
 
