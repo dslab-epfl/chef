@@ -1689,8 +1689,18 @@ bool S2EExecutionState::merge(const ExecutionState &_b)
     // XXX is it even possible for these to differ? does it matter? probably
     // implies difference in object states?
     if(symbolics != b.symbolics) {
-        if(DebugLogStateMerge)
+        if(DebugLogStateMerge) {
             s << "merge failed: different symbolics" << '\n';
+
+            foreach2(it, symbolics.begin(), symbolics.end()) {
+                s << (*it).first->name << "\n";
+            }
+            s << "\n";
+            foreach2(it, b.symbolics.begin(), b.symbolics.end()) {
+                s << (*it).first->name << "\n";
+            }
+
+        }
         return false;
     }
 
@@ -1853,8 +1863,9 @@ bool S2EExecutionState::merge(const ExecutionState &_b)
         }
     }
 
-    if(DebugLogStateMerge)
+    if (DebugLogStateMerge) {
         s << "\t\tcreated " << selectCountStack << " select expressions on the stack\n";
+    }
 
     for(std::set<const MemoryObject*>::iterator it = mutated.begin(),
                     ie = mutated.end(); it != ie; ++it) {
@@ -1865,12 +1876,24 @@ bool S2EExecutionState::merge(const ExecutionState &_b)
                "objects mutated but not writable in merging state");
         assert(otherOS);
 
+        if (DebugLogStateMerge) {
+            s << "Merging object " << mo->name << "\n";
+        }
+
         ObjectState *wos = addressSpace.getWriteable(mo, os);
         for (unsigned i=0; i<mo->size; i++) {
             ref<Expr> av = wos->read8(i);
             ref<Expr> bv = otherOS->read8(i);
             if(av != bv) {
-                wos->write(i, SelectExpr::create(inA, av, bv));
+                ref<Expr> e = SelectExpr::create(inA, av, bv);
+
+                #if 0
+                if (DebugLogStateMerge) {
+                    s << "Byte " << i << ": " << e << "\n";
+                }
+                #endif
+
+                wos->write(i, e);
                 selectCountMem += 1;
             }
         }
