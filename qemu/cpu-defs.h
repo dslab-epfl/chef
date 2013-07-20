@@ -278,6 +278,7 @@ typedef struct CPUWatchpoint {
     struct KVMState *kvm_state;                                         \
     struct kvm_run *kvm_run;                                            \
     int kvm_fd;                                                         \
-    int kvm_vcpu_dirty;
+    int kvm_vcpu_dirty;                                                 \
+    int s2e_common_end; /* Dummy variable to mark the end of the common area */
 
 #endif
