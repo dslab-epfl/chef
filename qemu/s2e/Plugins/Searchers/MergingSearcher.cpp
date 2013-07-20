@@ -59,6 +59,7 @@ void MergingSearcher::initialize()
 {
     s2e()->getExecutor()->setSearcher(this);
     m_currentState = NULL;
+    m_nextMergeGroupId = 1;
 }
 
 klee::ExecutionState& MergingSearcher::selectState()
@@ -119,6 +120,9 @@ bool MergingSearcher::empty()
 
 void MergingSearcher::suspend(S2EExecutionState *state)
 {
+    s2e()->getDebugStream(NULL) << "MergingSearcher: "
+            << "suspending state " << state->getID() << "\n";
+
     if (m_currentState == state) {
         m_currentState = NULL;
     }
@@ -128,6 +132,8 @@ void MergingSearcher::suspend(S2EExecutionState *state)
 
 void MergingSearcher::resume(S2EExecutionState *state)
 {
+    s2e()->getDebugStream(NULL) << "MergingSearcher: "
+            << "resuming state " << state->getID() << "\n";
     m_activeStates.insert(state);
 }
 
@@ -150,20 +156,17 @@ void MergingSearcher::handleOpcodeInvocation(S2EExecutionState *state,
         return;
     }
 
-    if (command.group_id == 0) {
-        s2e()->getWarningsStream(state) << "MergingSearcher: group id must be greater than 0.\n";
-        return;
-    }
-
     DECLARE_PLUGINSTATE(MergingSearcherState, state);
 
     if (command.start) {
-        s2e()->getWarningsStream(state) <<
-                "MergingSearcher: starting merge group " << command.group_id << "\n";
-
         if (plgState->getGroupId() == 0) {
-            plgState->setGroupId(command.group_id);
-            m_mergePools[command.group_id].states.insert(state);
+            uint64_t id = m_nextMergeGroupId++;
+
+            s2e()->getWarningsStream(state) <<
+                    "MergingSearcher: starting merge group " << id << "\n";
+
+            plgState->setGroupId(id);
+            m_mergePools[id].states.insert(state);
         } else {
             s2e()->getWarningsStream(state) << "MergingSearcher: state id already has group id "
                     << plgState->getGroupId() << "\n";
@@ -185,6 +188,7 @@ void MergingSearcher::handleOpcodeInvocation(S2EExecutionState *state,
     if (mergePool.states.empty() && !mergePool.firstState) {
         //No states forked in the merge pool when the merge point was reached,
         //so there is nothing to merge and therefore we return.
+        plgState->setGroupId(0);
         m_mergePools.erase(it);
         return;
     }

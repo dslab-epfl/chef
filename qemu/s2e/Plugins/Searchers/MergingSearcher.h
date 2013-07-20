@@ -51,10 +51,8 @@ class MergingSearcher : public Plugin, public klee::Searcher, public BaseInstruc
 
     /* Custom instruction command */
     struct merge_desc_t {
-        uint64_t group_id;
         uint64_t start;
     };
-
 
     typedef llvm::DenseSet<S2EExecutionState*> States;
 
@@ -76,6 +74,7 @@ class MergingSearcher : public Plugin, public klee::Searcher, public BaseInstruc
     MergePools m_mergePools;
     States m_activeStates;
     S2EExecutionState *m_currentState;
+    uint64_t m_nextMergeGroupId;
 
 public:
     MergingSearcher(S2E* s2e): Plugin(s2e) {}
