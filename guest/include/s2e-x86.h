@@ -523,3 +523,77 @@ static inline int s2e_invoke_plugin(const char *pluginName, void *data, uint32_t
 
     return result;
 }
+
+/**
+ *  Transmits a buffer of dataSize length to the plugin named in pluginName.
+ *  eax contains the failure code upon return, 0 for success.
+ *  The functions ensures that the CPU state is concrete before invoking the plugin.
+ */
+static inline int s2e_invoke_plugin_concrete(const char *pluginName, void *data, uint32_t dataSize)
+{
+    int result;
+    __s2e_touch_string(pluginName);
+    __s2e_touch_buffer(data, dataSize);
+
+    __asm__ __volatile__(
+
+        #ifdef __x86_64__
+        "push %%rbx\n"
+        "push %%rsi\n"
+        "push %%rdi\n"
+        "push %%rbp\n"
+        "push %%r8\n"
+        "push %%r9\n"
+        "push %%r10\n"
+        "push %%r11\n"
+        "push %%r12\n"
+        "push %%r13\n"
+        "push %%r14\n"
+        "push %%r15\n"
+
+        "xor  %%rbx, %%rbx\n"
+        "xor  %%rsi, %%rsi\n"
+        "xor  %%rdi, %%rdi\n"
+        "xor  %%rbp, %%rbp\n"
+        "xor  %%r8, %%r8\n"
+        "xor  %%r9, %%r9\n"
+        "xor  %%r10, %%r10\n"
+        "xor  %%r11, %%r11\n"
+        "xor  %%r12, %%r12\n"
+        "xor  %%r13, %%r13\n"
+        "xor  %%r14, %%r14\n"
+        "xor  %%r15, %%r15\n"
+        #else
+        "pusha\n"
+        "xor %%ebx, %%ebx\n"
+        "xor %%ebp, %%ebp\n"
+        "xor %%esi, %%esi\n"
+        "xor %%edi, %%edi\n"
+        #endif
+
+        "jmp __sip1\n" /* Force concrete mode */
+        "__sip1:\n"
+        S2E_INSTRUCTION_SIMPLE(0B)
+
+#ifdef __x86_64__
+        "pop %%r15\n"
+        "pop %%r14\n"
+        "pop %%r13\n"
+        "pop %%r12\n"
+        "pop %%r11\n"
+        "pop %%r10\n"
+        "pop %%r9\n"
+        "pop %%r8\n"
+        "pop %%rbp\n"
+        "pop %%rdi\n"
+        "pop %%rsi\n"
+        "pop %%rbx\n"
+#else
+        "popa\n"
+#endif
+
+            : "=a" (result) : "a" (pluginName), "c" (data), "d" (dataSize) : "memory"
+    );
+
+    return result;
+}
