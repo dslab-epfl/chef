@@ -286,6 +286,8 @@ public:
     void kleeWriteMemory(klee::ref<klee::Expr> kleeAddressExpr,
                          std::vector<klee::ref<klee::Expr> > &bytes);
 
+    CPUArchState *getCpuState() const;
+
     /** Read CPU system state */
     uint64_t readCpuState(unsigned offset, unsigned width) const;
 

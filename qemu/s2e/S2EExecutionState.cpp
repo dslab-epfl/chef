@@ -207,12 +207,7 @@ void S2EExecutionState::addressSpaceChange(const klee::MemoryObject *mo,
         assert(m_cpuSystemState && m_cpuSystemObject);
 
 
-        CPUArchState* cpu;
-        cpu = m_active ?
-                (CPUArchState*)(m_cpuSystemState->address
-                              - CPU_CONC_LIMIT) :
-                (CPUArchState*)(m_cpuSystemObject->getConcreteStore(true)
-                              - CPU_CONC_LIMIT);
+        CPUArchState* cpu = getCpuState();
 
 
 #ifdef S2E_DEBUG_TLBCACHE
@@ -557,6 +552,15 @@ void S2EExecutionState::makeSymbolic(std::vector< ref<Expr> > &args,
     }
 
     kleeWriteMemory(kleeAddress, symb);
+}
+
+CPUArchState *S2EExecutionState::getCpuState() const {
+    CPUArchState* cpu = m_active ?
+            (CPUArchState*)(m_cpuSystemState->address
+                          - CPU_CONC_LIMIT) :
+            (CPUArchState*)(m_cpuSystemObject->getConcreteStore(true)
+                          - CPU_CONC_LIMIT);
+    return cpu;
 }
 
 uint64_t S2EExecutionState::readCpuState(unsigned offset,
@@ -1915,11 +1919,16 @@ CPUArchState *S2EExecutionState::getConcreteCpuState() const
 }
 
 int S2EExecutionState::compareArchitecturalConcreteState(const S2EExecutionState &other) {
-    unsigned common_size = sizeof(CPUArchState) - CPU_OFFSET(s2e_common_start);
+    CPUArchState *a = getCpuState();
+    CPUArchState *b = other.getCpuState();
 
-    return memcmp(m_cpuRegistersObject->getConcreteStore(),
-            other.m_cpuRegistersObject->getConcreteStore(),
-            m_cpuRegistersState->size - common_size);
+    int ret = memcmp(&a->eip, &b->eip, CPU_OFFSET(s2e_common_start) - CPU_OFFSET(eip));
+    if (ret) {
+        return ret;
+    }
+
+    ret = memcmp(&a->s2e_common_end, &b->s2e_common_end, sizeof(CPUArchState) - CPU_OFFSET(s2e_common_end));
+    return ret;
 }
 
 
