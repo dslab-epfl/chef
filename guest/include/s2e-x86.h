@@ -597,3 +597,22 @@ static inline int s2e_invoke_plugin_concrete(const char *pluginName, void *data,
 
     return result;
 }
+
+typedef struct _merge_desc_t {
+    uint64_t start;
+} merge_desc_t;
+
+static inline void s2e_merge_group_begin()
+{
+    merge_desc_t desc;
+    desc.start = 1;
+    s2e_invoke_plugin("MergingSearcher", &desc, sizeof(desc));
+}
+
+static inline void s2e_merge_group_end()
+{
+    merge_desc_t desc;
+    desc.start = 0;
+    s2e_invoke_plugin_concrete("MergingSearcher", &desc, sizeof(desc));
+}
+
