@@ -208,8 +208,6 @@ public:
 
     void unrefS2ETb(S2ETranslationBlock* s2e_tb);
 
-    void queueStateForMerge(S2EExecutionState *state);
-
     void initializeStatistics();
 
     void updateStats(S2EExecutionState *state);

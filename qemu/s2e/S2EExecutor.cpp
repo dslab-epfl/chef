@@ -136,22 +136,6 @@ using namespace std;
 using namespace llvm;
 using namespace klee;
 
-extern "C" {
-    // XXX
-    //void* g_s2e_exec_ret_addr = 0;
-}
-
-namespace {
-    uint64_t hash64(uint64_t val, uint64_t initial = 14695981039346656037ULL) {
-        const char* __first = (const char*) &val;
-        for (unsigned int i = 0; i < sizeof(uint64_t); ++i) {
-            initial ^= static_cast<uint64_t>(*__first++);
-            initial *= static_cast<uint64_t>(1099511628211ULL);
-        }
-        return initial;
-    }
-}
-
 namespace {
     cl::opt<bool>
     UseSelectCleaner("use-select-cleaner",
@@ -2437,44 +2421,6 @@ void S2EExecutor::unrefS2ETb(S2ETranslationBlock* s2e_tb)
             delete static_cast<ExecutionSignal*>(s);
         }
     }
-}
-
-void S2EExecutor::queueStateForMerge(S2EExecutionState *state)
-{
-    if(dynamic_cast<MergingSearcher*>(searcher) == NULL) {
-        m_s2e->getWarningsStream(state)
-                << "State merging request is ignored because"
-                   " MergingSearcher is not activated\n";
-        return;
-    }
-    assert(state->m_active && !state->m_runningConcrete && state->pc);
-
-    /* Ignore attempt to merge states immediately after previous attempt */
-    if(state->m_lastMergeICount == state->getTotalInstructionCount() - 1)
-        return;
-
-    state->m_lastMergeICount = state->getTotalInstructionCount();
-
-    target_ulong mergePoint = 0;
-#ifdef TARGET_ARM
-    if(!state->readCpuRegisterConcrete(CPU_OFFSET(regs[13]), &mergePoint, CPU_REG_SIZE)) {
-        m_s2e->getWarningsStream(state)
-                << "Warning: merge request for a state with symbolic SP" << "\n";
-    }
-#elif defined(TARGET_I386)
-    if(!state->readCpuRegisterConcrete(CPU_OFFSET(regs[R_ESP]), &mergePoint,
-                                                               CPU_REG_SIZE)) {
-        m_s2e->getWarningsStream(state)
-                << "Warning: merge request for a state with symbolic ESP" << '\n';
-    }
-#endif
-    mergePoint = hash64(mergePoint);
-    mergePoint = hash64(state->getPc(), mergePoint);
-
-    m_s2e->getMessagesStream(state) << "Queueing state for merging" << '\n';
-
-    static_cast<MergingSearcher*>(searcher)->queueStateForMerge(*state, mergePoint);
-    throw CpuExitException();
 }
 
 void S2EExecutor::updateStats(S2EExecutionState *state)
