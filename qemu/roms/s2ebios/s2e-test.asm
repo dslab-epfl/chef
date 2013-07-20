@@ -7,6 +7,9 @@ s2e_test:
     ;call s2e_concolic_3
     call s2e_test_unaligned_access_symb
     ;call s2e_symbmem1
+
+    call s2e_merge_test
+
     ;call s2e_concolic_disable_fork
     ;call s2e_concolic_3
     ;call s2e_test_memspeed
@@ -689,3 +692,44 @@ a:
 
 
 msg_ok: db "SUCCESS", 0
+
+
+s2e_merge_test:
+    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+    mov esi, 0
+    mov edi, 32 ; Bit counter
+
+ smt0:
+    cmp edi, 0
+    jz smt2
+    shl esi, 1
+
+    push dword 1
+    call s2e_merge_group_begin
+    add esp, 4
+
+    call s2e_int
+    cmp eax, 0
+    je smt1
+    or esi, 1
+ smt1:
+
+    push dword 1
+    call s2e_merge_group_end
+    add esp, 4
+    dec edi
+    jmp smt0
+
+ smt2:
+    cmp esi, 0xdeadbeef
+    jne smt3
+    push 0
+    push 3
+    call s2e_kill_state
+    ret
+
+ smt3:
+    push 0
+    push 123
+    call s2e_kill_state
+    ret
