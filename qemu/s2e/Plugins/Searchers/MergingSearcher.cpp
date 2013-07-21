@@ -167,6 +167,7 @@ void MergingSearcher::handleOpcodeInvocation(S2EExecutionState *state,
 
             plgState->setGroupId(id);
             m_mergePools[id].states.insert(state);
+            state->setPinned(true);
         } else {
             s2e()->getWarningsStream(state) << "MergingSearcher: state id already has group id "
                     << plgState->getGroupId() << "\n";
@@ -190,6 +191,7 @@ void MergingSearcher::handleOpcodeInvocation(S2EExecutionState *state,
         //so there is nothing to merge and therefore we return.
         plgState->setGroupId(0);
         m_mergePools.erase(it);
+        state->setPinned(false);
         return;
     }
 
@@ -225,6 +227,7 @@ void MergingSearcher::handleOpcodeInvocation(S2EExecutionState *state,
         resume(mergePool.firstState);
         DECLARE_PLUGINSTATE(MergingSearcherState, mergePool.firstState);
         plgState->setGroupId(0);
+        mergePool.firstState->setPinned(false);
         m_mergePools.erase(it);
     }
 
