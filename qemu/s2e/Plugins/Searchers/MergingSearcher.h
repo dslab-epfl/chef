@@ -89,6 +89,9 @@ public:
 
     virtual bool empty();
 
+    bool mergeStart(S2EExecutionState *state);
+    bool mergeEnd(S2EExecutionState *state, bool skipOpcode, bool clearTmpFlags);
+
 private:
     void suspend(S2EExecutionState *state);
     void resume(S2EExecutionState *state);

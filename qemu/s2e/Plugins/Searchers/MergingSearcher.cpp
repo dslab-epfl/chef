@@ -137,50 +137,36 @@ void MergingSearcher::resume(S2EExecutionState *state)
     m_activeStates.insert(state);
 }
 
-
-void MergingSearcher::handleOpcodeInvocation(S2EExecutionState *state,
-                                    uint64_t guestDataPtr,
-                                    uint64_t guestDataSize)
+bool MergingSearcher::mergeStart(S2EExecutionState *state)
 {
-    merge_desc_t command;
-
-    if (guestDataSize != sizeof(command)) {
-        s2e()->getWarningsStream(state) <<
-                "MergingSearcher: mismatched merge_desc_t size\n";
-        return;
-    }
-
-    if (!state->mem()->readMemoryConcrete(guestDataPtr, &command, guestDataSize)) {
-        s2e()->getWarningsStream(state) <<
-                "MergingSearcher: could not read transmitted data\n";
-        return;
-    }
-
     DECLARE_PLUGINSTATE(MergingSearcherState, state);
 
-    if (command.start) {
-        if (plgState->getGroupId() == 0) {
-            uint64_t id = m_nextMergeGroupId++;
-
-            s2e()->getWarningsStream(state) <<
-                    "MergingSearcher: starting merge group " << id << "\n";
-
-            plgState->setGroupId(id);
-            m_mergePools[id].states.insert(state);
-            state->setPinned(true);
-        } else {
-            s2e()->getWarningsStream(state) << "MergingSearcher: state id already has group id "
-                    << plgState->getGroupId() << "\n";
-        }
-        return;
+    if (plgState->getGroupId() != 0) {
+        s2e()->getWarningsStream(state) << "MergingSearcher: state id already has group id "
+                << plgState->getGroupId() << "\n";
+        return false;
     }
 
+    uint64_t id = m_nextMergeGroupId++;
+
+    s2e()->getWarningsStream(state) <<
+            "MergingSearcher: starting merge group " << id << "\n";
+
+    plgState->setGroupId(id);
+    m_mergePools[id].states.insert(state);
+    state->setPinned(true);
+    return true;
+}
+
+bool MergingSearcher::mergeEnd(S2EExecutionState *state, bool skipOpcode, bool clearTmpFlags)
+{
+    DECLARE_PLUGINSTATE(MergingSearcherState, state);
     s2e()->getWarningsStream(state) << "MergingSearcher: merging state\n";
 
     MergePools::iterator it = m_mergePools.find(plgState->getGroupId());
     if (it == m_mergePools.end()) {
         s2e()->getWarningsStream(state) << "MergingSearcher: state does not belong to a merge group\n";
-        return;
+        return false;
     }
 
     merge_pool_t &mergePool = (*it).second;
@@ -192,19 +178,24 @@ void MergingSearcher::handleOpcodeInvocation(S2EExecutionState *state,
         plgState->setGroupId(0);
         m_mergePools.erase(it);
         state->setPinned(false);
-        return;
+        return true;
     }
 
     // Skip the opcode
-    state->regs()->write<target_ulong>(CPU_OFFSET(eip), state->getPc() + 10);
+    if (skipOpcode) {
+        state->regs()->write<target_ulong>(CPU_OFFSET(eip), state->getPc() + 10);
+    }
 
     // Clear temp flags.
     // This assumes we were called through the custom instructions,
     // implying that the flags can be clobbered.
-    state->regs()->write(CPU_OFFSET(cc_op), 0);
-    state->regs()->write(CPU_OFFSET(cc_src), 0);
-    state->regs()->write(CPU_OFFSET(cc_dst), 0);
-    state->regs()->write(CPU_OFFSET(cc_tmp), 0);
+    // XXX: is it possible that these can be symbolic?
+    if (clearTmpFlags) {
+        state->regs()->write(CPU_OFFSET(cc_op), 0);
+        state->regs()->write(CPU_OFFSET(cc_src), 0);
+        state->regs()->write(CPU_OFFSET(cc_dst), 0);
+        state->regs()->write(CPU_OFFSET(cc_tmp), 0);
+    }
 
     //The TLB state must be identical when we merge
     tlb_flush(env, 1);
@@ -217,7 +208,7 @@ void MergingSearcher::handleOpcodeInvocation(S2EExecutionState *state,
         suspend(state);
         g_s2e->getExecutor()->yieldState(*state);
         assert(false && "Can't get here");
-        return;
+        return false;
     }
 
 
@@ -237,6 +228,31 @@ void MergingSearcher::handleOpcodeInvocation(S2EExecutionState *state,
 
     //Symbolic state may be changed, need to restart
     throw CpuExitException();
+}
+
+void MergingSearcher::handleOpcodeInvocation(S2EExecutionState *state,
+                                    uint64_t guestDataPtr,
+                                    uint64_t guestDataSize)
+{
+    merge_desc_t command;
+
+    if (guestDataSize != sizeof(command)) {
+        s2e()->getWarningsStream(state) <<
+                "MergingSearcher: mismatched merge_desc_t size\n";
+        return;
+    }
+
+    if (!state->mem()->readMemoryConcrete(guestDataPtr, &command, guestDataSize)) {
+        s2e()->getWarningsStream(state) <<
+                "MergingSearcher: could not read transmitted data\n";
+        return;
+    }
+
+    if (command.start) {
+        mergeStart(state);
+    } else {
+        mergeEnd(state, true, true);
+    }
 }
 
 MergingSearcherState::MergingSearcherState()
