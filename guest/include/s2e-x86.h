@@ -553,15 +553,21 @@ static inline int s2e_invoke_plugin_concrete(const char *pluginName, void *data,
         "xor  %%r14, %%r14\n"
         "xor  %%r15, %%r15\n"
         #else
-        "pusha\n"
+        "push %%ebx\n"
+        "push %%ebp\n"
+        "push %%esi\n"
+        "push %%edi\n"
         "xor %%ebx, %%ebx\n"
         "xor %%ebp, %%ebp\n"
         "xor %%esi, %%esi\n"
         "xor %%edi, %%edi\n"
         #endif
 
+        S2E_INSTRUCTION_SIMPLE(53) /* Clear temp flags */
+
         "jmp __sip1\n" /* Force concrete mode */
         "__sip1:\n"
+
         S2E_INSTRUCTION_SIMPLE(0B)
 
 #ifdef __x86_64__
@@ -578,7 +584,10 @@ static inline int s2e_invoke_plugin_concrete(const char *pluginName, void *data,
         "pop %%rsi\n"
         "pop %%rbx\n"
 #else
-        "popa\n"
+        "pop %%edi\n"
+        "pop %%esi\n"
+        "pop %%ebp\n"
+        "pop %%ebx\n"
 #endif
 
             : "=a" (result) : "a" (pluginName), "c" (data), "d" (dataSize) : "memory"
