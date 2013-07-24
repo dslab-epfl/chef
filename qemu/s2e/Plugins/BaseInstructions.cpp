@@ -618,6 +618,18 @@ void BaseInstructions::handleBuiltInOps(S2EExecutionState* state, uint64_t opcod
                 break;
         }
 
+        case 0x53: {
+                /**
+                 * Clear all temporary flags.
+                 * Useful to force concrete mode from guest code.
+                 */
+                target_ulong val = 0;
+                state->regs()->write(CPU_OFFSET(cc_op), val);
+                state->regs()->write(CPU_OFFSET(cc_src), val);
+                state->regs()->write(CPU_OFFSET(cc_dst), val);
+                state->regs()->write(CPU_OFFSET(cc_tmp), val);
+        } break;
+
         default:
             s2e()->getWarningsStream(state)
                 << "BaseInstructions: Invalid built-in opcode " << hexval(opcode) << '\n';
