@@ -2911,14 +2911,14 @@ void Executor::terminateStateOnExit(ExecutionState &state) {
   terminateState(state);
 }
 
-void Executor::printStack(ExecutionState &state, KInstruction *target, std::stringstream &msg)
+void Executor::printStack(const ExecutionState &state, KInstruction *target, std::stringstream &msg)
 {
     msg << "Stack: \n";
     unsigned idx = 0;
-    for (ExecutionState::stack_ty::reverse_iterator
+    for (ExecutionState::stack_ty::const_reverse_iterator
            it = state.stack.rbegin(), ie = state.stack.rend();
          it != ie; ++it) {
-      StackFrame &sf = *it;
+      const StackFrame &sf = *it;
       Function *f = sf.kf->function;
 
       unsigned assemblyLine = 0;
