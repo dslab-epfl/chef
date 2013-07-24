@@ -472,16 +472,13 @@ __MergingSearcher: db "MergingSearcher", 0
 s2e_merge_group_begin:
     push ebp
     mov ebp, esp
-    sub esp, 8 * 2 ; allocate space for groupid and start
+    sub esp, 8 ; allocate space for groupid and start
 
-    mov eax,  [ebp + 8] ; group id
-    mov       [ebp - 0x10], eax
-    mov dword [ebp - 0xc], 0
     mov dword [ebp - 0x08], 1
     mov dword [ebp - 0x04], 0
 
-    push 8 * 2
-    lea eax, [ebp - 0x10]
+    push 8
+    lea eax, [ebp - 0x8]
     push eax
     push __MergingSearcher
     call s2e_invoke_plugin
@@ -494,7 +491,7 @@ s2e_merge_group_end:
     push ebp
 
     mov ebp, esp
-    sub esp, 8 * 2 ; allocate space for groupid and start
+    sub esp, 8 ; allocate space for the start command
 
     pusha ;Must make all registers concrete
     xor eax, eax
@@ -506,14 +503,11 @@ s2e_merge_group_end:
     jmp smge1 ;Force concrete mode
 smge1:
 
-    mov eax,  [ebp + 8] ; group id
-    mov       [ebp - 0x10], eax
-    mov dword [ebp - 0xc], 0
     mov dword [ebp - 0x08], 0
     mov dword [ebp - 0x04], 0
 
-    push 8 * 2
-    lea eax, [ebp - 0x10]
+    push 8
+    lea eax, [ebp - 0x8]
     push eax
     push __MergingSearcher
     call s2e_invoke_plugin
