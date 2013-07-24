@@ -288,6 +288,18 @@ ref<Expr> Expr::createIsZero(ref<Expr> e) {
   return EqExpr::create(e, ConstantExpr::create(0, e->getWidth()));
 }
 
+bool Expr::isIsZeroOf(const ref<Expr> &e) const {
+  if (const EqExpr *ee = dyn_cast<const EqExpr>(this))
+    if (ee->left->isZero() && ee->right == e)
+      return true;
+  return false;
+}
+
+bool Expr::isNegationOf(const ref<Expr> &e) const {
+  return isIsZeroOf(e) || e->isIsZeroOf(ref<Expr>(const_cast<Expr*>(this)));
+}
+
+
 void Expr::print(llvm::raw_ostream &os) const {
   ExprPPrinter::printSingleExpr(os, const_cast<Expr*>(this));
 }
@@ -587,7 +599,7 @@ ref<Expr> ConcatExpr::create(const ref<Expr> &l, const ref<Expr> &r) {
     if (ConstantExpr *rCE = dyn_cast<ConstantExpr>(r))
       return lCE->Concat(rCE);
     // concat 0 x -> zext x
-    if (lCE->getZExtValue() == 0) {
+    if (lCE->isZero()) {
         return ZExtExpr::create(r, w);
     }
   }
@@ -685,6 +697,18 @@ ref<Expr> ExtractExpr::create(ref<Expr> expr, unsigned off, Width w) {
             if (off == 0 && w == Int8 && xw == Int8) {
                 return x;
             }
+        }
+        // Extract(ZExt)
+        else if (ZExtExpr *ze = dyn_cast<ZExtExpr>(expr)) {
+          if (off == 0)
+            return ZExtExpr::create(ze->src, w);
+          else if (off >= ze->src->getWidth())
+            return ConstantExpr::alloc(0, w);
+        }
+        // Extract(SExt)
+        else if (SExtExpr *se = dyn_cast<SExtExpr>(expr)) {
+          if (off == 0)
+            return SExtExpr::create(se->src, w);
         }
     }
 
@@ -889,6 +913,22 @@ static ref<Expr> AndExpr_createPartialR(const ref<ConstantExpr> &cl, Expr *r) {
   return AndExpr_createPartial(r, cl);
 }
 static ref<Expr> AndExpr_create(Expr *l, Expr *r) {
+  if (l->isNegationOf(r))
+    return ConstantExpr::create(0, Expr::Bool);
+  if (OrExpr *ae = dyn_cast<OrExpr>(l)) {
+    // (!r || b) && r == b && r
+    if (ae->left->isNegationOf(r))
+      return AndExpr::create(ae->right, r);
+    if (ae->right->isNegationOf(r))
+      return AndExpr::create(ae->left, r);
+  }
+  if (OrExpr *ae = dyn_cast<OrExpr>(r)) {
+    // l && (!l || b) == l && b
+    if (ae->left->isNegationOf(l))
+      return AndExpr::create(l, ae->right);
+    if (ae->right->isNegationOf(l))
+      return AndExpr::create(l, ae->left);
+  }
   return AndExpr::alloc(l, r);
 }
 
@@ -905,6 +945,9 @@ static ref<Expr> OrExpr_createPartialR(const ref<ConstantExpr> &cl, Expr *r) {
   return OrExpr_createPartial(r, cl);
 }
 static ref<Expr> OrExpr_create(Expr *l, Expr *r) {
+  if (l->isNegationOf(r))
+    return ConstantExpr::create(1, Expr::Bool);
+  /*
   if (EqExpr *e = dyn_cast<EqExpr>(l)) {
     if (e->left->isZero() && *r == *e->right) {
       return ConstantExpr::create(1, Expr::Bool);
@@ -914,6 +957,20 @@ static ref<Expr> OrExpr_create(Expr *l, Expr *r) {
     if (e->left->isZero() && *l == *e->right) {
       return ConstantExpr::create(1, Expr::Bool);
     }
+  }*/
+  if (AndExpr *ae = dyn_cast<AndExpr>(l)) {
+    // (!r && b) || r == b || r
+    if (ae->left->isNegationOf(r))
+      return OrExpr::create(ae->right, r);
+    if (ae->right->isNegationOf(r))
+      return OrExpr::create(ae->left, r);
+  }
+  if (AndExpr *ae = dyn_cast<AndExpr>(r)) {
+    // l || (!l && b) == l || b
+    if (ae->left->isNegationOf(l))
+      return OrExpr::create(l, ae->right);
+    if (ae->right->isNegationOf(l))
+      return OrExpr::create(l, ae->left);
   }
   return OrExpr::alloc(l, r);
 }
@@ -932,6 +989,10 @@ static ref<Expr> XorExpr_createPartial(Expr *l, const ref<ConstantExpr> &cr) {
   return XorExpr_createPartialR(cr, l);
 }
 static ref<Expr> XorExpr_create(Expr *l, Expr *r) {
+  if (l == r)
+    return ConstantExpr::alloc(0, l->getWidth());
+  if (l->isNegationOf(r))
+    return ConstantExpr::alloc(1, Expr::Bool);
   return XorExpr::alloc(l, r);
 }
 

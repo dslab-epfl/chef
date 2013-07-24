@@ -211,6 +211,12 @@ public:
   /// isFalse - Is this the false expression.
   bool isFalse() const;
 
+  /// isIsZero - Is this expression Eq(0, e)
+  bool isIsZeroOf(const ref<Expr> &e) const;
+
+  bool isNegationOf(const ref<Expr> &e) const;
+
+
   /* Static utility methods */
 
   static void printKind(llvm::raw_ostream &os, Kind k);
