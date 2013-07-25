@@ -224,6 +224,8 @@ bool MergingSearcher::mergeEnd(S2EExecutionState *state, bool skipOpcode, bool c
 
     if (success) {
         g_s2e->getExecutor()->terminateStateEarly(*state, "Killed by merge");
+    } else {
+        s2e()->getDebugStream(state) << "Merge failed\n";
     }
 
     //Symbolic state may be changed, need to restart
