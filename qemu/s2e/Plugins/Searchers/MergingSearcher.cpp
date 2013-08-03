@@ -60,10 +60,17 @@ void MergingSearcher::initialize()
     s2e()->getExecutor()->setSearcher(this);
     m_currentState = NULL;
     m_nextMergeGroupId = 1;
+    m_selector = NULL;
 }
 
 klee::ExecutionState& MergingSearcher::selectState()
 {
+    if (m_selector) {
+        S2EExecutionState *state = m_selector->selectState();
+        assert(m_activeStates.find(state) != m_activeStates.end());
+        return *state;
+    }
+
     S2EExecutionState *state = m_currentState;
     if (state) {
         return *state;
@@ -110,6 +117,10 @@ void MergingSearcher::update(klee::ExecutionState *current,
         if (plgState->getGroupId()) {
             m_mergePools[plgState->getGroupId()].states.insert(state);
         }
+    }
+
+    if (m_selector) {
+        m_selector->update(current, addedStates, removedStates);
     }
 }
 

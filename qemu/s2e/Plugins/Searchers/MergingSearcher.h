@@ -45,16 +45,26 @@
 namespace s2e {
 namespace plugins {
 
+class IMergingSearcher {
+public:
+    virtual S2EExecutionState *selectState() = 0;
+    virtual void update(klee::ExecutionState *current,
+           const std::set<klee::ExecutionState*> &addedStates,
+           const std::set<klee::ExecutionState*> &removedStates) = 0;
+};
+
 class MergingSearcher : public Plugin, public klee::Searcher, public BaseInstructionsPluginInvokerInterface
 {
     S2E_PLUGIN
 
+public:
+    typedef llvm::DenseSet<S2EExecutionState*> States;
+
+private:
     /* Custom instruction command */
     struct merge_desc_t {
         uint64_t start;
     };
-
-    typedef llvm::DenseSet<S2EExecutionState*> States;
 
     struct merge_pool_t {
         /* First state that got to the merge_end instruction */
@@ -76,9 +86,19 @@ class MergingSearcher : public Plugin, public klee::Searcher, public BaseInstruc
     S2EExecutionState *m_currentState;
     uint64_t m_nextMergeGroupId;
 
+    IMergingSearcher *m_selector;
+
 public:
     MergingSearcher(S2E* s2e): Plugin(s2e) {}
     void initialize();
+
+    void setCustomSelector(IMergingSearcher *selector) {
+        m_selector = selector;
+    }
+
+    States& getActiveStates() {
+        return m_activeStates;
+    }
 
     virtual klee::ExecutionState& selectState();
 
