@@ -139,6 +139,9 @@ void MergingSearcher::suspend(S2EExecutionState *state)
     }
 
     m_activeStates.erase(state);
+    if (m_selector) {
+        m_selector->setActive(state, false);
+    }
 }
 
 void MergingSearcher::resume(S2EExecutionState *state)
@@ -146,6 +149,9 @@ void MergingSearcher::resume(S2EExecutionState *state)
     s2e()->getDebugStream(NULL) << "MergingSearcher: "
             << "resuming state " << state->getID() << "\n";
     m_activeStates.insert(state);
+    if (m_selector) {
+        m_selector->setActive(state, true);
+    }
 }
 
 bool MergingSearcher::mergeStart(S2EExecutionState *state)

@@ -51,6 +51,8 @@ public:
     virtual void update(klee::ExecutionState *current,
            const std::set<klee::ExecutionState*> &addedStates,
            const std::set<klee::ExecutionState*> &removedStates) = 0;
+
+    virtual void setActive(S2EExecutionState *state, bool active) = 0;
 };
 
 class MergingSearcher : public Plugin, public klee::Searcher, public BaseInstructionsPluginInvokerInterface
