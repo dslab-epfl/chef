@@ -61,6 +61,8 @@ void MergingSearcher::initialize()
     m_currentState = NULL;
     m_nextMergeGroupId = 1;
     m_selector = NULL;
+
+    m_debug = s2e()->getConfig()->getBool(getConfigKey() + ".debug");
 }
 
 klee::ExecutionState& MergingSearcher::selectState()
@@ -131,8 +133,10 @@ bool MergingSearcher::empty()
 
 void MergingSearcher::suspend(S2EExecutionState *state)
 {
-    s2e()->getDebugStream(NULL) << "MergingSearcher: "
-            << "suspending state " << state->getID() << "\n";
+    if (m_debug) {
+        s2e()->getDebugStream(NULL) << "MergingSearcher: "
+                << "suspending state " << state->getID() << "\n";
+    }
 
     if (m_currentState == state) {
         m_currentState = NULL;
@@ -146,8 +150,11 @@ void MergingSearcher::suspend(S2EExecutionState *state)
 
 void MergingSearcher::resume(S2EExecutionState *state)
 {
-    s2e()->getDebugStream(NULL) << "MergingSearcher: "
-            << "resuming state " << state->getID() << "\n";
+    if (m_debug) {
+        s2e()->getDebugStream(NULL) << "MergingSearcher: "
+                << "resuming state " << state->getID() << "\n";
+    }
+
     m_activeStates.insert(state);
     if (m_selector) {
         m_selector->setActive(state, true);
@@ -166,8 +173,10 @@ bool MergingSearcher::mergeStart(S2EExecutionState *state)
 
     uint64_t id = m_nextMergeGroupId++;
 
-    s2e()->getWarningsStream(state) <<
-            "MergingSearcher: starting merge group " << id << "\n";
+    if (m_debug) {
+        s2e()->getWarningsStream(state) <<
+                "MergingSearcher: starting merge group " << id << "\n";
+    }
 
     plgState->setGroupId(id);
     m_mergePools[id].states.insert(state);
@@ -178,7 +187,10 @@ bool MergingSearcher::mergeStart(S2EExecutionState *state)
 bool MergingSearcher::mergeEnd(S2EExecutionState *state, bool skipOpcode, bool clearTmpFlags)
 {
     DECLARE_PLUGINSTATE(MergingSearcherState, state);
-    s2e()->getWarningsStream(state) << "MergingSearcher: merging state\n";
+
+    if (m_debug) {
+        s2e()->getWarningsStream(state) << "MergingSearcher: merging state\n";
+    }
 
     MergePools::iterator it = m_mergePools.find(plgState->getGroupId());
     if (it == m_mergePools.end()) {

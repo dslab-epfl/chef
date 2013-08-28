@@ -90,6 +90,8 @@ private:
 
     IMergingSearcher *m_selector;
 
+    bool m_debug;
+
 public:
     MergingSearcher(S2E* s2e): Plugin(s2e) {}
     void initialize();
