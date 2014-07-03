@@ -61,8 +61,8 @@ KTestObject *SeedInfo::getNextInput(const MemoryObject *mo,
 void SeedInfo::patchSeed(const ExecutionState &state, 
                          ref<Expr> condition,
                          TimingSolver *solver) {
-  std::vector< ref<Expr> > required(state.constraints.begin(),
-                                    state.constraints.end());
+  std::set< ref<Expr> > cset = state.constraints.getConstraintSet();
+  std::vector< ref<Expr> > required(cset.begin(), cset.end());
   ExecutionState tmp(required);
   tmp.addConstraint(condition);
 
