@@ -255,6 +255,18 @@ namespace {
   UseForkedSTP("use-forked-stp", 
                  cl::desc("Run STP in forked process"),  cl::init(false));
 
+  enum EndSolverType {
+      SOLVER_STP,
+      SOLVER_Z3
+  };
+
+  cl::opt<EndSolverType> EndSolver("end-solver", cl::desc("End solver to use"),
+          cl::values(
+                  clEnumValN(SOLVER_STP, "stp", "The STP solver"),
+                  clEnumValN(SOLVER_Z3, "z3", "The Z3 solver"),
+                  clEnumValEnd),
+          cl::init(SOLVER_Z3));
+
   /*
   cl::opt<bool>
   IgnoreAlwaysConcrete("ignore-always-concrete",
@@ -291,12 +303,12 @@ namespace klee {
   RNG theRNG;
 }
 
-Solver *constructSolverChain(STPSolver *stpSolver,
+Solver *constructSolverChain(Solver *endSolver,
                              std::string queryLogPath,
                              std::string stpQueryLogPath,
                              std::string queryPCLogPath,
                              std::string stpQueryPCLogPath) {
-  Solver *solver = stpSolver;
+  Solver *solver = endSolver;
 
   if (UseSTPQueryPCLog)
     solver = createPCLoggingSolver(solver, 
@@ -311,11 +323,13 @@ Solver *constructSolverChain(STPSolver *stpSolver,
   if (UseCache)
     solver = createCachingSolver(solver);
 
-  if (UseIndependentSolver)
+  // FIXME: The check should be more generic (e.g., enable only for
+  // non-incremental solvers)
+  if (UseIndependentSolver && (EndSolver != SOLVER_Z3))
     solver = createIndependentSolver(solver);
 
   if (DebugValidateSolver)
-    solver = createValidatingSolver(solver, stpSolver);
+    solver = createValidatingSolver(solver, endSolver);
 
   if (UseQueryPCLog)
     solver = createPCLoggingSolver(solver, 
@@ -330,15 +344,23 @@ void Executor::initializeSolver()
         delete this->solver;
     }
 
-    STPSolver *stpSolver = new STPSolver(UseForkedSTP);
+    Solver *endSolver = NULL;
+
+    if (EndSolver == SOLVER_STP) {
+        endSolver = new STPSolver(UseForkedSTP);
+    } else if (EndSolver == SOLVER_Z3) {
+        endSolver = new Z3Solver();
+    }
+
     Solver *solver =
-      constructSolverChain(stpSolver,
+      constructSolverChain(endSolver,
                            interpreterHandler->getOutputFilename("queries.qlog"),
                            interpreterHandler->getOutputFilename("stp-queries.qlog"),
                            interpreterHandler->getOutputFilename("queries.pc"),
                            interpreterHandler->getOutputFilename("stp-queries.pc"));
 
-    this->solver = new TimingSolver(solver, stpSolver);
+    this->solver = new TimingSolver(solver,
+            dynamic_cast<STPSolver*>(endSolver));
 }
 
 Executor::Executor(const InterpreterOptions &opts,
