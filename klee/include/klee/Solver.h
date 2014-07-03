@@ -170,6 +170,12 @@ namespace klee {
     void setTimeout(double timeout);
   };
 
+
+  class Z3Solver : public Solver {
+  public:
+      Z3Solver();
+  };
+
   /* *** */
 
   /// createValidatingSolver - Create a solver which will validate all query
