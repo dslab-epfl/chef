@@ -2278,6 +2278,28 @@ EOF
 fi
 
 ##########################################
+# s2e probe: Z3
+
+if test "$s2e" != "no" ; then
+  cat >$TMPCXX <<EOF
+#include <z3++.h>
+using namespace z3;
+int main(int argc, char **argv) {
+  return 0;
+}
+EOF
+  z3_cxxflags=""
+  z3_libs="-lz3"
+
+  if compile_prog_cxx "$z3_cxxflags" "$z3_libs" ; then
+    : Z3 found
+  else
+    feature_not_found "Z3 (required for S2E)"
+    exit 1
+  fi
+fi
+
+##########################################
 # libcap probe
 
 if test "$cap" != "no" ; then
@@ -4080,7 +4102,7 @@ if test "$target_s2e" = "yes" ; then
   echo "CONFIG_LLVM=y" >> $config_target_mak
   echo "LLVM_CXXFLAGS:=\$(filter-out $FILTERFLAGS,$llvm_cxxflags)" >> $config_target_mak
   echo "S2E_CXXFLAGS:=\$(filter-out $llvm_cxxflags $FILTERFLAGS, $klee_cxxflags)" >> $config_target_mak
-  echo "S2E_CXXFLAGS+=$lua_cxxflags $sigcxx2_cxxflags" >> $config_target_mak
+  echo "S2E_CXXFLAGS+=$lua_cxxflags $sigcxx2_cxxflags $z3_cxxflags" >> $config_target_mak
   echo "S2E_CXXFLAGS+=-DKLEE_LIBRARY_DIR='\"$klee_libdir\"'" >> $config_target_mak
   echo "LLVMAR:=$llvmar" >> $config_target_mak
   echo "S2E_PLUGIN_DIR=$s2e_plugin_dir" >> $config_target_mak
@@ -4247,7 +4269,7 @@ fi
 if test "$target_s2e" = "yes" ; then
   echo "LINKER=$cxx" >> $config_target_mak
   echo "LIBS:=$klee_libs $llvm_libs \$(LIBS)" >> $config_target_mak
-  echo "LIBS+=$lua_libs $sigcxx2_libs" >> $config_target_mak
+  echo "LIBS+=$lua_libs $sigcxx2_libs $z3_libs" >> $config_target_mak
   echo "LIBS+=\$(filter-out $llvm_ldflags, $klee_ldflags) $llvm_ldflags" >> $config_target_mak
   echo "KLEE_LIBFILES=$klee_libfiles" >> $config_target_mak
 fi
