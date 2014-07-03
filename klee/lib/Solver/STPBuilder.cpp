@@ -43,7 +43,7 @@ using namespace klee;
 
 namespace {
   llvm::cl::opt<bool>
-  UseConstructHash("use-construct-hash", 
+  UseConstructHash("stp-use-hash-consing",
                    llvm::cl::desc("Use hash-consing during STP query construction."),
                    llvm::cl::init(true));
 }
