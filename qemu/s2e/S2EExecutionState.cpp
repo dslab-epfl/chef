@@ -155,7 +155,7 @@ void S2EExecutionState::enableSymbolicExecution()
 
     g_s2e->getMessagesStream(this) << "Enabled symbex"
             << " at pc = " << (void*) getPc()
-            << " and pid = " << hexval(getPid()) << '\n';
+            << " and pagedir = " << hexval(getPageDir()) << '\n';
 }
 
 void S2EExecutionState::disableSymbolicExecution()
@@ -168,7 +168,7 @@ void S2EExecutionState::disableSymbolicExecution()
 
     g_s2e->getMessagesStream(this) << "Disabled symbex"
             << " at pc = " << (void*) getPc()
-            << " and pid = " << hexval(getPid()) << '\n';
+            << " and pagedir = " << hexval(getPageDir()) << '\n';
 }
 
 void S2EExecutionState::enableForking()
@@ -182,7 +182,7 @@ void S2EExecutionState::enableForking()
     if (PrintForkingStatus) {
         g_s2e->getMessagesStream(this) << "Enabled forking"
                 << " at pc = " << (void*) getPc()
-                << " and pid = " << hexval(getPid()) << '\n';
+                << " and pagedir = " << hexval(getPageDir()) << '\n';
     }
 }
 
@@ -197,7 +197,7 @@ void S2EExecutionState::disableForking()
     if (PrintForkingStatus) {
         g_s2e->getMessagesStream(this) << "Disabled forking"
                 << " at pc = " << (void*) getPc()
-                << " and pid = " << hexval(getPid()) << '\n';
+                << " and pagedir = " << hexval(getPageDir()) << '\n';
     }
 }
 
@@ -837,7 +837,7 @@ TranslationBlock *S2EExecutionState::getTb() const
             readCpuState(CPU_OFFSET(s2e_current_tb), 8*sizeof(void*));
 }
 
-uint64_t S2EExecutionState::getPid() const
+uint64_t S2EExecutionState::getPageDir() const
 {
 #ifdef TARGET_ARM
 	//TODO: write pid somewhere in the cpu state
@@ -1609,7 +1609,7 @@ void S2EExecutionState::jumpToSymbolicCpp()
     if (!isRunningConcrete()) {
         return;
     }
-    m_toRunSymbolically.insert(std::make_pair(getPc(), getPid()));
+    m_toRunSymbolically.insert(std::make_pair(getPc(), getPageDir()));
     m_startSymbexAtPC = getPc();
     // XXX: what about regs_to_env ?
     throw CpuExitException();

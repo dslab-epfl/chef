@@ -1880,10 +1880,10 @@ uintptr_t S2EExecutor::executeTranslationBlock(
 
         //XXX: hack to run code symbolically that may be delayed because of interrupts.
         //Size check is important to avoid expensive calls to getPc/getPid in the common case
-        if (state->m_toRunSymbolically.size() > 0 &&  state->m_toRunSymbolically.find(std::make_pair(state->getPc(), state->getPid()))
+        if (state->m_toRunSymbolically.size() > 0 &&  state->m_toRunSymbolically.find(std::make_pair(state->getPc(), state->getPageDir()))
             != state->m_toRunSymbolically.end()) {
             executeKlee = true;
-            state->m_toRunSymbolically.erase(std::make_pair(state->getPc(), state->getPid()));
+            state->m_toRunSymbolically.erase(std::make_pair(state->getPc(), state->getPageDir()));
         }
 
         if(!executeKlee) {

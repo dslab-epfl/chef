@@ -281,7 +281,7 @@ bool WindowsCrashDumpGenerator::initializeHeader(S2EExecutionState *state, DUMP_
     hdr->ValidDump = DUMP_HDR_DUMPSIGNATURE;
     hdr->MajorVersion = m_monitor->isCheckedBuild() ? 0xC : 0xF; //Free build (0xC for checked)
     hdr->MinorVersion = m_monitor->getBuildNumber();
-    hdr->DirectoryTableBase = state->getPid();
+    hdr->DirectoryTableBase = state->getPageDir();
 
     //Fetch KdDebuggerDataBlock
     //XXX: May break with windows versions

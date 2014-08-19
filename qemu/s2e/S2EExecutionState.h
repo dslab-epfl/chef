@@ -286,7 +286,7 @@ public:
     void writeCpuState(unsigned offset, uint64_t value, unsigned width);
 
     uint64_t getPc() const;
-    uint64_t getPid() const;
+    uint64_t getPageDir() const;
     uint64_t getSp() const;
     uint64_t getFlags();
 

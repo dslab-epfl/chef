@@ -144,7 +144,7 @@ bool WindowsUmInterceptor::FindModules(S2EExecutionState *state)
         //if (m_SearchedModules.find(s) != m_SearchedModules.end()) {
         //Update the information about the library
         ModuleDescriptor Desc;
-        Desc.Pid = state->getPid();
+        Desc.Pid = state->getPageDir();
         Desc.Name = s;
         Desc.LoadBase = LdrEntry.DllBase;
         Desc.Size = LdrEntry.SizeOfImage;

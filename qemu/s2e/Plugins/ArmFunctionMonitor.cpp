@@ -327,7 +327,7 @@ ARMFunctionMonitor::CallSignal* ARMFunctionMonitorState::getCallSignal(
 
 void ARMFunctionMonitorState::slotCall(S2EExecutionState *state, uint64_t pc)
 {
-    target_ulong pid = state->getPid();
+    target_ulong pid = state->getPageDir();
     target_ulong eip = pc;
 
     if (!m_newCallDescriptors.empty()) {
@@ -394,11 +394,11 @@ void ARMFunctionMonitorState::registerReturnSignal(S2EExecutionState *state, ARM
     if(!ok) {
         m_plugin->s2e()->getWarningsStream(state)
             << "Function call with symbolic SP!" << '\n'
-            << "  EIP=" << hexval(state->getPc()) << " SP=" << hexval(state->getPid()) << '\n';
+            << "  EIP=" << hexval(state->getPc()) << " SP=" << hexval(state->getPageDir()) << '\n';
         return;
     }
 
-    uint64_t pid = state->getPid();
+    uint64_t pid = state->getPageDir();
     if (m_plugin->m_monitor) {
         pid = m_plugin->m_monitor->getPid(state, state->getPc());
     }

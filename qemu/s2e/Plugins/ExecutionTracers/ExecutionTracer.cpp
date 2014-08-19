@@ -108,7 +108,7 @@ uint32_t ExecutionTracer::writeData(
     item.size = size;
     item.type = type;
     item.stateId = state->getID();
-    item.pid = state->getPid();
+    item.pid = state->getPageDir();
 
     if (fwrite(&item, sizeof(item), 1, m_LogFile) != 1) {
         return 0;

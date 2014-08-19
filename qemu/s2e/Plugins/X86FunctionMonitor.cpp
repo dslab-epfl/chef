@@ -207,7 +207,7 @@ X86FunctionMonitor::CallSignal* X86FunctionMonitorState::getCallSignal(
 
 void X86FunctionMonitorState::slotCall(S2EExecutionState *state, uint64_t pc)
 {
-    target_ulong cr3 = state->getPid();
+    target_ulong cr3 = state->getPageDir();
     target_ulong eip = state->getPc();
 
     if (!m_newCallDescriptors.empty()) {
@@ -274,11 +274,11 @@ void X86FunctionMonitorState::registerReturnSignal(S2EExecutionState *state, X86
     if(!ok) {
         m_plugin->s2e()->getWarningsStream(state)
             << "Function call with symbolic ESP!\n"
-            << "  EIP=" << hexval(state->getPc()) << " CR3=" << hexval(state->getPid()) << '\n';
+            << "  EIP=" << hexval(state->getPc()) << " CR3=" << hexval(state->getPageDir()) << '\n';
         return;
     }
 
-    uint64_t pid = state->getPid();
+    uint64_t pid = state->getPageDir();
     if (m_plugin->m_monitor) {
         pid = m_plugin->m_monitor->getPid(state, state->getPc());
     }

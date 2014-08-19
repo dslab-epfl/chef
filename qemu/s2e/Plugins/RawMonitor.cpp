@@ -229,7 +229,7 @@ void RawMonitor::opLoadModule(S2EExecutionState *state)
         return;
     }
 
-    moduleDescriptor.Pid = moduleConfig.kernelMode ? 0 : state->getPid();
+    moduleDescriptor.Pid = moduleConfig.kernelMode ? 0 : state->getPageDir();
 
     s2e()->getDebugStream() << "RawMonitor loaded " << moduleDescriptor.Name << " " <<
             hexval(moduleDescriptor.LoadBase) << " " << hexval(moduleDescriptor.Size) << "\n";
@@ -331,7 +331,7 @@ void RawMonitor::loadModule(S2EExecutionState *state, const Cfg &c, bool skipIfD
     md.NativeBase = c.nativebase;
     md.LoadBase = c.start;
     md.Size = c.size;
-    md.Pid = c.kernelMode ? 0 : state->getPid();
+    md.Pid = c.kernelMode ? 0 : state->getPageDir();
     md.EntryPoint = c.entrypoint;
 
     s2e()->getDebugStream() << "RawMonitor loaded " << c.name << " " <<
@@ -373,8 +373,8 @@ bool RawMonitor::isKernelAddress(uint64_t pc) const
 
 uint64_t RawMonitor::getPid(S2EExecutionState *s, uint64_t pc)
 {
-    if (pc >= m_kernelStart && s->getPid() != -1) {
+    if (pc >= m_kernelStart && s->getPageDir() != -1) {
         return 0;
     }
-    return s->getPid();
+    return s->getPageDir();
 }

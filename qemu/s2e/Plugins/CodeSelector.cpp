@@ -164,7 +164,7 @@ void CodeSelector::onPrivilegeChange(
         return;
     }
 
-    Pids::const_iterator it = m_pidsToTrack.find(state->getPid());
+    Pids::const_iterator it = m_pidsToTrack.find(state->getPageDir());
     if (it == m_pidsToTrack.end()) {
         //Not in a tracked process
         state->disableForking();
@@ -194,14 +194,14 @@ void CodeSelector::opSelectProcess(S2EExecutionState *state)
 
     if (isUserSpace) {
         //Track the current process, but user-space only
-        m_pidsToTrack[state->getPid()] = false;
+        m_pidsToTrack[state->getPageDir()] = false;
 
         if (!m_privilegeTracking.connected()) {
             m_privilegeTracking = s2e()->getCorePlugin()->onPrivilegeChange.connect(
                     sigc::mem_fun(*this, &CodeSelector::onPrivilegeChange));
         }
     } else {
-        m_pidsToTrack[state->getPid()] = true;
+        m_pidsToTrack[state->getPageDir()] = true;
 
         if (!m_privilegeTracking.connected()) {
             m_privilegeTracking = s2e()->getCorePlugin()->onPageDirectoryChange.connect(
@@ -224,7 +224,7 @@ void CodeSelector::opUnselectProcess(S2EExecutionState *state)
     }
 
     if (pid == 0) {
-        pid = state->getPid();
+        pid = state->getPageDir();
     }
 
     m_pidsToTrack.erase(pid);

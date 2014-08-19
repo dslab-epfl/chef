@@ -283,7 +283,7 @@ void WindowsMonitor::slotTranslateInstructionStart(ExecutionSignal *signal,
             InitializeAddresses(state);
             m_UserModeInterceptor->GetPids(state, m_PidSet);
             m_UserModeInterceptor->CatchModuleLoad(state);
-            m_PidSet.erase(state->getPid());
+            m_PidSet.erase(state->getPageDir());
         }
 
         if (pc == GetLdrpCallInitRoutine() && m_MonitorModuleLoad) {
@@ -327,20 +327,20 @@ void WindowsMonitor::onPageDirectoryChange(S2EExecutionState *state, uint64_t pr
     }
 
     if (previous != current) {
-        plgState->m_CurrentPid = state->getPid();
-        if (m_PidSet.find(state->getPid()) != m_PidSet.end()) {
+        plgState->m_CurrentPid = state->getPageDir();
+        if (m_PidSet.find(state->getPageDir()) != m_PidSet.end()) {
             if (!m_UserModeInterceptor->CatchModuleLoad(state)) {
                 //XXX: This is an ugly hack to force loading ntdll in all processes
                 //ntdll.dll has a fixed addresse and used by all processes anyway.
                 ModuleDescriptor ntdll;
-                ntdll.Pid = state->getPid();
+                ntdll.Pid = state->getPageDir();
                 ntdll.Name = "ntdll.dll";
                 ntdll.NativeBase = s_ntdllNativeBase[m_Version]; // 0x7c900000;
                 ntdll.LoadBase = s_ntdllLoadBase[m_Version];
                 ntdll.Size = s_ntdllSize[m_Version];
                 onModuleLoad.emit(state, ntdll);
             }
-            m_PidSet.erase(state->getPid());
+            m_PidSet.erase(state->getPageDir());
         }
     }
 }
@@ -515,7 +515,7 @@ void WindowsMonitor::notifyLoadForAllThreads(S2EExecutionState *state)
 
 bool WindowsMonitor::getImports(S2EExecutionState *s, const ModuleDescriptor &desc, Imports &I)
 {
-    if (desc.Pid && s->getPid() != desc.Pid) {
+    if (desc.Pid && s->getPageDir() != desc.Pid) {
         return false;
     }
 
@@ -526,7 +526,7 @@ bool WindowsMonitor::getImports(S2EExecutionState *s, const ModuleDescriptor &de
 
 bool WindowsMonitor::getExports(S2EExecutionState *s, const ModuleDescriptor &desc, Exports &E)
 {
-    if (desc.Pid && s->getPid() != desc.Pid) {
+    if (desc.Pid && s->getPageDir() != desc.Pid) {
         return false;
     }
 
@@ -651,7 +651,7 @@ uint64_t WindowsMonitor::getPid(S2EExecutionState *s, uint64_t pc)
     if (pc >= GetKernelStart()) {
         return 0;
     }
-    return s->getPid();
+    return s->getPageDir();
 }
 
 uint64_t WindowsMonitor::getCurrentThread(S2EExecutionState *state)
