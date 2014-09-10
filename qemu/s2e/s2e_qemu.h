@@ -339,6 +339,8 @@ int s2e_is_forking(void);
 void s2e_phys_section_print(void);
 void s2e_phys_section_check(CPUArchState *cpu_state);
 
+void s2e_tb_safe_flush(void);
+
 /******************************************************/
 /* Prototypes for special functions used in LLVM code */
 /* NOTE: this functions should never be defined. They */
