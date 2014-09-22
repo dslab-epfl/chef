@@ -50,7 +50,6 @@ extern "C" {
 extern CPUArchState *env;
 void QEMU_NORETURN raise_exception(int exception_index);
 void QEMU_NORETURN raise_exception_err(int exception_index, int error_code);
-extern const uint8_t parity_table[256];
 extern const uint8_t rclw_table[32];
 extern const uint8_t rclb_table[32];
 
@@ -983,7 +982,6 @@ S2EExecutionState* S2EExecutor::createInitialState()
     __DEFINE_EXT_OBJECT_RO(loglevel)
     __DEFINE_EXT_OBJECT_RO(logfile)
 #ifdef TARGET_I386
-    __DEFINE_EXT_OBJECT_RO_SYMB(parity_table)
     __DEFINE_EXT_OBJECT_RO_SYMB(rclw_table)
     __DEFINE_EXT_OBJECT_RO_SYMB(rclb_table)
 #endif
