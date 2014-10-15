@@ -82,6 +82,107 @@ cl::opt<bool> ReplayQueries("replay",
 }
 
 
+class ArrayExprAnalyzer : public ExprVisitor {
+protected:
+    virtual Action visitRead(const ReadExpr &re) {
+        for (const UpdateNode *un = re.updates.head; un; un = un->next) {
+            visit(un->index);
+            visit(un->value);
+        }
+
+        ArrayStatsMap::iterator it = array_stats.find(re.updates.root);
+        if (it == array_stats.end()) {
+            it = array_stats.insert(std::make_pair(re.updates.root,
+                    make_shared<ArrayStats>())).first;
+        }
+
+        it->second->sym_reads[re.updates.getSize()]++;
+        it->second->total_sym_reads++;
+        total_sym_reads_++;
+        return Action::doChildren();
+    }
+
+    virtual Action visitSelect(const SelectExpr &se) {
+        total_ite_++;
+        return Action::doChildren();
+    }
+
+public:
+    ArrayExprAnalyzer()
+        : total_sym_reads_(0),
+          total_ite_(0) {
+
+    }
+
+    llvm::raw_ostream& printResults(llvm::raw_ostream &os) {
+        for (ArrayStatsMap::iterator it = array_stats.begin(),
+                ie = array_stats.end(); it != ie; ++it) {
+            const Array *array = it->first;
+            shared_ptr<ArrayStats> stats = it->second;
+
+            os << "[" << array->name << "] "
+                    << stats->total_sym_reads << " symbolic reads (";
+            for (std::map<int, int>::iterator dit = stats->sym_reads.begin(),
+                    die = stats->sym_reads.end(); dit != die; ++dit) {
+                if (dit != stats->sym_reads.begin())
+                    os << ' ';
+                os << dit->first << ":" << dit->second;
+            }
+            os << "): ";
+
+            if (array->isSymbolicArray()) {
+                os << "SYMBOLIC ARRAY";
+            } else {
+                os << "[ ";
+                for (unsigned i = 0; i < array->size; ++i) {
+                    os << array->constantValues[i]->getAPValue() << ' ';
+                }
+                os << "]";
+            }
+
+            os << '\n';
+        }
+
+        return os;
+    }
+
+    int getArrayCount() const {
+        return array_stats.size();
+    }
+
+    int getConstArrayCount() const {
+        int counter = 0;
+        for (ArrayStatsMap::const_iterator it = array_stats.begin(),
+                ie = array_stats.end(); it != ie; ++it) {
+            counter += it->first->isConstantArray() ? 1 : 0;
+        }
+        return counter;
+    }
+
+    int getTotalSymbolicReads() const {
+        return total_sym_reads_;
+    }
+
+    int getTotalSelects() const {
+        return total_ite_;
+    }
+
+private:
+    struct ArrayStats {
+        int total_sym_reads;
+        std::map<int, int> sym_reads;
+
+        ArrayStats() : total_sym_reads(0) {}
+    };
+
+    int total_sym_reads_;
+    int total_ite_;
+
+    typedef std::map<const Array*, shared_ptr<ArrayStats> > ArrayStatsMap;
+    ArrayStatsMap array_stats;
+};
+
+
 enum QueryType {
     TRUTH = 0,
     VALIDITY = 1,
@@ -108,10 +209,22 @@ int main(int argc, char **argv, char **envp) {
         "WHERE q.id = r.query_id "
         "ORDER BY q.id ASC";
 
+    const char *update_sql =
+            "UPDATE queries "
+            "SET arrays_refd = ?1, const_arrays_refd = ?2, sym_reads = ?3 "
+            "WHERE id = ?4;";
+
     sqlite3_stmt *select_stmt;
+    sqlite3_stmt *update_stmt;
     result = sqlite3_prepare_v2(db, select_sql, -1, &select_stmt, NULL);
     if (result != SQLITE_OK) {
         errs() << "Could not prepare SQL statement: " << select_sql
+                << " (" << sqlite3_errmsg(db) << ")" << '\n';
+        ::exit(1);
+    }
+    result = sqlite3_prepare_v2(db, update_sql, -1, &update_stmt, NULL);
+    if (result != SQLITE_OK) {
+        errs() << "Could not prepare SQL statement: " << update_sql
                 << " (" << sqlite3_errmsg(db) << ")" << '\n';
         ::exit(1);
     }
@@ -143,8 +256,26 @@ int main(int argc, char **argv, char **envp) {
         bool deser_result = query_deserializer.Deserialize(data_blob, query);
         assert(deser_result && "Invalid query blob field");
 
+        outs() << "Processing query " << sqlite3_column_int64(select_stmt, 0) << '\n';
+
+        ArrayExprAnalyzer arr_analyzer;
+        arr_analyzer.visit(query.expr);
+        for (ConditionNodeRef node = query.constraints.head(),
+                root = query.constraints.root(); node != root;
+                node = node->parent()) {
+            arr_analyzer.visit(node->expr());
+        }
+
+        sqlite3_clear_bindings(update_stmt);
+        sqlite3_bind_int(update_stmt, 1, arr_analyzer.getArrayCount());
+        sqlite3_bind_int(update_stmt, 2, arr_analyzer.getConstArrayCount());
+        sqlite3_bind_int(update_stmt, 3, arr_analyzer.getTotalSymbolicReads());
+        sqlite3_bind_int64(update_stmt, 4, sqlite3_column_int64(select_stmt, 0));
+        result = sqlite3_step(update_stmt);
+        assert(result == SQLITE_DONE);
+        sqlite3_reset(update_stmt);
+
         if (ReplayQueries) {
-            outs() << "Replaying query " << sqlite3_column_int64(select_stmt, 0) << '\n';
             TimeValue start_replay = TimeValue::now();
             switch (query_type) {
             case TRUTH: {
@@ -185,7 +316,7 @@ int main(int argc, char **argv, char **envp) {
             total_recorded += recorded_duration;
             total_replayed += replayed_duration;
 
-            outs() << "[Total]"
+            outs() << "[Total/" << arr_analyzer.getTotalSymbolicReads() << "/" << arr_analyzer.getTotalSelects() << "]"
                     << " Recorded: " << total_recorded.usec()
                     << " Replayed: " << total_replayed.usec()
                     << " Speedup: " << format("%.1fx", float(total_recorded.usec()) / float(total_replayed.usec()))

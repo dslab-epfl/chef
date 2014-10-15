@@ -100,95 +100,6 @@ static uint64_t GetQueryMultiplicity(const Query &query) {
 }
 
 
-class ArrayExprAnalyzer : public ExprVisitor {
-protected:
-    virtual Action visitRead(const ReadExpr &re) {
-        for (const UpdateNode *un = re.updates.head; un; un = un->next) {
-            visit(un->index);
-            visit(un->value);
-        }
-
-        ArrayStatsMap::iterator it = array_stats.find(re.updates.root);
-        if (it == array_stats.end()) {
-            it = array_stats.insert(std::make_pair(re.updates.root,
-                    make_shared<ArrayStats>())).first;
-        }
-
-        it->second->sym_reads[re.updates.getSize()]++;
-        it->second->total_sym_reads++;
-        return Action::doChildren();
-    }
-
-public:
-    ArrayExprAnalyzer() {}
-
-    llvm::raw_ostream& printResults(llvm::raw_ostream &os) {
-        for (ArrayStatsMap::iterator it = array_stats.begin(),
-                ie = array_stats.end(); it != ie; ++it) {
-            const Array *array = it->first;
-            shared_ptr<ArrayStats> stats = it->second;
-
-            os << "[" << array->name << "] "
-                    << stats->total_sym_reads << " symbolic reads (";
-            for (std::map<int, int>::iterator dit = stats->sym_reads.begin(),
-                    die = stats->sym_reads.end(); dit != die; ++dit) {
-                if (dit != stats->sym_reads.begin())
-                    os << ' ';
-                os << dit->first << ":" << dit->second;
-            }
-            os << "): ";
-
-            if (array->isSymbolicArray()) {
-                os << "SYMBOLIC ARRAY";
-            } else {
-                os << "[ ";
-                for (unsigned i = 0; i < array->size; ++i) {
-                    os << array->constantValues[i]->getAPValue() << ' ';
-                }
-                os << "]";
-            }
-
-            os << '\n';
-        }
-
-        return os;
-    }
-
-    int getArrayCount() const {
-        return array_stats.size();
-    }
-
-    int getConstArrayCount() const {
-        int counter = 0;
-        for (ArrayStatsMap::const_iterator it = array_stats.begin(),
-                ie = array_stats.end(); it != ie; ++it) {
-            counter += it->first->isConstantArray() ? 1 : 0;
-        }
-        return counter;
-    }
-
-    int getTotalSymbolicReads() const {
-        int counter = 0;
-        for (ArrayStatsMap::const_iterator it = array_stats.begin(),
-                ie = array_stats.end(); it != ie; ++it) {
-            counter += it->second->total_sym_reads;
-        }
-        return counter;
-    }
-
-private:
-    struct ArrayStats {
-        int total_sym_reads;
-        std::map<int, int> sym_reads;
-
-        ArrayStats() : total_sym_reads(0) {}
-    };
-
-    typedef std::map<const Array*, shared_ptr<ArrayStats> > ArrayStatsMap;
-    ArrayStatsMap array_stats;
-};
-
-
 ////////////////////////////////////////////////////////////////////////////////
 
 static const char *initialize_sql =
@@ -297,6 +208,7 @@ DataCollectorSolver::DataCollectorSolver(Solver *base_solver,  sqlite3 *db)
 
 
 void DataCollectorSolver::BindQueryAnalyses(const Query &query) {
+#if 0
     ArrayExprAnalyzer arr_analyzer;
     arr_analyzer.visit(query.expr);
     for (ConditionNodeRef node = query.constraints.head(),
@@ -308,6 +220,7 @@ void DataCollectorSolver::BindQueryAnalyses(const Query &query) {
     sqlite3_bind_int(qinsert_stmt_, 10, arr_analyzer.getArrayCount());
     sqlite3_bind_int(qinsert_stmt_, 11, arr_analyzer.getConstArrayCount());
     sqlite3_bind_int(qinsert_stmt_, 12, arr_analyzer.getTotalSymbolicReads());
+#endif
 
     sqlite3_bind_int64(qinsert_stmt_, 13, GetQueryMultiplicity(query));
 }
