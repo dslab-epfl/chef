@@ -16,7 +16,7 @@ LEVEL=..
 # List all of the subdirectories that we will compile.
 #
 DIRS=klee-config
-PARALLEL_DIRS=kleaver ktest-tool gen-random-bout klee-stats query-tool
+PARALLEL_DIRS=kleaver ktest-tool gen-random-bout klee-stats query-tool query-viz
 
 include $(LEVEL)/Makefile.config
 
