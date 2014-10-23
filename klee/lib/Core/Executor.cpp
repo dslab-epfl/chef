@@ -368,7 +368,6 @@ Executor::~Executor() {
     delete statsTracker;
   delete solverFactory;
   delete memopsLogger;
-  delete eventLogger;
   delete solver;
   delete kmodule;
 }

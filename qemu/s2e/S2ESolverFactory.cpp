@@ -138,7 +138,7 @@ S2ESolverFactory::~S2ESolverFactory() {
 
 Solver *S2ESolverFactory::decorateSolver(Solver *end_solver) {
     Solver *solver = DefaultSolverFactory::decorateSolver(end_solver);
-    solver = createDataCollectorSolver(solver, s2e_->getDataStore());
+    solver = createDataCollectorSolver(solver, s2e_);
     solver = createNotificationSolver(solver, s2e_);
     return solver;
 }

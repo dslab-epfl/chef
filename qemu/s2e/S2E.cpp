@@ -52,6 +52,7 @@ extern CPUArchState *env;
 #include <s2e/Utils.h>
 #include <s2e/S2EExecutor.h>
 #include <s2e/S2EExecutionState.h>
+#include <s2e/S2EEventLogger.h>
 
 #include <s2e/s2e_qemu.h>
 #include <llvm/Support/FileSystem.h>
@@ -230,6 +231,7 @@ S2E::S2E(int argc, char** argv, TCGLLVMContext *tcgLLVMContext,
        other init* functions can use it. */
     initOutputDirectory(outputDirectory, verbose, false);
     initDataCollectionDB();
+    m_eventLogger = new S2EEventLogger(m_dataStore);
 
     /* Copy the config file into the output directory */
     {
@@ -318,6 +320,7 @@ S2E::~S2E()
     //The execution engine deletion will also delete the module.
     m_tcgLLVMContext->deleteExecutionEngine();
 
+    delete m_eventLogger;
     delete m_configFile;
 
     delete m_warningStream;

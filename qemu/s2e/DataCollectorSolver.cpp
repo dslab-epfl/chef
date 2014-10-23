@@ -33,9 +33,21 @@
  */
 
 
+extern "C" {
+#include "config.h"
+#include "qemu-common.h"
+#include "cpu.h"
+extern CPUX86State *env;
+}
+
+#include "s2e/S2E.h"
+#include "s2e/S2EExecutor.h"
+#include "s2e/S2EExecutionState.h"
+
 #include "klee/Solver.h"
 #include "klee/SolverImpl.h"
 #include "klee/Constraints.h"
+#include "klee/data/EventLogger.h"
 #include "klee/data/ExprSerializer.h"
 #include "klee/data/QuerySerializer.h"
 #include "klee/util/ExprVisitor.h"
@@ -58,9 +70,6 @@ using llvm::sys::TimeValue;
 namespace {
     llvm::cl::opt<bool>
     CollectQueryBody("collect-query-body", llvm::cl::init(true));
-
-    llvm::cl::opt<bool>
-    CollectQueryAnalysis("collect-query-analysis", llvm::cl::init(true));
 }
 
 
@@ -69,55 +78,19 @@ namespace s2e {
 
 using namespace klee;
 
-
-// Analyzers ///////////////////////////////////////////////////////////////////
-
-
-static uint64_t GetExprMultiplicity(const ref<Expr> expr) {
-    switch (expr->getKind()) {
-    case Expr::And: {
-        BinaryExpr *be = cast<BinaryExpr>(expr);
-        return GetExprMultiplicity(be->left) * GetExprMultiplicity(be->right);
-    }
-    case Expr::Or: {
-        BinaryExpr *be = cast<BinaryExpr>(expr);
-        return GetExprMultiplicity(be->left) + GetExprMultiplicity(be->right);
-    }
-    default:
-        return 1;
-    }
-}
-
-
-static uint64_t GetQueryMultiplicity(const Query &query) {
-    ConditionNodeRef node = query.constraints.head();
-    uint64_t multiplicity = 1;
-    while (node != query.constraints.root()) {
-        multiplicity *= GetExprMultiplicity(node->expr());
-        node = node->parent();
-    }
-    return multiplicity;
-}
-
-
 ////////////////////////////////////////////////////////////////////////////////
 
 static const char *initialize_sql =
         "CREATE TABLE IF NOT EXISTS queries ("
         "id                INTEGER PRIMARY KEY NOT NULL,"
         "parent_id         INTEGER,"
+        "event_id          INTEGER NOT NULL,"
         "depth             INTEGER NOT NULL,"
         "body              BLOB,"
         "type              INTEGER NOT NULL,"
-
-        "arrays_refd       INTEGER,"
-        "const_arrays_refd INTEGER,"
-        "sym_reads         INTEGER,"
-        "multiplicity      INTEGER,"
-
-        "FOREIGN KEY(parent_id) REFERENCES queries(id)"
+        "FOREIGN KEY(parent_id) REFERENCES queries(id),"
+        "FOREIGN KEY(event_id) REFERENCES events(id)"
         ");"
-
 
         "CREATE TABLE IF NOT EXISTS query_results ("
         "id        INTEGER PRIMARY KEY NOT NULL,"
@@ -130,11 +103,9 @@ static const char *initialize_sql =
 
 static const char *qinsert_sql =
         "INSERT INTO queries"
-        "(id, parent_id, depth, body, type, "
-        "arrays_refd, const_arrays_refd, sym_reads, multiplicity)"
+        "(id, parent_id, event_id, depth, body, type)"
         "VALUES"
-        "(?1,  ?2,  ?3,  ?4, ?5,"
-        " ?10, ?11, ?12, ?13);";
+        "(?1, ?2,        ?14,      ?3,    ?4,   ?5);";
 
 
 static const char *rinsert_sql =
@@ -148,7 +119,7 @@ static const char *rinsert_sql =
 
 class DataCollectorSolver : public SolverImpl {
 public:
-    DataCollectorSolver(Solver *base_solver, sqlite3 *db);
+    DataCollectorSolver(Solver *base_solver, EventLogger *event_logger);
 
     bool computeTruth(const Query &query, bool &isValid);
     bool computeValidity(const Query &query, Solver::Validity &validity);
@@ -170,59 +141,39 @@ private:
     QuerySerializer serializer_;
     scoped_ptr<Solver> base_solver_;
 
-    sqlite3 *db_;
+    EventLogger *event_logger_;
     sqlite3_stmt *qinsert_stmt_;
     sqlite3_stmt *rinsert_stmt_;
 
     void LogQueryStats(const Query &query, QueryType type,
             TimeValue start, Solver::Validity validity);
-    void BindQueryAnalyses(const Query &query);
 };
 
 
-DataCollectorSolver::DataCollectorSolver(Solver *base_solver,  sqlite3 *db)
+DataCollectorSolver::DataCollectorSolver(Solver *base_solver, EventLogger *event_logger)
         : serializer_(es_),
           base_solver_(base_solver),
-          db_(db),
+          event_logger_(event_logger),
           qinsert_stmt_(0),
           rinsert_stmt_(0) {
     char *err_msg;
     int result;
 
-    if (sqlite3_exec(db_, initialize_sql, NULL, NULL, &err_msg) != SQLITE_OK) {
+    if (sqlite3_exec(event_logger_->database(), initialize_sql, NULL, NULL, &err_msg) != SQLITE_OK) {
         llvm::errs() << "Could not initialize solver tables ("
                 << err_msg << ")" << '\n';
         sqlite3_free(err_msg);
         ::exit(1);
     }
 
-    if (sqlite3_prepare_v2(db_, qinsert_sql, -1, &qinsert_stmt_, NULL)
+    if (sqlite3_prepare_v2(event_logger_->database(), qinsert_sql, -1, &qinsert_stmt_, NULL)
             != SQLITE_OK) {
         llvm::errs() << "SQL error in " << qinsert_sql << " ["
-                << sqlite3_errmsg(db_) << "]" << '\n';
+                << sqlite3_errmsg(event_logger_->database()) << "]" << '\n';
         ::exit(1);
     }
-    result = sqlite3_prepare_v2(db_, rinsert_sql, -1, &rinsert_stmt_, NULL);
+    result = sqlite3_prepare_v2(event_logger_->database(), rinsert_sql, -1, &rinsert_stmt_, NULL);
     assert(result == SQLITE_OK);
-}
-
-
-void DataCollectorSolver::BindQueryAnalyses(const Query &query) {
-#if 0
-    ArrayExprAnalyzer arr_analyzer;
-    arr_analyzer.visit(query.expr);
-    for (ConditionNodeRef node = query.constraints.head(),
-            root = query.constraints.root(); node != root;
-            node = node->parent()) {
-        arr_analyzer.visit(node->expr());
-    }
-
-    sqlite3_bind_int(qinsert_stmt_, 10, arr_analyzer.getArrayCount());
-    sqlite3_bind_int(qinsert_stmt_, 11, arr_analyzer.getConstArrayCount());
-    sqlite3_bind_int(qinsert_stmt_, 12, arr_analyzer.getTotalSymbolicReads());
-#endif
-
-    sqlite3_bind_int64(qinsert_stmt_, 13, GetQueryMultiplicity(query));
 }
 
 
@@ -241,15 +192,13 @@ void DataCollectorSolver::LogQueryStats(const Query &query,
     if (qids.second) {
         sqlite3_bind_int64(qinsert_stmt_, 2, qids.second);
     }
+    sqlite3_bind_int64(qinsert_stmt_, 14,
+            event_logger_->logEvent(g_s2e_state, EVENT_KLEE_QUERY, 1));
+
     sqlite3_bind_int(qinsert_stmt_, 3, query.constraints.head()->depth());
     sqlite3_bind_blob(qinsert_stmt_, 4,
             query_blob.c_str(), query_blob.size(), NULL);
     sqlite3_bind_int(qinsert_stmt_, 5, static_cast<int>(type));
-
-    // Query analysis
-    if (CollectQueryAnalysis) {
-        BindQueryAnalyses(query);
-    }
 
     result = sqlite3_step(qinsert_stmt_);
     assert(result == SQLITE_DONE);
@@ -308,8 +257,8 @@ bool DataCollectorSolver::computeInitialValues(const Query &query,
 }
 
 
-Solver *createDataCollectorSolver(Solver *s, sqlite3 *db) {
-    return new Solver(new DataCollectorSolver(s, db));
+Solver *createDataCollectorSolver(Solver *s, S2E* s2e) {
+    return new Solver(new DataCollectorSolver(s, s2e->getEventLogger()));
 }
 
 

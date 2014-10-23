@@ -54,6 +54,7 @@
 namespace klee {
     class Interpreter;
     class InterpreterHandler;
+    class EventLogger;
 }
 
 class TCGLLVMContext;
@@ -108,6 +109,7 @@ protected:
 
     std::string m_outputDirectory;
     sqlite3 *m_dataStore;
+    klee::EventLogger *m_eventLogger;
 
     llvm::raw_ostream*   m_infoFileRaw;
     llvm::raw_ostream*   m_debugFileRaw;
@@ -187,6 +189,10 @@ public:
 
     sqlite3 *getDataStore() const {
         return m_dataStore;
+    }
+
+    klee::EventLogger *getEventLogger() const {
+        return m_eventLogger;
     }
 
     /** Get info stream (used only by KLEE internals) */

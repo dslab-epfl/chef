@@ -38,12 +38,11 @@
 #include <klee/Solver.h>
 #include <sqlite3.h>
 
-
 namespace s2e {
 
 class S2E;
 
-klee::Solver *createDataCollectorSolver(klee::Solver *s, sqlite3 *db);
+klee::Solver *createDataCollectorSolver(klee::Solver *s, S2E *s2e);
 klee::Solver *createNotificationSolver(klee::Solver *s, S2E *s2e);
 }
 

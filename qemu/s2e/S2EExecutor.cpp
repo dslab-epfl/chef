@@ -625,7 +625,7 @@ S2EExecutor::S2EExecutor(S2E* s2e, TCGLLVMContext *tcgLLVMContext,
                     const InterpreterOptions &opts,
                             InterpreterHandler *ie)
         : Executor(opts, ie, new S2ESolverFactory(s2e, ie),
-                new S2EEventLogger(s2e->getDataStore()),
+                s2e->getEventLogger(),
                 tcgLLVMContext->getExecutionEngine()),
           m_s2e(s2e), m_tcgLLVMContext(tcgLLVMContext),
           m_executeAlwaysKlee(false), m_forkProcTerminateCurrentState(false),
