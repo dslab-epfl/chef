@@ -76,7 +76,7 @@ cl::opt<bool> VisualizeQueries("visualize",
         cl::init(false));
 
 cl::opt<bool> ReplayQueries("replay",
-        cl::desc("Re-run the queries through a solver"),
+        cl::desc("Re-run the queries through a solver (expensive!)"),
         cl::init(false));
 
 }
@@ -84,6 +84,11 @@ cl::opt<bool> ReplayQueries("replay",
 
 class ArrayExprAnalyzer : public ExprVisitor {
 protected:
+    virtual Action visitExpr(const Expr& e) {
+        total_nodes_++;
+        return Action::doChildren();
+    }
+
     virtual Action visitRead(const ReadExpr &re) {
         for (const UpdateNode *un = re.updates.head; un; un = un->next) {
             visit(un->index);
@@ -103,14 +108,16 @@ protected:
     }
 
     virtual Action visitSelect(const SelectExpr &se) {
-        total_ite_++;
+        total_select_++;
         return Action::doChildren();
     }
 
 public:
     ArrayExprAnalyzer()
-        : total_sym_reads_(0),
-          total_ite_(0) {
+        : total_nodes_(0),
+          total_sym_reads_(0),
+          total_sym_writes_(0),
+          total_select_(0) {
 
     }
 
@@ -164,7 +171,11 @@ public:
     }
 
     int getTotalSelects() const {
-        return total_ite_;
+        return total_select_;
+    }
+
+    int getTotalNodes() const {
+        return total_nodes_;
     }
 
 private:
@@ -175,12 +186,41 @@ private:
         ArrayStats() : total_sym_reads(0) {}
     };
 
+    int total_nodes_;
     int total_sym_reads_;
-    int total_ite_;
+    int total_sym_writes_;
+    int total_select_;
 
     typedef std::map<const Array*, shared_ptr<ArrayStats> > ArrayStatsMap;
     ArrayStatsMap array_stats;
 };
+
+
+static uint64_t GetExprMultiplicity(const ref<Expr> expr) {
+    switch (expr->getKind()) {
+    case Expr::And: {
+        BinaryExpr *be = cast<BinaryExpr>(expr);
+        return GetExprMultiplicity(be->left) * GetExprMultiplicity(be->right);
+    }
+    case Expr::Or: {
+        BinaryExpr *be = cast<BinaryExpr>(expr);
+        return GetExprMultiplicity(be->left) + GetExprMultiplicity(be->right);
+    }
+    default:
+        return 1;
+    }
+}
+
+
+static uint64_t GetQueryMultiplicity(const Query &query) {
+    ConditionNodeRef node = query.constraints.head();
+    uint64_t multiplicity = 1;
+    while (node != query.constraints.root()) {
+        multiplicity *= GetExprMultiplicity(node->expr());
+        node = node->parent();
+    }
+    return multiplicity;
+}
 
 
 enum QueryType {
@@ -197,11 +237,26 @@ int main(int argc, char **argv, char **envp) {
 
     sqlite3 *db;
     int result;
+    char *err_msg;
     if (sqlite3_open(InputFileName.c_str(), &db) != SQLITE_OK) {
         errs() << "Could not open SQLite DB: " << InputFileName <<
                 " (" << sqlite3_errmsg(db) << ")" << '\n';
         ::exit(1);
     }
+
+    const char *init_sql =
+        "DROP TABLE IF EXISTS query_stats;"
+        "CREATE TABLE query_stats ("
+        "query_id INTEGER PRIMARY KEY NOT NULL,"
+        "arrays_refd       INTEGER,"
+        "const_arrays_refd INTEGER,"
+        "node_count        INTEGER,"
+        "max_depth         INTEGER,"
+        "sym_write_count   INTEGER,"
+        "sym_read_count    INTEGER,"
+        "select_count      INTEGER,"
+        "multiplicity      INTEGER"
+        ");";
 
     const char *select_sql =
         "SELECT q.id, q.type, q.body, r.validity, r.time_usec "
@@ -209,22 +264,26 @@ int main(int argc, char **argv, char **envp) {
         "WHERE q.id = r.query_id "
         "ORDER BY q.id ASC";
 
-    const char *update_sql =
-            "UPDATE queries "
-            "SET arrays_refd = ?1, const_arrays_refd = ?2, sym_reads = ?3 "
-            "WHERE id = ?4;";
+    const char *insert_sql =
+            "INSERT INTO query_stats "
+            "(query_id, arrays_refd, const_arrays_refd, node_count, max_depth, sym_write_count, sym_read_count, select_count, multiplicity)"
+            "VALUES"
+            "(?1,       ?2,          ?3,               ?4,         ?5,        ?6,              ?7,             ?8,           ?9)";
+
+    result = sqlite3_exec(db, init_sql, NULL, NULL, &err_msg);
+    assert(result == SQLITE_OK);
 
     sqlite3_stmt *select_stmt;
-    sqlite3_stmt *update_stmt;
+    sqlite3_stmt *insert_stmt;
     result = sqlite3_prepare_v2(db, select_sql, -1, &select_stmt, NULL);
     if (result != SQLITE_OK) {
         errs() << "Could not prepare SQL statement: " << select_sql
                 << " (" << sqlite3_errmsg(db) << ")" << '\n';
         ::exit(1);
     }
-    result = sqlite3_prepare_v2(db, update_sql, -1, &update_stmt, NULL);
+    result = sqlite3_prepare_v2(db, insert_sql, -1, &insert_stmt, NULL);
     if (result != SQLITE_OK) {
-        errs() << "Could not prepare SQL statement: " << update_sql
+        errs() << "Could not prepare SQL statement: " << insert_sql
                 << " (" << sqlite3_errmsg(db) << ")" << '\n';
         ::exit(1);
     }
@@ -266,14 +325,17 @@ int main(int argc, char **argv, char **envp) {
             arr_analyzer.visit(node->expr());
         }
 
-        sqlite3_clear_bindings(update_stmt);
-        sqlite3_bind_int(update_stmt, 1, arr_analyzer.getArrayCount());
-        sqlite3_bind_int(update_stmt, 2, arr_analyzer.getConstArrayCount());
-        sqlite3_bind_int(update_stmt, 3, arr_analyzer.getTotalSymbolicReads());
-        sqlite3_bind_int64(update_stmt, 4, sqlite3_column_int64(select_stmt, 0));
-        result = sqlite3_step(update_stmt);
+        sqlite3_clear_bindings(insert_stmt);
+        sqlite3_bind_int64(insert_stmt, 1, sqlite3_column_int64(select_stmt, 0));
+        sqlite3_bind_int(insert_stmt, 2, arr_analyzer.getArrayCount());
+        sqlite3_bind_int(insert_stmt, 3, arr_analyzer.getConstArrayCount());
+        sqlite3_bind_int(insert_stmt, 4, arr_analyzer.getTotalNodes());
+        sqlite3_bind_int(insert_stmt, 7, arr_analyzer.getTotalSymbolicReads());
+        sqlite3_bind_int(insert_stmt, 8, arr_analyzer.getTotalSelects());
+        sqlite3_bind_int64(insert_stmt, 9, GetQueryMultiplicity(query));
+        result = sqlite3_step(insert_stmt);
         assert(result == SQLITE_DONE);
-        sqlite3_reset(update_stmt);
+        sqlite3_reset(insert_stmt);
 
         if (ReplayQueries) {
             TimeValue start_replay = TimeValue::now();
@@ -327,49 +389,9 @@ int main(int argc, char **argv, char **envp) {
 
     result = sqlite3_finalize(select_stmt);
     assert(result == SQLITE_OK);
+    result = sqlite3_finalize(insert_stmt);
+    assert(result == SQLITE_OK);
     result = sqlite3_close(db);
     assert(result == SQLITE_OK);
-
-#if 0
-    typedef boost::circular_buffer<Query> QueryBuffer;
-    QueryBuffer last_queries(QueryCount);
-
-    if (VisualizeQueries) {
-        DefaultExprDotDecorator decorator;
-        ExprVisualizer visualizer(outs(), decorator);
-
-        visualizer.BeginDrawing();
-#if 0
-        decorator.HighlightExpr(query.expr, "query");
-        int pc_counter = 0;
-        for (ConditionNodeRef node = query.constraints.head(),
-                root = query.constraints.root(); node != root;
-                node = node->parent()) {
-            std::string label;
-            raw_string_ostream stream(label);
-            stream << "PC[" << pc_counter++ << "]";
-            decorator.HighlightExpr(node->expr(), stream.str());
-        }
-        visualizer.DrawExpr(query.expr);
-        for (ConditionNodeRef node = query.constraints.head(),
-                root = query.constraints.root(); node != root;
-                node = node->parent()) {
-            visualizer.DrawExpr(node->expr());
-        }
-#endif
-        for (int i = 0; i < last_queries.size(); ++i) {
-            std::string label;
-            raw_string_ostream stream(label);
-            stream << "Time: "; //<< last_results[i].time_usec() << " us";
-            decorator.HighlightExpr(last_queries[i].expr, stream.str());
-        }
-        for (int i = 0; i < last_queries.size(); ++i) {
-            visualizer.DrawExpr(last_queries[i].expr);
-        }
-
-        visualizer.EndDrawing();
-    }
-#endif
-
     return 0;
 }
