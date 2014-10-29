@@ -34,16 +34,20 @@
 
 #include <llvm/Support/CommandLine.h>
 #include <llvm/Support/raw_ostream.h>
+#include <llvm/Support/Format.h>
+
+#include <boost/make_shared.hpp>
 
 #include <sstream>
 #include <stack>
+#include <cstdio>
 
 using namespace llvm;
 
 namespace {
 cl::opt<unsigned> ArrayWrapSize("array-wrap-size",
                            cl::desc("The maximum width of an array when visualizing"),
-                           cl::init(64));
+                           cl::init(32));
 
 cl::opt<bool> ShortcutConstReads("shortcut-const-reads",
                                  cl::desc("Make const read accesses point to the array cell"),
@@ -53,74 +57,79 @@ cl::opt<bool> ShortcutConstReads("shortcut-const-reads",
 namespace klee {
 
 ////////////////////////////////////////////////////////////////////////////////
-// ExprConstantDecorator
+// ExprVisualizer
 ////////////////////////////////////////////////////////////////////////////////
 
-ref<Expr> ExprConstantDecorator::GetConstantValuation(const ref<Expr> expr) {
-  if (isa<ConstantExpr>(expr))
-    return expr;
 
-  ExprHashMap<ref<Expr> >::iterator it = constant_mapping_.find(expr);
-  if (it != constant_mapping_.end())
-    return it->second;
+ExprVisualizer::ExprVisualizer()
+    : next_expr_id_(0) {
 
-  if (expr->getKind() == Expr::Read) {
-    ReadExpr *re = cast<ReadExpr>(expr);
-    ref<Expr> const_index = GetConstantValuation(re->index);
-
-    if (const_index.isNull()) {
-      constant_mapping_.insert(std::make_pair(expr, ref<Expr>()));
-      return NULL;
-    }
-
-    unsigned index = cast<ConstantExpr>(const_index)->getZExtValue();
-
-    for (const UpdateNode *un = re->updates.head; un; un = un->next) {
-      ref<Expr> ui = GetConstantValuation(un->index);
-
-      if (ui.isNull()) {
-        constant_mapping_.insert(std::make_pair(expr, ref<Expr>()));
-        return NULL;
-      }
-
-      if (ConstantExpr *CE = dyn_cast<ConstantExpr>(ui)) {
-        if (CE->getZExtValue() == index) {
-          ref<Expr> const_value = GetConstantValuation(un->value);
-          constant_mapping_.insert(std::make_pair(expr, const_value));
-          return const_value;
-        }
-      } else {
-        constant_mapping_.insert(std::make_pair(expr, ref<Expr>()));
-        return NULL;
-      }
-    }
-
-    if (re->updates.root->isConstantArray() && index < re->updates.root->size) {
-      ref<Expr> const_value = re->updates.root->constantValues[index];
-      constant_mapping_.insert(std::make_pair(expr, const_value));
-      return const_value;
-    }
-
-    constant_mapping_.insert(std::make_pair(expr, ref<Expr>()));
-    return NULL;
-  }
-
-  std::vector<ref<Expr> > kids;
-  kids.reserve(4);
-
-  for (unsigned i = 0; i < expr->getNumKids(); i++) {
-    ref<Expr> const_kid = GetConstantValuation(expr->getKid(i));
-    if (const_kid.isNull()) {
-      constant_mapping_.insert(std::make_pair(expr, ref<Expr>()));
-      return NULL;
-    }
-    kids.push_back(const_kid);
-  }
-
-  ref<Expr> const_expr = expr->rebuild(&kids[0]);
-  constant_mapping_.insert(std::make_pair(expr, const_expr));
-  return const_expr;
 }
+
+ExprVisualizer::~ExprVisualizer() {
+
+}
+
+
+ExprGraphvizNodeRef ExprVisualizer::getOrCreateNode(const std::string &name) {
+    NodeMap::iterator it = nodes_.find(name);
+    if (it != nodes_.end())
+        return it->second;
+
+    ExprGraphvizNodeRef node = boost::make_shared<ExprGraphvizNode>(name);
+    nodes_.insert(std::make_pair(name, node));
+    node_order_.push_back(name);
+
+    return node;
+}
+
+
+ExprGraphvizNodeRef ExprVisualizer::createNode() {
+    char name_buffer[16];
+    do {
+        snprintf(name_buffer, 16, "E%lu", next_expr_id_++);
+    } while (nodes_.count(std::string(name_buffer)) > 0);
+
+    return getOrCreateNode(std::string(name_buffer));
+}
+
+
+void ExprVisualizer::draw(llvm::raw_ostream &os) {
+    os << "digraph expr {" << '\n';
+    for (std::vector<std::string>::iterator it = node_order_.begin(),
+            ie = node_order_.end(); it != ie; ++it) {
+        ExprGraphvizNodeRef node = nodes_[*it];
+        os.indent(4);
+        os << node->name;
+        drawProperties(os, node->properties);
+        os << ";" << '\n';
+
+        for (unsigned i = 0; i < node->edges.size(); ++i) {
+            os.indent(4);
+            os << node->name << " -> " << node->edges[i].first;
+            drawProperties(os, node->edges[i].second);
+            os << ";" << '\n';
+        }
+        os << '\n';
+    }
+    os << "}" << '\n';
+}
+
+
+void ExprVisualizer::drawProperties(llvm::raw_ostream &os,
+        const GraphvizProperties &properties) {
+    if (!properties.empty()) {
+        os << " [";
+        for (GraphvizProperties::const_iterator it = properties.begin(),
+                ie = properties.end(); it != ie; ++it) {
+            if (it != properties.begin())
+                os << ",";
+            os << it->first << "=" << '"' << it->second << '"';
+        }
+        os << "]";
+    }
+}
+
 
 ////////////////////////////////////////////////////////////////////////////////
 // ExprDotDecorator
@@ -130,8 +139,9 @@ ref<Expr> ExprConstantDecorator::GetConstantValuation(const ref<Expr> expr) {
 std::string ExprDotDecorator::GetConstantLabel(const ref<Expr> expr) {
   ConstantExpr *ce = cast<ConstantExpr>(expr);
 
-  std::ostringstream oss;
-  oss << "w" << ce->getWidth() << ": " << ce->getZExtValue();
+  std::string label;
+  llvm::raw_string_ostream oss(label);
+  oss << ce->getWidth() << " : " << format("0x%lx", ce->getZExtValue());
 
   return oss.str();
 }
@@ -219,260 +229,116 @@ std::string ExprDotDecorator::GetExprKindLabel(const ref<Expr> expr) {
 
 
 ////////////////////////////////////////////////////////////////////////////////
-// ExprVisualizer
+// ExprArtist
 ////////////////////////////////////////////////////////////////////////////////
 
-
-void ExprVisualizer::BeginDrawing() {
-  stream_ << "digraph expr {" << '\n';
-  stream_ << "  graph [fontname=Helvetica,nslimit=20,splines=false];" << '\n';
+ExprArtist::ExprArtist(ExprVisualizer &visualizer, ExprDotDecorator &decorator)
+    : visualizer_(visualizer),
+      decorator_(decorator) {
+    ExprGraphvizNodeRef graph_node = visualizer_.getOrCreateNode("graph");
+    graph_node->properties["fontname"] = "Helvetica";
+    graph_node->properties["nslimit"] = "20";
+    graph_node->properties["splines"] = "false";
 }
 
-void ExprVisualizer::DrawExpr(const ref<Expr> expr) {
-  std::stack<ref<Expr> > expr_stack;
+ExprArtist::~ExprArtist() {
 
-  ExprConstantDecorator const_decorator;
+}
 
-  expr_stack.push(expr);
 
-  while (!expr_stack.empty()) {
-    ref<Expr> cur_expr = expr_stack.top();
-    expr_stack.pop();
+void ExprArtist::drawExpr(ref<Expr> expr) {
+    getOrCreateExpr(expr);
+}
 
-    if (processed_expr_.count(cur_expr) > 0)
-      continue;
+void ExprArtist::highlightExpr(ref<Expr> expr, const std::string &label) {
+    ExprGraphvizNodeRef node = getOrCreateExpr(expr);
+    node->properties["color"] = "red";
+    node->properties["xlabel"] = label;
+}
 
-    ExprDotDecorator::PropertyMap expr_properties;
-    decorator_.DecorateExprNode(cur_expr, masked_expr_.count(cur_expr) > 0,
-        NULL, expr_properties);
-    PrintGraphNode(GetExprName(cur_expr), expr_properties);
 
-    if (masked_expr_.count(cur_expr) > 0)
-      continue;
-
-    for (unsigned i = 0; i < cur_expr->getNumKids(); i++) {
-      expr_stack.push(cur_expr->getKid(i));
+ExprGraphvizNodeRef ExprArtist::getOrCreateExpr(ref<Expr> expr) {
+    ExprGraphvizNodeRef node;
+    if (isa<ConstantExpr>(expr)) {
+        node = visualizer_.createNode();
+    } else {
+        ConsNodesMap::iterator it = cons_nodes_.find(expr);
+        if (it != cons_nodes_.end()) {
+            return visualizer_.getOrCreateNode(it->second);
+        }
+        node = visualizer_.createNode();
+        cons_nodes_.insert(std::make_pair(expr, node->name));
     }
 
-    if (cur_expr->getKind() == Expr::Read) {
-      ReadExpr *re = cast<ReadExpr>(cur_expr);
-      ExprDotDecorator::PropertyMap dummy_map;
+    for (unsigned i = 0; i < expr->getNumKids(); ++i) {
+        ExprGraphvizNodeRef kid_node = getOrCreateExpr(expr->getKid(i));
+        node->edges.push_back(std::make_pair(
+                kid_node->name, GraphvizProperties()));
+    }
+    decorator_.decorateExpr(expr, node);
 
-      if (ShortcutConstReads && !re->updates.head && isa<ConstantExpr>(re->index)) {
-        DrawArray(re->updates.root);
+    if (expr->getKind() == Expr::Read) {
+        ReadExpr *re = cast<ReadExpr>(expr);
 
-        ConstantExpr *ce = cast<ConstantExpr>(re->index);
-        PrintGraphEdge(GetExprName(cur_expr),
-            GetArrayCellName(re->updates.root, ce->getZExtValue()), dummy_map);
-      } else {
-        ExprDotDecorator::EdgeDecoration edge_decoration;
-        decorator_.DecorateExprEdges(cur_expr, edge_decoration);
+        if (ShortcutConstReads && !re->updates.head && isa<ConstantExpr>(re->index)) {
+            ExprGraphvizNodeRef array_node = getOrCreateArray(re->updates.root);
 
-        for (ExprDotDecorator::EdgeDecoration::iterator it = edge_decoration.begin(),
-            ie = edge_decoration.end(); it != ie; ++it) {
-          PrintGraphEdge(GetExprName(cur_expr), GetExprName(it->first), it->second);
-        }
+            ConstantExpr *ce = cast<ConstantExpr>(re->index);
+            std::string cell_name;
+            llvm::raw_string_ostream os(cell_name);
+            os << array_node->name << ":"
+                    << re->updates.root->name << "_" << ce->getZExtValue();
 
-#if 0
-        DrawUpdateList(re->updates, expr_stack);
-
-        if (re->updates.head) {
-          PrintGraphEdge(GetExprName(cur_expr), GetUpdateNodeName(re->updates.head), dummy_map);
+            node->edges.push_back(std::make_pair(os.str(), GraphvizProperties()));
         } else {
-          PrintGraphEdge(GetExprName(cur_expr), re->updates.root->name, dummy_map);
-        }
-
+#if 0
+            ExprGraphvizNodeRef next_node = getOrCreateUpdate(re->updates);
 #else
-        DrawArray(re->updates.root);
-        PrintGraphEdge(GetExprName(cur_expr), re->updates.root->name, dummy_map);
+            ExprGraphvizNodeRef next_node = getOrCreateArray(re->updates.root);
 #endif
-      }
+            node->edges.push_back(std::make_pair(next_node->name, GraphvizProperties()));
+        }
+    }
+
+    return node;
+}
+
+ExprGraphvizNodeRef ExprArtist::getOrCreateUpdate(const UpdateList &ul) {
+    ConsUpdatesMap::iterator it = cons_updates_.find(ul);
+    if (it != cons_updates_.end()) {
+        return visualizer_.getOrCreateNode(it->second);
+    }
+    ExprGraphvizNodeRef node = visualizer_.createNode();
+    cons_updates_.insert(std::make_pair(ul, node->name));
+
+    ExprGraphvizNodeRef next_node;
+    if (ul.head->next) {
+        next_node = getOrCreateUpdate(UpdateList(ul.root,
+                ul.head->next));
     } else {
-      ExprDotDecorator::EdgeDecoration edge_decoration;
-      decorator_.DecorateExprEdges(cur_expr, edge_decoration);
+        next_node = getOrCreateArray(ul.root);
+    }
+    node->edges.push_back(std::make_pair(next_node->name, GraphvizProperties()));
 
-      for (ExprDotDecorator::EdgeDecoration::iterator it = edge_decoration.begin(),
-          ie = edge_decoration.end(); it != ie; ++it) {
-        PrintGraphEdge(GetExprName(cur_expr), GetExprName(it->first), it->second);
-      }
+    ExprGraphvizNodeRef index_node = getOrCreateExpr(ul.head->index);
+    ExprGraphvizNodeRef value_node = getOrCreateExpr(ul.head->value);
+    node->edges.push_back(std::make_pair(index_node->name, GraphvizProperties()));
+    node->edges.push_back(std::make_pair(value_node->name, GraphvizProperties()));
+
+    return node;
+}
+
+ExprGraphvizNodeRef ExprArtist::getOrCreateArray(const Array* array) {
+    ConsArraysMap::iterator it = cons_arrays_.find(array);
+    if (it != cons_arrays_.end()) {
+        return visualizer_.getOrCreateNode(it->second);
     }
 
-    processed_expr_.insert(cur_expr);
-  }
-}
+    ExprGraphvizNodeRef node = visualizer_.createNode();
+    cons_arrays_.insert(std::make_pair(array, node->name));
 
-
-void ExprVisualizer::MaskExpr(const ref<Expr> expr) {
-  std::stack<ref<Expr> > expr_stack;
-
-  expr_stack.push(expr);
-
-  while (!expr_stack.empty()) {
-    ref<Expr> cur_expr = expr_stack.top();
-    expr_stack.pop();
-
-    if (processed_expr_.count(cur_expr) > 0)
-      continue;
-
-    if (masked_expr_.count(cur_expr) > 0)
-      continue;
-
-    for (unsigned i = 0; i < cur_expr->getNumKids(); i++) {
-      expr_stack.push(cur_expr->getKid(i));
-    }
-
-    if (cur_expr->getKind() == Expr::Read) {
-      ReadExpr *re = cast<ReadExpr>(cur_expr);
-      MaskUpdateList(re->updates, expr_stack);
-    }
-
-    masked_expr_.insert(cur_expr);
-  }
-}
-
-
-void ExprVisualizer::EndDrawing() {
-  stream_ << "}" << '\n';
-}
-
-
-void ExprVisualizer::DrawUpdateList(const UpdateList &ul,
-    std::stack<ref<Expr> > &expr_stack) {
-  DrawArray(ul.root);
-
-  for (const UpdateNode *un = ul.head; un != NULL; un = un->next) {
-    if (processed_update_nodes_.count(un) > 0)
-      break;
-
-    ExprDotDecorator::PropertyMap next_edge_properties;
-
-    ExprDotDecorator::PropertyMap node_properties;
-    PrintGraphNode(GetUpdateNodeName(un), node_properties);
-
-    if (masked_update_nodes_.count(un) > 0)
-      break;
-
-    ExprDotDecorator::EdgeDecoration edge_decoration;
-
-    if (un->next) {
-      next_edge_properties["constraint"] = "false";
-      PrintGraphEdge(GetUpdateNodeName(un), GetUpdateNodeName(un->next),
-          next_edge_properties);
-    } else {
-      PrintGraphEdge(GetUpdateNodeName(un), ul.root->name, next_edge_properties);
-    }
-
-    next_edge_properties.clear();
-    PrintGraphEdge(GetUpdateNodeName(un), GetExprName(un->index), next_edge_properties);
-    PrintGraphEdge(GetUpdateNodeName(un), GetExprName(un->value), next_edge_properties);
-
-    expr_stack.push(un->index);
-    expr_stack.push(un->value);
-
-    processed_update_nodes_.insert(un);
-  }
-}
-
-
-void ExprVisualizer::MaskUpdateList(const UpdateList &ul,
-    std::stack<ref<Expr> > &expr_stack) {
-
-  for (const UpdateNode *un = ul.head; un != NULL; un = un->next) {
-    if (processed_update_nodes_.count(un) > 0)
-      break;
-    if (masked_update_nodes_.count(un) > 0)
-      break;
-
-    ExprDotDecorator::PropertyMap next_edge_properties;
-
-    expr_stack.push(un->index);
-    expr_stack.push(un->value);
-
-    masked_update_nodes_.insert(un);
-  }
-}
-
-
-void ExprVisualizer::DrawArray(const Array *array) {
-  if (processed_arrays_.count(array) > 0)
-    return;
-
-  ExprDotDecorator::PropertyMap array_properties;
-  decorator_.DecorateArray(array, array_properties);
-  PrintGraphNode(array->name, array_properties);
-
-  processed_arrays_.insert(array);
-}
-
-
-std::string ExprVisualizer::GetExprName(const ref<Expr> expr) {
-  ExprHashMap<std::string>::iterator it = named_expr_.find(expr);
-  if (it != named_expr_.end()) {
-    return it->second;
-  }
-
-  std::ostringstream oss;
-  oss << "E" << (next_expr_id_++);
-
-  std::string name = oss.str();
-
-  named_expr_.insert(std::make_pair(expr, name));
-
-  return name;
-}
-
-
-std::string ExprVisualizer::GetUpdateNodeName(const UpdateNode *un) {
-  UpdateNodeNameMap::iterator it = named_update_nodes_.find(un);
-  if (it != named_update_nodes_.end())
-    return it->second;
-
-  std::ostringstream oss;
-  oss << "UN" << (next_expr_id_++);
-
-  std::string name = oss.str();
-
-  named_update_nodes_.insert(std::make_pair(un, name));
-
-  return name;
-}
-
-std::string ExprVisualizer::GetArrayCellName(const Array *array, unsigned index) {
-  std::ostringstream oss;
-  oss << array->name << ":" << array->name << "_" << index;
-
-  return oss.str();
-}
-
-
-void ExprVisualizer::PrintPropertyMap(
-    const ExprDotDecorator::PropertyMap &properties) {
-  if (!properties.empty()) {
-    stream_ << " [";
-    for (ExprDotDecorator::PropertyMap::const_iterator it = properties.begin(),
-        ie = properties.end(); it != ie; ++it) {
-      if (it != properties.begin())
-        stream_ << ",";
-      stream_ << it->first << "=" << '"' << it->second << '"';
-    }
-    stream_ << "]";
-  }
-}
-
-
-void ExprVisualizer::PrintGraphNode(const std::string &name,
-    const ExprDotDecorator::PropertyMap &properties) {
-  stream_ << "  " << '"' << name << '"';
-  PrintPropertyMap(properties);
-  stream_ << ";" << '\n';
-}
-
-
-void ExprVisualizer::PrintGraphEdge(const std::string &from,
-    const std::string &to, const ExprDotDecorator::PropertyMap &properties) {
-  stream_ << "  " << '"' << from << '"' << " -> " << '"' << to << '"';
-  PrintPropertyMap(properties);
-  stream_ << ";" << '\n';
+    decorator_.decorateArray(array, node);
+    return node;
 }
 
 
@@ -480,125 +346,85 @@ void ExprVisualizer::PrintGraphEdge(const std::string &from,
 // Decorators
 ////////////////////////////////////////////////////////////////////////////////
 
-void DefaultExprDotDecorator::HighlightExpr(const ref<Expr> expr,
-    std::string label) {
-  highlights_.insert(std::make_pair(expr, label));
-}
 
-void DefaultExprDotDecorator::DecorateExprNode(const ref<Expr> expr,
-    bool is_mask, const ref<Expr> value, PropertyMap &properties) {
+void DefaultExprDotDecorator::decorateExprNode(const ref<Expr> expr,
+        ExprGraphvizNodeRef node) {
 
-  properties["shape"] = "circle";
-  properties["margin"] = "0";
+  node->properties["shape"] = "circle";
+  node->properties["margin"] = "0";
 
   switch (expr->getKind()) {
   case Expr::Constant:
-    properties["label"] = GetConstantLabel(expr);
-    properties["shape"] = "box";
-    properties["style"] = "filled";
-    properties["fillcolor"] = "lightgray";
+    node->properties["label"] = GetConstantLabel(expr);
+    node->properties["shape"] = "box";
+    node->properties["style"] = "filled";
+    node->properties["fillcolor"] = "lightgray";
     break;
   case Expr::Read:
-    properties["label"] = GetExprKindLabel(expr);
-    properties["shape"] = "box";
+    node->properties["label"] = GetExprKindLabel(expr);
+    node->properties["shape"] = "box";
     break;
   case Expr::ZExt:
   case Expr::SExt: {
     CastExpr *ce = cast<CastExpr>(expr);
     std::ostringstream oss;
     oss << GetExprKindLabel(expr) << "\\n[" << ce->getWidth() << "]";
-    properties["label"] = oss.str();
+    node->properties["label"] = oss.str();
     break;
   }
   case Expr::Select:
-    properties["label"] = GetExprKindLabel(expr);
-    properties["style"] = "filled";
-    properties["fillcolor"] = "lightyellow";
+    node->properties["label"] = GetExprKindLabel(expr);
+    node->properties["style"] = "filled";
+    node->properties["fillcolor"] = "lightyellow";
     break;
   default:
-    properties["label"] = GetExprKindLabel(expr);
+    node->properties["label"] = GetExprKindLabel(expr);
     break;
-  }
-
-  if (is_mask) {
-    properties["shape"] = "box";
-    properties["style"] = "filled";
-    properties["fillcolor"] = "dimgray";
-  }
-
-  if (highlights_.count(expr) > 0) {
-    properties["color"] = "red";
-    properties["xlabel"] = highlights_[expr];
-  }
-
-  if (!value.isNull() && isa<ConstantExpr>(value)) {
-    properties["xlabel"] = GetConstantLabel(value);
   }
 }
 
-void DefaultExprDotDecorator::DecorateExprEdges(const ref<Expr> expr,
-      EdgeDecoration &edge_decoration) {
-  PropertyMap decoration;
-  decoration["fontsize"] = "10.0";
+void DefaultExprDotDecorator::decorateExprEdges(const ref<Expr> expr,
+      ExprGraphvizNodeRef node) {
+  for (unsigned i = 0; i < expr->getNumKids(); ++i) {
+      node->edges[i].second["fontsize"] = "10.0";
+  }
 
   switch (expr->getKind()) {
   case Expr::Constant:
     break;
-  case Expr::NotOptimized: {
-    NotOptimizedExpr *noe = cast<NotOptimizedExpr>(expr);
-    decoration["label"] = "expr";
-    edge_decoration.push_back(std::make_pair(noe->src, decoration));
+  case Expr::NotOptimized:
+    node->edges[0].second["label"] = "expr";
     break;
-  }
-  case Expr::Read: {
-    ReadExpr *re = cast<ReadExpr>(expr);
-    decoration["label"] = "index";
-    decoration["style"] = "dotted";
-    edge_decoration.push_back(std::make_pair(re->index, decoration));
+  case Expr::Read:
+    node->edges[0].second["label"] = "index";
+    node->edges[0].second["style"] = "dotted";
     break;
-  }
-  case Expr::Select: {
-    SelectExpr *se = cast<SelectExpr>(expr);
-    decoration["label"] = "cond";
-    decoration["style"] = "dotted";
-    edge_decoration.push_back(std::make_pair(se->cond, decoration));
-
-    decoration.erase("style");
-    decoration["label"] = "true";
-    decoration["color"] = "green";
-    edge_decoration.push_back(std::make_pair(se->trueExpr, decoration));
-
-    decoration["label"] = "false";
-    decoration["color"] = "red";
-    edge_decoration.push_back(std::make_pair(se->falseExpr, decoration));
+  case Expr::Select:
+    node->edges[0].second["label"] = "cond";
+    node->edges[0].second["style"] = "dotted";
+    node->edges[1].second["label"] = "true";
+    node->edges[1].second["color"] = "green";
+    node->edges[2].second["label"] = "false";
+    node->edges[2].second["color"] = "red";
     break;
-  }
   case Expr::Concat: {
     ConcatExpr *ce = cast<ConcatExpr>(expr);
     for (unsigned i = 0; i < ce->getNumKids(); ++i) {
       std::ostringstream oss;
       oss << i;
-      decoration["label"] = oss.str();
-
-      edge_decoration.push_back(std::make_pair(ce->getKid(i), decoration));
+      node->edges[i].second["label"] = oss.str();
     }
     break;
   }
-  case Expr::Extract: {
-    ExtractExpr *ee = cast<ExtractExpr>(expr);
-    decoration["label"] = "expr";
-    edge_decoration.push_back(std::make_pair(ee->expr, decoration));
+  case Expr::Extract:
+    node->edges[0].second["label"] = "expr";
     break;
-  }
 
     // Casting
   case Expr::ZExt:
-  case Expr::SExt: {
-    CastExpr *ce = cast<CastExpr>(expr);
-    decoration["label"] = "src";
-    edge_decoration.push_back(std::make_pair(ce->src, decoration));
+  case Expr::SExt:
+    node->edges[0].second["label"] = "src";
     break;
-  }
 
     // Arithmetic
   case Expr::Add:
@@ -607,36 +433,25 @@ void DefaultExprDotDecorator::DecorateExprEdges(const ref<Expr> expr,
   case Expr::UDiv:
   case Expr::SDiv:
   case Expr::URem:
-  case Expr::SRem: {
-    BinaryExpr *be = cast<BinaryExpr>(expr);
-    decoration["label"] = "lhs";
-    edge_decoration.push_back(std::make_pair(be->left, decoration));
-    decoration["label"] = "rhs";
-    edge_decoration.push_back(std::make_pair(be->right, decoration));
+  case Expr::SRem:
+    node->edges[0].second["label"] = "lhs";
+    node->edges[1].second["label"] = "rhs";
     break;
-  }
 
     // Bit
-  case Expr::Not: {
-    NotExpr *ne = cast<NotExpr>(expr);
-    decoration["label"] = "expr";
-    edge_decoration.push_back(std::make_pair(ne->expr, decoration));
+  case Expr::Not:
+    node->edges[0].second["label"] = "expr";
     break;
-  }
 
   case Expr::And:
   case Expr::Or:
   case Expr::Xor:
   case Expr::Shl:
   case Expr::LShr:
-  case Expr::AShr: {
-    BinaryExpr *be = cast<BinaryExpr>(expr);
-    decoration["label"] = "lhs";
-    edge_decoration.push_back(std::make_pair(be->left, decoration));
-    decoration["label"] = "rhs";
-    edge_decoration.push_back(std::make_pair(be->right, decoration));
+  case Expr::AShr:
+    node->edges[0].second["label"] = "lhs";
+    node->edges[1].second["label"] = "rhs";
     break;
-  }
 
     // Compare
   case Expr::Eq:
@@ -648,23 +463,25 @@ void DefaultExprDotDecorator::DecorateExprEdges(const ref<Expr> expr,
   case Expr::Slt:
   case Expr::Sle:
   case Expr::Sgt: ///< Not used in canonical form
-  case Expr::Sge: {
-    BinaryExpr *be = cast<BinaryExpr>(expr);
-    decoration["label"] = "lhs";
-    edge_decoration.push_back(std::make_pair(be->left, decoration));
-    decoration["label"] = "rhs";
-    edge_decoration.push_back(std::make_pair(be->right, decoration));
+  case Expr::Sge:
+    node->edges[0].second["label"] = "lhs";
+    node->edges[1].second["label"] = "rhs";
     break;
-  }
 
   default:
     assert(0 && "Unhandled Expr type");
   }
 }
 
-void DefaultExprDotDecorator::DecorateArray(const Array *array,
-    PropertyMap &properties) {
-  properties["shape"] = "record";
+void DefaultExprDotDecorator::decorateExpr(const ref<Expr> expr,
+        ExprGraphvizNodeRef node) {
+    decorateExprNode(expr, node);
+    decorateExprEdges(expr, node);
+}
+
+void DefaultExprDotDecorator::decorateArray(const Array *array,
+    ExprGraphvizNodeRef node) {
+  node->properties["shape"] = "record";
 
   // Compose the label
   std::ostringstream oss;
@@ -688,8 +505,8 @@ void DefaultExprDotDecorator::DecorateArray(const Array *array,
   }
   if (array->size > ArrayWrapSize)
     oss << "}}";
-  properties["label"] = oss.str();
-  properties["xlabel"] = array->name;
+  node->properties["label"] = oss.str();
+  node->properties["xlabel"] = array->name;
 }
 
 }

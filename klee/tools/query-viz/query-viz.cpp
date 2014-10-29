@@ -127,19 +127,21 @@ int main(int argc, char **argv, char **envp) {
     }
 
     DefaultExprDotDecorator decorator;
-    ExprVisualizer visualizer(llvm::outs(), decorator);
+    ExprVisualizer visualizer;
+    ExprArtist artist(visualizer, decorator);
 
-    visualizer.BeginDrawing();
     for (unsigned i = 0; i < collected_queries.size(); ++i) {
         std::string label;
         raw_string_ostream stream(label);
         stream << "QID: " << collected_query_ids[i];
-        decorator.HighlightExpr(collected_queries[i].expr, stream.str());
+
+        artist.highlightExpr(collected_queries[i].expr, stream.str());
+        for (ConditionNodeRef node = collected_queries[i].constraints.head(),
+                root = collected_queries[i].constraints.root(); node != root; node = node->parent()) {
+            artist.highlightExpr(node->expr(), stream.str());
+        }
     }
-    for (unsigned i = 0; i < collected_queries.size(); ++i) {
-        visualizer.DrawExpr(collected_queries[i].expr);
-    }
-    visualizer.EndDrawing();
+    visualizer.draw(llvm::outs());
 
     result = sqlite3_finalize(select_stmt);
     assert(result == SQLITE_OK);

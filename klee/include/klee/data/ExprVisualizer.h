@@ -43,103 +43,96 @@
 #include <set>
 #include <stack>
 
+#include <boost/shared_ptr.hpp>
+
 namespace llvm {
 class raw_ostream;
 }
 
 namespace klee {
 
-class ExprConstantDecorator {
-public:
-  ExprConstantDecorator() { }
+typedef std::map<std::string, std::string> GraphvizProperties;
 
-  ref<Expr> GetConstantValuation(const ref<Expr> expr);
+struct ExprGraphvizNode {
+    ExprGraphvizNode(const std::string &node_name) : name(node_name) {
 
-private:
-  ExprHashMap<ref<Expr> > constant_mapping_;
+    }
+
+    std::string name;
+    GraphvizProperties properties;
+    std::vector<std::pair<std::string, GraphvizProperties> > edges;
 };
+
+typedef boost::shared_ptr<ExprGraphvizNode> ExprGraphvizNodeRef;
+
+
+class ExprVisualizer {
+public:
+    ExprVisualizer();
+    ~ExprVisualizer();
+
+    ExprGraphvizNodeRef getOrCreateNode(const std::string &name);
+    ExprGraphvizNodeRef createNode();
+
+    void draw(llvm::raw_ostream &os);
+private:
+    typedef std::map<std::string, ExprGraphvizNodeRef> NodeMap;
+    NodeMap nodes_;
+    std::vector<std::string> node_order_;
+    uint64_t next_expr_id_;
+
+    void drawProperties(llvm::raw_ostream &os,
+            const GraphvizProperties &properties);
+};
+
 
 class ExprDotDecorator {
 public:
-  typedef std::map<std::string, std::string> PropertyMap;
-  typedef std::vector<std::pair<ref<Expr>, PropertyMap > > EdgeDecoration;
+    ExprDotDecorator() { }
+    virtual ~ExprDotDecorator() { }
 
-  ExprDotDecorator() { }
-  virtual ~ExprDotDecorator() { }
+    virtual std::string GetExprKindLabel(const ref<Expr> expr);
+    virtual std::string GetConstantLabel(const ref<Expr> expr);
 
-  virtual std::string GetExprKindLabel(const ref<Expr> expr);
-  virtual std::string GetConstantLabel(const ref<Expr> expr);
-
-  virtual void DecorateExprNode(const ref<Expr> expr, bool is_mask,
-      const ref<Expr> value, PropertyMap &properties) = 0;
-  virtual void DecorateExprEdges(const ref<Expr> expr,
-      EdgeDecoration &edge_decoration) = 0;
-
-  virtual void DecorateArray(const Array *array, PropertyMap &properties) = 0;
+    virtual void decorateExpr(const ref<Expr> expr, ExprGraphvizNodeRef node) = 0;
+    virtual void decorateArray(const Array *array, ExprGraphvizNodeRef node) = 0;
 };
 
-// TODO(sbucur): Convert to visitor pattern
-class ExprVisualizer {
-public:
-  ExprVisualizer(llvm::raw_ostream &os, ExprDotDecorator &decorator)
-    : stream_(os), decorator_(decorator), next_expr_id_(0) {
-
-  }
-
-  void BeginDrawing();
-  void DrawExpr(const ref<Expr> expr);
-  void MaskExpr(const ref<Expr> expr);
-  void EndDrawing();
-
-private:
-  typedef std::map<const UpdateNode*, std::string> UpdateNodeNameMap;
-
-  void DrawUpdateList(const UpdateList &ul, std::stack<ref<Expr> > &expr_stack);
-  void MaskUpdateList(const UpdateList &ul, std::stack<ref<Expr> > &expr_stack);
-  void DrawArray(const Array *array);
-
-  void PrintPropertyMap(const ExprDotDecorator::PropertyMap &properties);
-  void PrintGraphNode(const std::string &name,
-      const ExprDotDecorator::PropertyMap &properties);
-  void PrintGraphEdge(const std::string &from, const std::string &to,
-      const ExprDotDecorator::PropertyMap &properties);
-
-  std::string GetExprName(const ref<Expr> expr);
-  std::string GetUpdateNodeName(const UpdateNode *un);
-  std::string GetArrayCellName(const Array *array, unsigned index);
-
-  llvm::raw_ostream &stream_;
-  ExprDotDecorator &decorator_;
-
-  ExprHashMap<std::string> named_expr_;  // Expr that have a name
-  UpdateNodeNameMap named_update_nodes_;  // Update nodes that have a name
-
-  ExprHashSet processed_expr_;  // Expr already printed
-  ExprHashSet masked_expr_; // Expr not printed, but masked
-
-  std::set<const Array*> processed_arrays_;  // Arrays already processed
-
-  std::set<const UpdateNode*> processed_update_nodes_;  // Update nodes already processed
-  std::set<const UpdateNode*> masked_update_nodes_;
-
-  uint64_t next_expr_id_;
-};
 
 class DefaultExprDotDecorator: public ExprDotDecorator {
 public:
   DefaultExprDotDecorator() { }
 
-  void HighlightExpr(const ref<Expr> expr, std::string label);
-
-  virtual void DecorateExprNode(const ref<Expr> expr, bool is_mask,
-      const ref<Expr> value, PropertyMap &properties);
-  virtual void DecorateExprEdges(const ref<Expr> expr,
-      EdgeDecoration &edge_decoration);
-
-  virtual void DecorateArray(const Array *array, PropertyMap &properties);
-
+  virtual void decorateExpr(const ref<Expr> expr, ExprGraphvizNodeRef node);
+  virtual void decorateArray(const Array *array, ExprGraphvizNodeRef node);
 private:
-  ExprHashMap<std::string> highlights_;
+  void decorateExprNode(const ref<Expr> expr, ExprGraphvizNodeRef node);
+  void decorateExprEdges(const ref<Expr> expr, ExprGraphvizNodeRef node);
+};
+
+
+class ExprArtist {
+public:
+    ExprArtist(ExprVisualizer &visualizer, ExprDotDecorator &decorator);
+    ~ExprArtist();
+
+    void drawExpr(ref<Expr> expr);
+    void highlightExpr(ref<Expr> expr, const std::string &label);
+private:
+    typedef ExprHashMap<std::string> ConsNodesMap;
+    typedef std::map<const Array*, std::string> ConsArraysMap;
+    typedef UpdateListHashMap<std::string> ConsUpdatesMap;
+
+    ExprVisualizer &visualizer_;
+    ExprDotDecorator &decorator_;
+
+    ConsNodesMap cons_nodes_;
+    ConsArraysMap cons_arrays_;
+    ConsUpdatesMap cons_updates_;
+
+    ExprGraphvizNodeRef getOrCreateExpr(ref<Expr> expr);
+    ExprGraphvizNodeRef getOrCreateUpdate(const UpdateList &ul);
+    ExprGraphvizNodeRef getOrCreateArray(const Array* array);
 };
 
 }
