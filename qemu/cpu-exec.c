@@ -270,6 +270,8 @@ int cpu_exec(CPUArchState *env)
 #endif
 #ifdef CONFIG_S2E
     if (!s2e_is_runnable(g_s2e_state)) {
+        if(s2e_is_yielded(g_s2e_state))
+            s2e_reset_state_switch_timer();
         return EXCP_S2E;
     }
 #endif

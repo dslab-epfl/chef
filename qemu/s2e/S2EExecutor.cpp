@@ -1312,6 +1312,11 @@ void S2EExecutor::initializeStateSwitchTimer()
     qemu_mod_timer(m_stateSwitchTimer, qemu_get_clock_ms(host_clock) + 100);
 }
 
+void S2EExecutor::resetStateSwitchTimer()
+{
+    qemu_mod_timer(m_stateSwitchTimer, qemu_get_clock_ms(host_clock));
+}
+
 void S2EExecutor::doStateSwitch(S2EExecutionState* oldState,
                                 S2EExecutionState* newState)
 {

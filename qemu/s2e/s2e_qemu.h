@@ -288,6 +288,8 @@ int s2e_is_runnable(struct S2EExecutionState* state);
 
 void s2e_dump_state(void);
 
+void s2e_reset_state_switch_timer(void);
+
 void s2e_execute_cmd(const char *cmd);
 
 void s2e_on_device_registration(struct S2E *s2e);

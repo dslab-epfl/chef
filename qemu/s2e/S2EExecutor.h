@@ -232,6 +232,8 @@ public:
         return yieldedState;
     }
 
+    void resetStateSwitchTimer();
+
 protected:
     static void handlerTraceMemoryAccess(klee::Executor* executor,
                                     klee::ExecutionState* state,

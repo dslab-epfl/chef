@@ -2167,6 +2167,11 @@ void s2e_write_dirty_mask(uint64_t host_address, uint8_t val)
     return g_s2e_state->writeDirtyMask(host_address, val);
 }
 
+void s2e_reset_state_switch_timer(void)
+{
+    g_s2e->getExecutor()->resetStateSwitchTimer();
+}
+
 
 int s2e_is_ram_registered(S2E *s2e, S2EExecutionState *state,
                                uint64_t host_address)
