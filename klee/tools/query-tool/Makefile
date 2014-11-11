@@ -4,7 +4,7 @@ TOOLNAME = query-tool
 include $(LEVEL)/Makefile.config
 
 
-USEDLIBS = kleaverSolver.a kleaverExpr.a kleeData.a kleeBasic.a kleeCore.a
+USEDLIBS = kleeData.a kleaverSolver.a kleaverExpr.a kleeSupport.a kleeBasic.a kleeCore.a kleaverSolver.a kleaverExpr.a kleeSupport.a kleeBasic.a kleeCore.a
 
 LINK_COMPONENTS = ipo
 

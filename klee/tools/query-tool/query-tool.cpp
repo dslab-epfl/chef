@@ -38,9 +38,13 @@
 #include "klee/data/QueryDeserializer.h"
 #include "klee/data/ExprVisualizer.h"
 #include "klee/Solver.h"
+#include "klee/SolverImpl.h"
+#include "klee/SolverFactory.h"
 
 #include <llvm/Support/CommandLine.h>
 #include <llvm/Support/raw_ostream.h>
+#include <llvm/Support/TimeValue.h>
+#include <llvm/Support/Format.h>
 
 #include <google/protobuf/stubs/common.h>
 
@@ -54,6 +58,7 @@
 using namespace llvm;
 using namespace klee;
 using boost::scoped_ptr;
+using llvm::sys::TimeValue;
 
 
 namespace {
@@ -98,7 +103,7 @@ int main(int argc, char **argv, char **envp) {
     }
 
     const char *select_sql =
-        "SELECT q.id, q.type, q.body, r.validity "
+        "SELECT q.id, q.type, q.body, r.validity, r.time_usec "
         "FROM queries AS q, query_results AS r "
         "WHERE q.id = r.query_id "
         "ORDER BY q.id ASC";
@@ -115,8 +120,15 @@ int main(int argc, char **argv, char **envp) {
     ExprDeserializer expr_deserializer(*expr_builder, std::vector<Array*>());
     QueryDeserializer query_deserializer(expr_deserializer);
 
-    // For replay purposes
-    Z3Solver solver;
+    // Solvers used for replay
+    DefaultSolverFactory solver_factory(NULL);
+    Solver *klee_solver = solver_factory.createEndSolver();
+    klee_solver = solver_factory.decorateSolver(klee_solver);
+    Z3Solver z3_solver;
+    //STPSolver stp_solver(false);
+
+    TimeValue total_recorded(TimeValue::ZeroTime);
+    TimeValue total_replayed(TimeValue::ZeroTime);
 
     while ((result = sqlite3_step(select_stmt)) == SQLITE_ROW) {
         Query query;
@@ -133,34 +145,51 @@ int main(int argc, char **argv, char **envp) {
 
         if (ReplayQueries) {
             outs() << "Replaying query " << sqlite3_column_int64(select_stmt, 0) << '\n';
+            TimeValue start_replay = TimeValue::now();
             switch (query_type) {
             case TRUTH: {
                 bool result = false;
-                solver.mustBeTrue(query, result);
+                z3_solver.impl->computeTruth(query, result);
                 assert((sqlite3_column_int(select_stmt, 3) == Solver::True)
                         == result);
                 break;
             }
             case VALIDITY: {
                 Solver::Validity result = Solver::Unknown;
-                solver.evaluate(query, result);
+                z3_solver.impl->computeValidity(query, result);
                 assert(static_cast<Solver::Validity>(sqlite3_column_int(select_stmt, 3)) == result);
                 break;
             }
             case VALUE: {
-                ref<ConstantExpr> result;
-                solver.getValue(query, result);
+                ref<Expr> result;
+                z3_solver.impl->computeValue(query, result);
                 break;
             }
             case INITIAL_VALUES: {
                 std::vector<const Array*> objects;
                 std::vector<std::vector<unsigned char> > result;
-                solver.getInitialValues(query, objects, result);
+                bool hasSolution;
+                z3_solver.impl->computeInitialValues(query, objects, result,
+                        hasSolution);
                 break;
             }
             default:
                 assert(0 && "Unreachable");
             }
+
+            TimeValue replayed_duration = TimeValue::now() - start_replay;
+            int64_t recorded_usec = sqlite3_column_int64(select_stmt, 4);
+            TimeValue recorded_duration = TimeValue(recorded_usec / 1000000L,
+                    (recorded_usec % 1000000L) * TimeValue::NANOSECONDS_PER_MICROSECOND);
+
+            total_recorded += recorded_duration;
+            total_replayed += replayed_duration;
+
+            outs() << "[Total]"
+                    << " Recorded: " << total_recorded.usec()
+                    << " Replayed: " << total_replayed.usec()
+                    << " Speedup: " << format("%.1fx", float(total_recorded.usec()) / float(total_replayed.usec()))
+                    << '\n';
         }
     }
     assert(result == SQLITE_DONE);
