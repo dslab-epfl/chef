@@ -39,89 +39,103 @@
 #include "klee/util/ExprHashMap.h"
 #include "llvm/ADT/DenseMap.h"
 
-#include <z3.h>
-
-#include <boost/intrusive_ptr.hpp>
+#include <z3++.h>
 
 #include <map>
 #include <list>
 #include <stack>
+
+#include <boost/shared_ptr.hpp>
 
 namespace klee {
 
 
 class Z3Builder {
 public:
-    Z3Builder(Z3_context context, Z3_solver solver, bool cons_initial_array);
-    ~Z3Builder();
+    Z3Builder(z3::context &context);
+    virtual ~Z3Builder();
 
-    Z3_context context() const {
+    z3::context &context() {
         return context_;
     }
 
-    Z3_solver solver() const {
-        return solver_;
-    }
-
-    Z3_ast construct(ref<Expr> e) {
+    z3::expr construct(ref<Expr> e) {
         // TODO: Should we clear the cache after each construction?
         return getOrMakeExpr(e);
     }
 
-    Z3_ast getInitialRead(const Array *root, unsigned index);
+    virtual z3::expr getInitialRead(const Array *root, unsigned index) = 0;
 
-    void reset();
-    void push();
-    void pop(unsigned n);
+protected:
+    typedef ExprHashMap<z3::expr> ExprMap;
+
+    z3::expr getOrMakeExpr(ref<Expr> e);
+    z3::expr makeExpr(ref<Expr> e);
+    virtual z3::expr makeReadExpr(ref<ReadExpr> re) = 0;
+
+    z3::context &context_;
+    ExprMap cons_expr_;
+};
+
+
+class Z3ArrayBuilder: public Z3Builder {
+public:
+    Z3ArrayBuilder(z3::context &context);
+    virtual ~Z3ArrayBuilder();
+
+    virtual z3::expr getInitialRead(const Array *root, unsigned index);
+protected:
+    virtual z3::expr makeReadExpr(ref<ReadExpr> re);
+    virtual z3::expr initializeArray(const Array *root, z3::expr array_ast);
 
 private:
-    typedef llvm::DenseMap<const Array*, Z3_ast> ArrayMap;
-    typedef llvm::DenseMap<const UpdateNode*, Z3_ast> UpdateListMap;
+    typedef llvm::DenseMap<const Array*, z3::expr> ArrayMap;
+    typedef llvm::DenseMap<const UpdateNode*, z3::expr> UpdateListMap;
 
-    typedef std::list<const Array*> ArrayList;
-    typedef std::stack<ArrayList*> ArrayContextStack;
-
-    Z3_ast getOrMakeExpr(ref<Expr> e);
-    Z3_ast makeExpr(ref<Expr> e);
-
-    Z3_ast getArrayForUpdate(const Array *root, const UpdateNode *un);
-    Z3_ast getInitialArray(const Array *root);
-    Z3_ast getArrayValuesAsAssert(const Array *root, Z3_ast array_ast);
-    Z3_ast getArrayValuesAsCons(const Array *root, Z3_ast array_ast);
-
-    Z3_ast makeOne(unsigned width);
-    Z3_ast makeZero(unsigned width);
-    Z3_ast makeMinusOne(unsigned width);
-    Z3_ast makeConst32(unsigned width, uint32_t value);
-    Z3_ast makeConst64(unsigned width, uint64_t value);
-
-
-    unsigned getBVWidth(Z3_ast expr) {
-        Z3_sort sort = Z3_get_sort(context_, expr);
-        assert(Z3_get_sort_kind(context_, sort) == Z3_BV_SORT);
-        return Z3_get_bv_sort_size(context_, sort);
-    }
-
-    bool isBool(Z3_ast expr) {
-        return Z3_get_sort_kind(context_,
-                Z3_get_sort(context_, expr)) == Z3_BOOL_SORT;
-    }
-
-    Z3_context context_;
-    Z3_solver solver_;
-
-    Z3_sort domain_sort_;
-    Z3_sort range_sort_;
-    Z3_sort array_sort_;
-
-    bool cons_initial_array_;
+    z3::expr getArrayForUpdate(const Array *root, const UpdateNode *un);
+    z3::expr getInitialArray(const Array *root);
 
     ArrayMap cons_arrays_;
-    ExprHashMap<Z3_ast> cons_expr_;
     UpdateListMap cons_updates_;
-
-    ArrayContextStack arr_context_stack_;
 };
+
+
+class Z3AssertArrayBuilder : public Z3ArrayBuilder {
+public:
+    Z3AssertArrayBuilder(z3::solver &solver);
+    virtual ~Z3AssertArrayBuilder();
+protected:
+    virtual z3::expr initializeArray(const Array *root, z3::expr array_ast);
+private:
+    z3::expr getArrayAssertion(const Array *root, z3::expr array_ast);
+    z3::solver solver_;
+};
+
+
+class Z3IteBuilder : public Z3Builder {
+public:
+    Z3IteBuilder(z3::context &context);
+    virtual ~Z3IteBuilder();
+
+    virtual z3::expr getInitialRead(const Array *root, unsigned index);
+protected:
+    virtual z3::expr makeReadExpr(ref<ReadExpr> re);
+private:
+    typedef std::vector<z3::expr> ExprVector;
+    typedef llvm::DenseMap<const Array*,
+            boost::shared_ptr<ExprVector> > ArrayVariableMap;
+    typedef llvm::DenseMap<std::pair<Z3_ast, const UpdateNode*>, z3::expr> ReadMap;
+
+    z3::expr getReadForArray(z3::expr index, const Array *root,
+            const UpdateNode *un);
+    z3::expr getReadForInitialArray(z3::expr index, const Array *root);
+
+    boost::shared_ptr<ExprVector> getArrayValues(const Array *root);
+
+    ArrayVariableMap array_variables_;
+    ReadMap read_map_;
+};
+
 
 } /* namespace klee */
 

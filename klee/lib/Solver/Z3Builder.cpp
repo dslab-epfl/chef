@@ -39,6 +39,8 @@
 
 #include "klee/SolverStats.h"
 
+#include <boost/make_shared.hpp>
+
 namespace {
 
 llvm::cl::opt<bool>
@@ -48,165 +50,39 @@ UseConstructHash("z3-use-hash-consing",
 
 }
 
+using boost::shared_ptr;
+using boost::make_shared;
+
 namespace klee {
 
 
-Z3Builder::Z3Builder(Z3_context context, Z3_solver solver, bool cons_initial_array)
-    : context_(context),
-      solver_(solver),
-      cons_initial_array_(cons_initial_array) {
-
-    domain_sort_ = Z3_mk_bv_sort(context_, 32);
-    range_sort_ = Z3_mk_bv_sort(context_, 8);
-    array_sort_ = Z3_mk_array_sort(context_, domain_sort_, range_sort_);
-
-    arr_context_stack_.push(new ArrayList());
+Z3Builder::Z3Builder(z3::context &context)
+    : context_(context) {
 }
 
 
 Z3Builder::~Z3Builder() {
-    reset();
+
 }
 
 
-Z3_ast Z3Builder::getInitialRead(const Array *root, unsigned index) {
-    return Z3_mk_select(context_,
-            getInitialArray(root),
-            Z3_mk_unsigned_int(context_, index, domain_sort_));
-}
-
-
-void Z3Builder::reset() {
-    while (!arr_context_stack_.empty()) {
-        delete arr_context_stack_.top();
-        arr_context_stack_.pop();
-    }
-
-    cons_arrays_.clear();
-    cons_expr_.clear();
-    cons_updates_.clear();
-}
-
-
-void Z3Builder::push() {
-    arr_context_stack_.push(new ArrayList());
-}
-
-
-void Z3Builder::pop(unsigned n) {
-    while (n--) {
-        ArrayList *al = arr_context_stack_.top();
-        for (ArrayList::iterator it = al->begin(), ie = al->end();
-                it != ie; ++it) {
-            cons_arrays_.erase(*it);
-        }
-        delete al;
-        arr_context_stack_.pop();
-    }
-
-    // FIXME: Implement proper memory management to avoid doing this
-    cons_updates_.clear();
-    cons_expr_.clear();
-}
-
-
-Z3_ast Z3Builder::getArrayForUpdate(const Array *root,
-        const UpdateNode *un) {
-    if (!un) {
-        return getInitialArray(root);
-    }
-
-    UpdateListMap::iterator it = cons_updates_.find(un);
-    if (it != cons_updates_.end()) {
-        return it->second;
-    }
-
-    // TODO: Make non-recursive
-    Z3_ast result = Z3_mk_store(context_,
-            getArrayForUpdate(root, un->next),
-            getOrMakeExpr(un->index),
-            getOrMakeExpr(un->value));
-    cons_updates_.insert(std::make_pair(un, result));
-    return result;
-}
-
-
-Z3_ast Z3Builder::getInitialArray(const Array *root) {
-    ArrayMap::iterator it = cons_arrays_.find(root);
-    if (it != cons_arrays_.end()) {
-        return it->second;
-    }
-
-    char buf[256];
-    snprintf(buf, sizeof(buf), "%s_%p", root->name.c_str(), (void*)root);
-
-    Z3_ast result = Z3_mk_const(context_,
-            Z3_mk_string_symbol(context_, buf),
-            array_sort_);
-
-    if (root->isConstantArray()) {
-        if (cons_initial_array_) {
-            result = getArrayValuesAsCons(root, result);
-        } else {
-            Z3_solver_assert(context_, solver_,
-                    getArrayValuesAsAssert(root, result));
-        }
-    }
-
-    cons_arrays_.insert(std::make_pair(root, result));
-    return result;
-}
-
-
-Z3_ast Z3Builder::getArrayValuesAsAssert(const Array *root, Z3_ast array_ast) {
-    Z3_ast *assert_list = new Z3_ast[root->size];
-
-    for (unsigned i = 0, e = root->size; i != e; ++i) {
-        Z3_ast index = Z3_mk_unsigned_int(context_, i, domain_sort_);
-        Z3_ast value = Z3_mk_unsigned_int(context_,
-                root->constantValues[i]->getZExtValue(), range_sort_);
-        assert_list[i] = Z3_mk_eq(context_,
-                Z3_mk_select(context_, array_ast, index),
-                value);
-    }
-
-    Z3_ast result = Z3_mk_and(context_, root->size, assert_list);
-    delete [] assert_list;
-    return result;
-}
-
-
-Z3_ast Z3Builder::getArrayValuesAsCons(const Array *root, Z3_ast array_ast) {
-    Z3_ast result = array_ast;
-
-    for (unsigned i = 0, e = root->size; i != e; ++i) {
-        Z3_ast index = Z3_mk_unsigned_int(context_, i, domain_sort_);
-        Z3_ast value = Z3_mk_unsigned_int(context_,
-                root->constantValues[i]->getZExtValue(), range_sort_);
-        result = Z3_mk_store(context_, result, index, value);
-    }
-
-    return result;
-}
-
-
-Z3_ast Z3Builder::getOrMakeExpr(ref<Expr> e) {
+z3::expr Z3Builder::getOrMakeExpr(ref<Expr> e) {
     if (!UseConstructHash || isa<ConstantExpr>(e)) {
         return makeExpr(e);
     }
 
-    ExprHashMap<Z3_ast>::iterator it = cons_expr_.find(e);
+    ExprMap::iterator it = cons_expr_.find(e);
     if (it != cons_expr_.end()) {
         return it->second;
     } else {
-        Z3_ast result = makeExpr(e);
+        z3::expr result = makeExpr(e);
         cons_expr_.insert(std::make_pair(e, result));
         return result;
     }
 }
 
 
-Z3_ast Z3Builder::makeExpr(ref<Expr> e) {
+z3::expr Z3Builder::makeExpr(ref<Expr> e) {
     ++stats::queryConstructs;
 
     switch (e->getKind()) {
@@ -214,20 +90,16 @@ Z3_ast Z3Builder::makeExpr(ref<Expr> e) {
         ConstantExpr *CE = cast<ConstantExpr>(e);
         unsigned width = CE->getWidth();
         if (width == 1)
-            return CE->isTrue() ? Z3_mk_true(context_) : Z3_mk_false(context_);
-
-        if (width <= 32)
-            return makeConst32(width, CE->getZExtValue(32));
+            return context_.bool_val(CE->isTrue());
         if (width <= 64)
-            return makeConst64(width, CE->getZExtValue());
+            return context_.bv_val((__uint64)CE->getZExtValue(), width);
 
         // This is slower than concatenating 64-bit extractions, like STPBuilder
         // does, but the assumption is that it's quite infrequent.
         // TODO: Log these transformations.
         llvm::SmallString<32> const_repr;
         CE->getAPValue().toStringUnsigned(const_repr, 10);
-        return Z3_mk_numeral(context_, const_repr.c_str(),
-                Z3_mk_bv_sort(context_, width));
+        return context_.bv_val(const_repr.c_str(), width);
     }
 
     case Expr::NotOptimized: {
@@ -236,28 +108,26 @@ Z3_ast Z3Builder::makeExpr(ref<Expr> e) {
     }
 
     case Expr::Read: {
-        ReadExpr *re = cast<ReadExpr>(e);
-        return Z3_mk_select(context_,
-                getArrayForUpdate(re->updates.root, re->updates.head),
-                getOrMakeExpr(re->index));
+        return makeReadExpr(cast<ReadExpr>(e));
     }
 
     case Expr::Select: {
         SelectExpr *se = cast<SelectExpr>(e);
-
-        Z3_ast cond = getOrMakeExpr(se->cond);
-        Z3_ast tExpr = getOrMakeExpr(se->trueExpr);
-        Z3_ast fExpr = getOrMakeExpr(se->falseExpr);
-        return Z3_mk_ite(context_, cond, tExpr, fExpr);
+        // XXX: A bug in Clang prevents us from using z3::ite
+        return z3::to_expr(context_, Z3_mk_ite(context_,
+                getOrMakeExpr(se->cond),
+                getOrMakeExpr(se->trueExpr),
+                getOrMakeExpr(se->falseExpr)));
     }
 
     case Expr::Concat: {
         ConcatExpr *ce = cast<ConcatExpr>(e);
 
         unsigned numKids = ce->getNumKids();
-        Z3_ast res = getOrMakeExpr(ce->getKid(numKids-1));
+        z3::expr res = getOrMakeExpr(ce->getKid(numKids-1));
         for (int i = numKids - 2; i >= 0; --i) {
-            res = Z3_mk_concat(context_, getOrMakeExpr(ce->getKid(i)), res);
+            res = z3::to_expr(context_,
+                    Z3_mk_concat(context_, getOrMakeExpr(ce->getKid(i)), res));
         }
         return res;
     }
@@ -265,14 +135,13 @@ Z3_ast Z3Builder::makeExpr(ref<Expr> e) {
     case Expr::Extract: {
         ExtractExpr *ee = cast<ExtractExpr>(e);
 
-        Z3_ast src = getOrMakeExpr(ee->expr);
+        z3::expr src = getOrMakeExpr(ee->expr);
         if (ee->getWidth() == 1) {
-            return Z3_mk_eq(context_,
-                    Z3_mk_extract(context_, ee->offset, ee->offset, src),
-                    makeOne(1));
+            return z3::to_expr(context_, Z3_mk_extract(context_,
+                    ee->offset, ee->offset, src)) == context_.bv_val(1, 1);
         } else {
-            return Z3_mk_extract(context_,
-                    ee->offset + ee->getWidth() - 1, ee->offset, src);
+            return z3::to_expr(context_, Z3_mk_extract(context_,
+                    ee->offset + ee->getWidth() - 1, ee->offset, src));
         }
     }
 
@@ -281,26 +150,31 @@ Z3_ast Z3Builder::makeExpr(ref<Expr> e) {
     case Expr::ZExt: {
         CastExpr *ce = cast<CastExpr>(e);
 
-        Z3_ast src = getOrMakeExpr(ce->src);
-        if (isBool(src)) {
-            return Z3_mk_ite(context_,
-                    src, makeOne(ce->getWidth()), makeZero(ce->getWidth()));
+        z3::expr src = getOrMakeExpr(ce->src);
+        if (src.is_bool()) {
+            // XXX: A bug in Clang prevents us from using z3::ite
+            return z3::to_expr(context_, Z3_mk_ite(context_,
+                    src,
+                    context_.bv_val(1, ce->getWidth()),
+                    context_.bv_val(0, ce->getWidth())));
         } else {
-            return Z3_mk_zero_ext(context_,
-                    ce->getWidth() - getBVWidth(src), src);
+            return z3::to_expr(context_, Z3_mk_zero_ext(context_,
+                    ce->getWidth() - src.get_sort().bv_size(), src));
         }
     }
 
     case Expr::SExt: {
         CastExpr *ce = cast<CastExpr>(e);
 
-        Z3_ast src = getOrMakeExpr(ce->src);
-        if (isBool(src)) {
-            return Z3_mk_ite(context_,
-                    src, makeOne(ce->getWidth()), makeZero(ce->getWidth()));
+        z3::expr src = getOrMakeExpr(ce->src);
+        if (src.is_bool()) {
+            return z3::to_expr(context_, Z3_mk_ite(context_,
+                    src,
+                    context_.bv_val(1, ce->getWidth()),
+                    context_.bv_val(0, ce->getWidth())));
         } else {
-            return Z3_mk_sign_ext(context_,
-                    ce->getWidth() - getBVWidth(src), src);
+            return z3::to_expr(context_, Z3_mk_sign_ext(context_,
+                    ce->getWidth() - src.get_sort().bv_size(), src));
         }
     }
 
@@ -308,71 +182,49 @@ Z3_ast Z3Builder::makeExpr(ref<Expr> e) {
 
     case Expr::Add: {
         AddExpr *ae = cast<AddExpr>(e);
-
-        Z3_ast left = getOrMakeExpr(ae->left);
-        Z3_ast right = getOrMakeExpr(ae->right);
-        assert(getBVWidth(right) != 1 && "uncanonicalized add");
-        return Z3_mk_bvadd(context_, left, right);
+        return getOrMakeExpr(ae->left) + getOrMakeExpr(ae->right);
     }
 
     case Expr::Sub: {
         SubExpr *se = cast<SubExpr>(e);
 
-        Z3_ast left = getOrMakeExpr(se->left);
-        Z3_ast right = getOrMakeExpr(se->right);
-        assert(getBVWidth(right) != 1 && "uncanonicalized sub");
         // STP here takes an extra width parameter, wondering why...
-        return Z3_mk_bvsub(context_, left, right);
+        return getOrMakeExpr(se->left) - getOrMakeExpr(se->right);
     }
 
     case Expr::Mul: {
         MulExpr *me = cast<MulExpr>(e);
 
-        Z3_ast left = getOrMakeExpr(me->left);
-        Z3_ast right = getOrMakeExpr(me->right);
-        assert(getBVWidth(right) != 1 && "uncanonicalized mul");
-        // Again, we skip some optimizations in STPBuilder; just let the solver
+        // Again, we skip some optimizations from STPBuilder; just let the solver
         // do its own set of simplifications.
-        return Z3_mk_bvmul(context_, left, right);
+        return getOrMakeExpr(me->left) * getOrMakeExpr(me->right);
     }
 
     case Expr::UDiv: {
         UDivExpr *de = cast<UDivExpr>(e);
-
-        Z3_ast left = getOrMakeExpr(de->left);
-        assert(getBVWidth(left) != 1 && "uncanonicalized udiv");
-        Z3_ast right = getOrMakeExpr(de->right);
-        return Z3_mk_bvudiv(context_, left, right);
+        return z3::udiv(getOrMakeExpr(de->left), getOrMakeExpr(de->right));
     }
 
     case Expr::SDiv: {
         SDivExpr *de = cast<SDivExpr>(e);
-
-        Z3_ast left = getOrMakeExpr(de->left);
-        assert(getBVWidth(left) != 1 && "uncanonicalized sdiv");
-        Z3_ast right = getOrMakeExpr(de->right);
-        return Z3_mk_bvsdiv(context_, left, right);
+        return getOrMakeExpr(de->left) / getOrMakeExpr(de->right);
     }
 
     case Expr::URem: {
         URemExpr *de = cast<URemExpr>(e);
-
-        Z3_ast left = getOrMakeExpr(de->left);
-        assert(getBVWidth(left) != 1 && "uncanonicalized urem");
-        Z3_ast right = getOrMakeExpr(de->right);
-        return Z3_mk_bvurem(context_, left, right);
+        return z3::to_expr(context_, Z3_mk_bvurem(context_,
+                getOrMakeExpr(de->left),
+                getOrMakeExpr(de->right)));
     }
 
     case Expr::SRem: {
         SRemExpr *de = cast<SRemExpr>(e);
 
-        Z3_ast left = getOrMakeExpr(de->left);
-        Z3_ast right = getOrMakeExpr(de->right);
-        assert(getBVWidth(right) != 1 && "uncanonicalized srem");
-
         // Assuming the sign follows dividend (otherwise we should have used
         // the Z3_mk_bvsmod() call)
-        return Z3_mk_bvsrem(context_, left, right);
+        return z3::to_expr(context_, Z3_mk_bvsrem(context_,
+                getOrMakeExpr(de->left),
+                getOrMakeExpr(de->right)));
     }
 
     // Bitwise
@@ -380,122 +232,99 @@ Z3_ast Z3Builder::makeExpr(ref<Expr> e) {
     case Expr::Not: {
         NotExpr *ne = cast<NotExpr>(e);
 
-        Z3_ast expr = getOrMakeExpr(ne->expr);
-        if (isBool(expr)) {
-            return Z3_mk_not(context_, expr);
+        z3::expr expr = getOrMakeExpr(ne->expr);
+        if (expr.is_bool()) {
+            return !expr;
         } else {
-            return Z3_mk_bvnot(context_, expr);
+            return ~expr;
         }
     }
 
     case Expr::And: {
         AndExpr *ae = cast<AndExpr>(e);
 
-        Z3_ast terms[2];
-        terms[0] = getOrMakeExpr(ae->left);
-        terms[1] = getOrMakeExpr(ae->right);
+        z3::expr left = getOrMakeExpr(ae->left);
+        z3::expr right = getOrMakeExpr(ae->right);
 
-        if (isBool(terms[0])) {
-            return Z3_mk_and(context_, 2, terms);
+        if (left.is_bool()) {
+            return left && right;
         } else {
-            return Z3_mk_bvand(context_, terms[0], terms[1]);
+            return left & right;
         }
     }
 
     case Expr::Or: {
         OrExpr *oe = cast<OrExpr>(e);
 
-        Z3_ast terms[2];
-        terms[0] = getOrMakeExpr(oe->left);
-        terms[1] = getOrMakeExpr(oe->right);
+        z3::expr left = getOrMakeExpr(oe->left);
+        z3::expr right = getOrMakeExpr(oe->right);
 
-        if (isBool(terms[0])) {
-            return Z3_mk_or(context_, 2, terms);
+        if (left.is_bool()) {
+            return left || right;
         } else {
-            return Z3_mk_bvor(context_, terms[0], terms[1]);
+            return left | right;
         }
     }
 
     case Expr::Xor: {
         XorExpr *xe = cast<XorExpr>(e);
 
-        Z3_ast left = getOrMakeExpr(xe->left);
-        Z3_ast right = getOrMakeExpr(xe->right);
+        z3::expr left = getOrMakeExpr(xe->left);
+        z3::expr right = getOrMakeExpr(xe->right);
 
-        if (isBool(left)) {
-            return Z3_mk_xor(context_, left, right);
+        if (left.is_bool()) {
+            return z3::to_expr(context_, Z3_mk_xor(context_, left, right));
         } else {
-            return Z3_mk_bvxor(context_, left, right);
+            return left ^ right;
         }
     }
 
     case Expr::Shl: {
         ShlExpr *se = cast<ShlExpr>(e);
-
-        Z3_ast left = getOrMakeExpr(se->left);
-        Z3_ast right = getOrMakeExpr(se->right);
-        assert(getBVWidth(left) == getBVWidth(right));
-        return Z3_mk_bvshl(context_, left, right);
+        return z3::to_expr(context_, Z3_mk_bvshl(context_,
+                getOrMakeExpr(se->left),
+                getOrMakeExpr(se->right)));
     }
 
     case Expr::LShr: {
         LShrExpr *lse = cast<LShrExpr>(e);
-
-        Z3_ast left = getOrMakeExpr(lse->left);
-        Z3_ast right = getOrMakeExpr(lse->right);
-        assert(getBVWidth(left) == getBVWidth(right));
-        return Z3_mk_bvlshr(context_, left, right);
+        return z3::to_expr(context_, Z3_mk_bvlshr(context_,
+                getOrMakeExpr(lse->left),
+                getOrMakeExpr(lse->right)));
     }
 
     case Expr::AShr: {
         AShrExpr *ase = cast<AShrExpr>(e);
-
-        Z3_ast left = getOrMakeExpr(ase->left);
-        Z3_ast right = getOrMakeExpr(ase->right);
-        assert(getBVWidth(left) == getBVWidth(right));
-        return Z3_mk_bvashr(context_, left, right);
+        return z3::to_expr(context_, Z3_mk_bvashr(context_,
+                getOrMakeExpr(ase->left),
+                getOrMakeExpr(ase->right)));
     }
 
     // Comparison
 
     case Expr::Eq: {
         EqExpr *ee = cast<EqExpr>(e);
-
-        Z3_ast left = getOrMakeExpr(ee->left);
-        Z3_ast right = getOrMakeExpr(ee->right);
-        return Z3_mk_eq(context_, left, right);
+        return getOrMakeExpr(ee->left) == getOrMakeExpr(ee->right);
     }
 
     case Expr::Ult: {
         UltExpr *ue = cast<UltExpr>(e);
-
-        Z3_ast left = getOrMakeExpr(ue->left);
-        Z3_ast right = getOrMakeExpr(ue->right);
-        return Z3_mk_bvult(context_, left, right);
+        return z3::ult(getOrMakeExpr(ue->left), getOrMakeExpr(ue->right));
     }
 
     case Expr::Ule: {
         UleExpr *ue = cast<UleExpr>(e);
-
-        Z3_ast left = getOrMakeExpr(ue->left);
-        Z3_ast right = getOrMakeExpr(ue->right);
-        return Z3_mk_bvule(context_, left, right);
+        return z3::ule(getOrMakeExpr(ue->left), getOrMakeExpr(ue->right));
     }
 
     case Expr::Slt: {
         SltExpr *se = cast<SltExpr>(e);
-
-        Z3_ast left = getOrMakeExpr(se->left);
-        Z3_ast right = getOrMakeExpr(se->right);
-        return Z3_mk_bvslt(context_, left, right);
+        return getOrMakeExpr(se->left) < getOrMakeExpr(se->right);
     }
 
     case Expr::Sle: {
         SleExpr *se = cast<SleExpr>(e);
-
-        Z3_ast left = getOrMakeExpr(se->left);
-        Z3_ast right = getOrMakeExpr(se->right);
-        return Z3_mk_bvsle(context_, left, right);
+        return getOrMakeExpr(se->left) <= getOrMakeExpr(se->right);
     }
 
     // unused due to canonicalization
@@ -512,34 +341,195 @@ Z3_ast Z3Builder::makeExpr(ref<Expr> e) {
     }
 }
 
+/* Z3ArrayBuilder ------------------------------------------------------------*/
 
-Z3_ast Z3Builder::makeOne(unsigned width) {
-    return Z3_mk_int(context_, 1, Z3_mk_bv_sort(context_, width));
+Z3ArrayBuilder::Z3ArrayBuilder(z3::context &context)
+    : Z3Builder(context) {
+
 }
 
 
-Z3_ast Z3Builder::makeZero(unsigned width) {
-    return Z3_mk_int(context_, 0, Z3_mk_bv_sort(context_, width));
+Z3ArrayBuilder::~Z3ArrayBuilder() {
+
 }
 
 
-Z3_ast Z3Builder::makeMinusOne(unsigned width) {
-    return Z3_mk_int(context_, -1, Z3_mk_bv_sort(context_, width));
+z3::expr Z3ArrayBuilder::getInitialRead(const Array *root, unsigned index) {
+    return z3::select(getInitialArray(root), context_.bv_val(index, 32));
 }
 
 
-Z3_ast Z3Builder::makeConst32(unsigned width, uint32_t value) {
-    assert(width <= 32);
-    return Z3_mk_unsigned_int(context_, value,
-            Z3_mk_bv_sort(context_, width));
+z3::expr Z3ArrayBuilder::makeReadExpr(ref<ReadExpr> re) {
+    return z3::select(getArrayForUpdate(re->updates.root, re->updates.head),
+            getOrMakeExpr(re->index));
 }
 
 
-Z3_ast Z3Builder::makeConst64(unsigned width, uint64_t value) {
-    assert(width <= 64);
-    return Z3_mk_unsigned_int64(context_, value,
-            Z3_mk_bv_sort(context_, width));
+z3::expr Z3ArrayBuilder::getArrayForUpdate(const Array *root,
+        const UpdateNode *un) {
+    if (!un) {
+        return getInitialArray(root);
+    }
+
+    UpdateListMap::iterator it = cons_updates_.find(un);
+    if (it != cons_updates_.end()) {
+        return it->second;
+    }
+
+    // TODO: Make non-recursive
+    z3::expr result = z3::store(getArrayForUpdate(root, un->next),
+            getOrMakeExpr(un->index), getOrMakeExpr(un->value));
+    cons_updates_.insert(std::make_pair(un, result));
+    return result;
 }
 
+
+z3::expr Z3ArrayBuilder::getInitialArray(const Array *root) {
+    ArrayMap::iterator it = cons_arrays_.find(root);
+    if (it != cons_arrays_.end()) {
+        return it->second;
+    }
+
+    char buf[256];
+    snprintf(buf, sizeof(buf), "%s_%p", root->name.c_str(), (void*)root);
+
+    z3::expr result = context_.constant(buf,
+            context_.array_sort(context_.bv_sort(32), context_.bv_sort(8)));
+    if (root->isConstantArray()) {
+        result = initializeArray(root, result);
+    }
+    cons_arrays_.insert(std::make_pair(root, result));
+    return result;
+}
+
+
+z3::expr Z3ArrayBuilder::initializeArray(const Array *root, z3::expr array_ast) {
+    z3::expr result = array_ast;
+    for (unsigned i = 0, e = root->size; i != e; ++i) {
+        z3::expr index = context_.bv_val(i, 32);
+        z3::expr value = context_.bv_val(
+                (unsigned)root->constantValues[i]->getZExtValue(), 8);
+        result = z3::store(result, index, value);
+    }
+    return result;
+}
+
+
+/* Z3AssertArrayBuilder ------------------------------------------------------*/
+
+Z3AssertArrayBuilder::Z3AssertArrayBuilder(z3::solver &solver)
+    : Z3ArrayBuilder(solver.ctx()),
+      solver_(solver) {
+
+}
+
+
+Z3AssertArrayBuilder::~Z3AssertArrayBuilder() {
+
+}
+
+
+z3::expr Z3AssertArrayBuilder::initializeArray(const Array *root,
+        z3::expr array_ast) {
+    solver_.add(getArrayAssertion(root, array_ast));
+    return array_ast;
+}
+
+z3::expr Z3AssertArrayBuilder::getArrayAssertion(const Array *root,
+        z3::expr array_ast) {
+    z3::expr result = context_.bool_val(true);
+    for (unsigned i = 0, e = root->size; i != e; ++i) {
+        z3::expr array_read = z3::select(array_ast, context_.bv_val(i, 32));
+        z3::expr array_value = context_.bv_val(
+                (unsigned)root->constantValues[i]->getZExtValue(), 8);
+
+        result = result && (array_read == array_value);
+    }
+    return result;
+}
+
+/* Z3IteBuilder --------------------------------------------------------------*/
+
+Z3IteBuilder::Z3IteBuilder(z3::context &context)
+    : Z3Builder(context) {
+
+}
+
+Z3IteBuilder::~Z3IteBuilder() {
+
+}
+
+z3::expr Z3IteBuilder::getInitialRead(const Array *root, unsigned index) {
+    shared_ptr<ExprVector> elem_vector = getArrayValues(root);
+    return (*elem_vector)[index];
+}
+
+z3::expr Z3IteBuilder::makeReadExpr(ref<ReadExpr> re) {
+    return getReadForArray(getOrMakeExpr(re->index), re->updates.root,
+            re->updates.head);
+}
+
+
+z3::expr Z3IteBuilder::getReadForArray(z3::expr index, const Array *root,
+            const UpdateNode *un) {
+    ReadMap::iterator it = read_map_.find(std::make_pair(index, un));
+    if (it != read_map_.end()) {
+        return it->second;
+    }
+
+    z3::expr result(context_);
+
+    if (!un) {
+        result = getReadForInitialArray(index, root);
+    } else {
+        result = z3::to_expr(context_, Z3_mk_ite(context_,
+                index == getOrMakeExpr(un->index),
+                getOrMakeExpr(un->value),
+                getReadForArray(index, root, un->next)));
+    }
+    read_map_.insert(std::make_pair(std::make_pair(index, un), result));
+    return result;
+}
+
+
+z3::expr Z3IteBuilder::getReadForInitialArray(z3::expr index, const Array *root) {
+    shared_ptr<ExprVector> elem_vector = getArrayValues(root);
+
+    // TODO: balance this tree
+    z3::expr ite_tree = context_.bv_val(0, 8);
+    for (unsigned i = 0, e = root->size; i != e; ++i) {
+        ite_tree = z3::to_expr(context_, Z3_mk_ite(context_,
+                index == context_.bv_val(i, 32),
+                (*elem_vector)[i],
+                ite_tree));
+    }
+    return ite_tree;
+}
+
+shared_ptr<Z3IteBuilder::ExprVector> Z3IteBuilder::getArrayValues(const Array *root) {
+    ArrayVariableMap::iterator it = array_variables_.find(root);
+    if (it != array_variables_.end()) {
+        return it->second;
+    }
+
+    shared_ptr<ExprVector> elem_vector = make_shared<ExprVector>();
+
+    if (root->isConstantArray()) {
+        for (unsigned i = 0, e = root->size; i != e; ++i) {
+            elem_vector->push_back(context_.bv_val(
+                    (unsigned)root->constantValues[i]->getZExtValue(), 8));
+        }
+    } else {
+        char buf[256];
+        for (unsigned i = 0, e = root->size; i != e; ++i) {
+            snprintf(buf, sizeof(buf), "%s_%p_%u",
+                    root->name.c_str(), (void*)root, i);
+            elem_vector->push_back(context_.bv_const(buf, 8));
+        }
+    }
+
+    array_variables_.insert(std::make_pair(root, elem_vector));
+    return elem_vector;
+}
 
 } /* namespace klee */
