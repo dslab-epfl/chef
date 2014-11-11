@@ -1,9 +1,11 @@
 #include "KleeExecutor.h"
+#include "klee/SolverFactory.h"
 
 using namespace klee;
 
 KleeExecutor::KleeExecutor(const InterpreterOptions &opts, InterpreterHandler *ie)
-        : Executor(opts, ie)
+        : Executor(opts, ie,
+                new DefaultSolverFactory(ie))
 {
 }
 

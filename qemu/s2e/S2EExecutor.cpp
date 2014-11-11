@@ -111,6 +111,7 @@ uint64_t helper_set_cc_op_eflags(void);
 #include <klee/CoreStats.h>
 #include <klee/TimerStatIncrementer.h>
 #include <klee/Solver.h>
+#include <klee/SolverFactory.h>
 
 #include <llvm/Support/TimeValue.h>
 
@@ -617,7 +618,8 @@ void S2EExecutor::handleGetValue(klee::Executor* executor,
 S2EExecutor::S2EExecutor(S2E* s2e, TCGLLVMContext *tcgLLVMContext,
                     const InterpreterOptions &opts,
                             InterpreterHandler *ie)
-        : Executor(opts, ie, tcgLLVMContext->getExecutionEngine()),
+        : Executor(opts, ie, new DefaultSolverFactory(ie),
+                tcgLLVMContext->getExecutionEngine()),
           m_s2e(s2e), m_tcgLLVMContext(tcgLLVMContext),
           m_executeAlwaysKlee(false), m_forkProcTerminateCurrentState(false),
           m_inLoadBalancing(false), yieldedState(NULL)

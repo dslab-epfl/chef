@@ -22,6 +22,7 @@
 #include "SeedInfo.h"
 #include "SpecialFunctionHandler.h"
 #include "klee/StatsTracker.h"
+#include "klee/SolverFactory.h"
 #include "TimingSolver.h"
 #include "klee/UserSearcher.h"
 #include "klee/SolverStats.h"
@@ -122,10 +123,6 @@ namespace {
                   cl::init(0));
 
   cl::opt<bool>
-  DebugValidateSolver("debug-validate-solver",
-		      cl::init(false));
-
-  cl::opt<bool>
   SuppressExternalWarnings("suppress-external-warnings", cl::init(true));
 
   cl::opt<bool>
@@ -137,47 +134,14 @@ namespace {
                               cl::init(false));
 
   cl::opt<bool>
-  UseFastCexSolver("use-fast-cex-solver",
-                   cl::init(false));
-
-  cl::opt<bool>
-  UseIndependentSolver("use-independent-solver",
-                       cl::init(true),
-		       cl::desc("Use constraint independence"));
-
-  cl::opt<bool>
   EmitAllErrors("emit-all-errors",
                 cl::init(false),
                 cl::desc("Generate tests cases for all errors "
                          "(default=one per (error,instruction) pair)"));
 
-  //The counter example cache may have bad interactions with
-  //concolic mode. Disabled by default.
-  cl::opt<bool>
-  UseCexCache("use-cex-cache",
-              cl::init(false),
-	      cl::desc("Use counterexample caching"));
-
-  cl::opt<bool>
-  UseQueryLog("use-query-log",
-              cl::init(false));
-
-  cl::opt<bool>
-  UseQueryPCLog("use-query-pc-log",
-                cl::init(false));
-  
-  cl::opt<bool>
-  UseSTPQueryPCLog("use-stp-query-pc-log",
-                   cl::init(false));
-
   cl::opt<bool>
   NoExternals("no-externals", 
            cl::desc("Do not allow external functin calls"));
-
-  cl::opt<bool>
-  UseCache("use-cache",
-           cl::init(true),
-	   cl::desc("Use validity caching"));
 
   cl::opt<bool>
   OnlyReplaySeeds("only-replay-seeds", 
@@ -251,22 +215,6 @@ namespace {
             cl::desc("Inhibit forking at memory cap (vs. random terminate)"),
             cl::init(true));
 
-  cl::opt<bool>
-  UseForkedSTP("use-forked-stp", 
-                 cl::desc("Run STP in forked process"),  cl::init(false));
-
-  enum EndSolverType {
-      SOLVER_STP,
-      SOLVER_Z3
-  };
-
-  cl::opt<EndSolverType> EndSolver("end-solver", cl::desc("End solver to use"),
-          cl::values(
-                  clEnumValN(SOLVER_STP, "stp", "The STP solver"),
-                  clEnumValN(SOLVER_Z3, "z3", "The Z3 solver"),
-                  clEnumValEnd),
-          cl::init(SOLVER_Z3));
-
   /*
   cl::opt<bool>
   IgnoreAlwaysConcrete("ignore-always-concrete",
@@ -303,73 +251,29 @@ namespace klee {
   RNG theRNG;
 }
 
-Solver *constructSolverChain(Solver *endSolver,
-                             std::string queryLogPath,
-                             std::string stpQueryLogPath,
-                             std::string queryPCLogPath,
-                             std::string stpQueryPCLogPath) {
-  Solver *solver = endSolver;
-
-  if (UseSTPQueryPCLog)
-    solver = createPCLoggingSolver(solver, 
-                                   stpQueryLogPath);
-
-  if (UseFastCexSolver)
-    solver = createFastCexSolver(solver);
-
-  if (UseCexCache)
-    solver = createCexCachingSolver(solver);
-
-  if (UseCache)
-    solver = createCachingSolver(solver);
-
-  // FIXME: The check should be more generic (e.g., enable only for
-  // non-incremental solvers)
-  if (UseIndependentSolver && (EndSolver != SOLVER_Z3))
-    solver = createIndependentSolver(solver);
-
-  if (DebugValidateSolver)
-    solver = createValidatingSolver(solver, endSolver);
-
-  if (UseQueryPCLog)
-    solver = createPCLoggingSolver(solver, 
-                                   queryPCLogPath);
-  
-  return solver;
-}
-
 void Executor::initializeSolver()
 {
     if (this->solver) {
         delete this->solver;
     }
 
-    Solver *endSolver = NULL;
+    Solver *endSolver = solverFactory->createEndSolver();
 
-    if (EndSolver == SOLVER_STP) {
-        endSolver = new STPSolver(UseForkedSTP);
-    } else if (EndSolver == SOLVER_Z3) {
-        endSolver = new Z3Solver();
-    }
-
-    Solver *solver =
-      constructSolverChain(endSolver,
-                           interpreterHandler->getOutputFilename("queries.qlog"),
-                           interpreterHandler->getOutputFilename("stp-queries.qlog"),
-                           interpreterHandler->getOutputFilename("queries.pc"),
-                           interpreterHandler->getOutputFilename("stp-queries.pc"));
+    Solver *solver = solverFactory->decorateSolver(endSolver);
 
     this->solver = new TimingSolver(solver,
             dynamic_cast<STPSolver*>(endSolver));
 }
 
-Executor::Executor(const InterpreterOptions &opts,
-                   InterpreterHandler *ih, ExecutionEngine *engine)
+Executor::Executor(const InterpreterOptions &opts, InterpreterHandler *ih,
+        SolverFactory *solver_factory,
+        ExecutionEngine *engine)
   : Interpreter(opts),
     kmodule(0),
     interpreterHandler(ih),
     searcher(0),
     externalDispatcher(new ExternalDispatcher(engine)),
+    solverFactory(solver_factory),
     statsTracker(0),
     pathWriter(0),
     symPathWriter(0),
@@ -440,6 +344,7 @@ Executor::~Executor() {
     delete specialFunctionHandler;
   if (statsTracker)
     delete statsTracker;
+  delete solverFactory;
   delete solver;
   delete kmodule;
 }

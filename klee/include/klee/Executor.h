@@ -68,6 +68,7 @@ namespace klee {
   class TimingSolver;
   class TreeStreamWriter;
   class BitfieldSimplifier;
+  class SolverFactory;
   template<class T> class ref;
 
   /// \todo Add a context object to keep track of data only live
@@ -103,6 +104,7 @@ protected:
   Searcher *searcher;
 
   ExternalDispatcher *externalDispatcher;
+  SolverFactory *solverFactory;
   TimingSolver *solver;
   MemoryManager *memory;
   std::set<ExecutionState*> states;
@@ -393,6 +395,7 @@ protected:
 
 public:
   Executor(const InterpreterOptions &opts, InterpreterHandler *ie,
+           SolverFactory *solver_factory,
            llvm::ExecutionEngine *engine = NULL);
   virtual ~Executor();
 
