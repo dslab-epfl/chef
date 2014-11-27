@@ -26,8 +26,8 @@ void ConstraintManager::addConstraint(const ref<Expr> e) {
         break;
     case Expr::And: {
         BinaryExpr *be = cast<BinaryExpr>(e);
-        addConstraint(e);
-        addConstraint(e);
+        addConstraint(be->getKid(0));
+        addConstraint(be->getKid(1));
         break;
     }
     default:
