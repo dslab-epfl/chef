@@ -33,6 +33,9 @@
  * All contributors are listed in the S2E-AUTHORS file.
  */
 
+#ifndef _S2E_H
+#define _S2E_H
+
 #include <stdio.h>
 #include <string.h>
 #include <inttypes.h>
@@ -154,3 +157,6 @@ static inline int s2e_range(int start, int end, const char *name)
         return x;
     }
 }
+
+
+#endif /* _S2E_H */
