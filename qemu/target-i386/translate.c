@@ -2269,13 +2269,18 @@ static void gen_nop_modrm(DisasContext *s, int modrm)
         case 2:
             {
 #ifdef CONFIG_S2E
-                /* TODO magic numbers */
+                /* We overload the unused SIB byte to store an S2E
+                 * magic byte (0x42). Check Tables 2-1, 2-2, 2-3 in the
+                 * Intel 64 and IA-32 Architectures Software Developer's Manual
+                 * for more details on the possible ModR/M byte encodings.*/
                 if (code == 0x42) {
+                    /* We use the 32-bit displacement as the payload. */
                     uint32_t s2e_op = ldl_code(s->pc);
-                    printf("\033[1mS2E custom instruction (%08X)\033[0m\n",
-                           s2e_op);
-                    s2e_tcg_emit_custom_instruction(g_s2e, s2e_op);
+                    s2e_tcg_emit_custom_instruction(g_s2e, (uint64_t)s2e_op);
                 }
+                /* Future extension: Use the first byte of the payload as
+                 * a prefix indicating a long S2E opcode that spans
+                 * two NOP instructions. */
 #endif
                 s->pc += 4;
                 break;
@@ -6485,14 +6490,12 @@ static target_ulong disas_insn(DisasContext *s, target_ulong pc_start)
             SET_TB_TYPE(TB_JMP);
             tval = (int8_t)insn_get(s, OT_BYTE);
 #ifdef CONFIG_S2E
-            /* TODO magic numbers */
+            /* magic jump */
             if (tval == 0x06) {
-                uint16_t efof = lduw_code(s->pc);
-                if (efof == 0x3f0f) {
-                    uint32_t s2e_op = ldl_code(s->pc+sizeof(efof));
-                    printf("\033[1mS2E custom instruction (%08X)\033[0m\n",
-                           s2e_op);
-                    s2e_tcg_emit_custom_instruction(g_s2e, s2e_op);
+                uint16_t magic = lduw_code(s->pc);
+                if (magic == 0x3f0f) { /* invalid x86 opcode */
+                    uint32_t s2e_op = ldl_code(s->pc + 2);
+                    s2e_tcg_emit_custom_instruction(g_s2e, (uint64_t)s2e_op);
                 }
             }
 #endif
