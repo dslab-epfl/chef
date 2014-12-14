@@ -52,7 +52,11 @@
 #if defined(TARGET_I386)
 #define PROG_COUNTER eip
 #define S2E_TARGET_CONC_LIMIT eip
+#ifdef S2E_DISPATCH_CUSTOM
 #define S2E_OPCODE_SIZE 10
+#else
+#define S2E_OPCODE_SIZE 8
+#endif
 #elif defined(TARGET_ARM)
 #define PROG_COUNTER regs[15]
 #define S2E_TARGET_CONC_LIMIT regs[15]
