@@ -294,10 +294,8 @@ int main(int argc, char **argv, char **envp) {
 
     // Solvers used for replay
     DefaultSolverFactory solver_factory(NULL);
-    Solver *klee_solver = solver_factory.createEndSolver();
-    klee_solver = solver_factory.decorateSolver(klee_solver);
-    Z3Solver z3_solver(true);
-    //STPSolver stp_solver(false);
+    Solver *solver = solver_factory.createEndSolver();
+    solver = solver_factory.decorateSolver(solver);
 
     TimeValue total_recorded(TimeValue::ZeroTime);
     TimeValue total_replayed(TimeValue::ZeroTime);
@@ -342,27 +340,27 @@ int main(int argc, char **argv, char **envp) {
             switch (query_type) {
             case TRUTH: {
                 bool result = false;
-                z3_solver.impl->computeTruth(query, result);
+                solver->impl->computeTruth(query, result);
                 assert((sqlite3_column_int(select_stmt, 3) == Solver::True)
                         == result);
                 break;
             }
             case VALIDITY: {
                 Solver::Validity result = Solver::Unknown;
-                z3_solver.impl->computeValidity(query, result);
+                solver->impl->computeValidity(query, result);
                 assert(static_cast<Solver::Validity>(sqlite3_column_int(select_stmt, 3)) == result);
                 break;
             }
             case VALUE: {
                 ref<Expr> result;
-                z3_solver.impl->computeValue(query, result);
+                solver->impl->computeValue(query, result);
                 break;
             }
             case INITIAL_VALUES: {
                 std::vector<const Array*> objects;
                 std::vector<std::vector<unsigned char> > result;
                 bool hasSolution;
-                z3_solver.impl->computeInitialValues(query, objects, result,
+                solver->impl->computeInitialValues(query, objects, result,
                         hasSolution);
                 break;
             }
