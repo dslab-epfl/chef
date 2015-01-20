@@ -175,7 +175,7 @@ namespace klee {
 
   class Z3Solver : public Solver {
   public:
-      Z3Solver();
+      Z3Solver(bool incremental);
   };
 
   /* *** */

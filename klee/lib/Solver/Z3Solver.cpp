@@ -45,10 +45,15 @@
 
 #include "Z3Builder.h"
 
+#include <boost/scoped_ptr.hpp>
+
 #include <z3++.h>
 
 #include <list>
 #include <iostream>
+
+
+using boost::scoped_ptr;
 
 
 namespace {
@@ -64,10 +69,10 @@ namespace {
 namespace klee {
 
 
-class Z3SolverImpl : public SolverImpl {
+class Z3BaseSolverImpl : public SolverImpl {
 public:
-    Z3SolverImpl();
-    virtual ~Z3SolverImpl();
+    Z3BaseSolverImpl();
+    virtual ~Z3BaseSolverImpl();
 
     bool computeTruth(const Query&, bool &isValid);
     bool computeValue(const Query&, ref<Expr> &result);
@@ -76,32 +81,64 @@ public:
                               std::vector<std::vector<unsigned char> > &values,
                               bool &hasSolution);
 
-private:
-    typedef std::list<ConditionNodeRef> ConditionNodeList;
-
+protected:
     void configureSolver();
-    void prepareContext(const Query&);
+
+    virtual void preCheck(const Query&) = 0;
+    virtual void postCheck(const Query&) = 0;
+
+    bool check(const Query &query,
+               const std::vector<const Array*> &objects,
+               std::vector<std::vector<unsigned char> > &values,
+               bool &hasSolution);
 
     z3::context context_;
     z3::solver solver_;
 
-    Z3Builder *builder_;
+    scoped_ptr<Z3Builder> builder_;
+};
 
-    ConditionNodeList *last_constraints_;
+
+class Z3IncrementalSolverImpl : public Z3BaseSolverImpl {
+public:
+    Z3IncrementalSolverImpl();
+    virtual ~Z3IncrementalSolverImpl();
+
+protected:
+    typedef std::list<ConditionNodeRef> ConditionNodeList;
+
+    virtual void preCheck(const Query&);
+    virtual void postCheck(const Query&);
+
+    scoped_ptr<ConditionNodeList> last_constraints_;
+};
+
+
+class Z3SolverImpl : public Z3BaseSolverImpl {
+public:
+    Z3SolverImpl();
+    virtual ~Z3SolverImpl();
+
+protected:
+    virtual void preCheck(const Query&);
+    virtual void postCheck(const Query&);
 };
 
 
 ////////////////////////////////////////////////////////////////////////////////
 
 
-Z3Solver::Z3Solver() : Solver(new Z3SolverImpl()) {
+Z3Solver::Z3Solver(bool incremental)
+    : Solver(incremental ?
+                (SolverImpl*) new Z3IncrementalSolverImpl() :
+                (SolverImpl*) new Z3SolverImpl()) {
 
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
 
-Z3SolverImpl::Z3SolverImpl()
+Z3BaseSolverImpl::Z3BaseSolverImpl()
     : solver_(context_, "QF_BV") {
 
     configureSolver();
@@ -110,18 +147,63 @@ Z3SolverImpl::Z3SolverImpl()
         builder_ = new Z3ArrayBuilder(context_);
     else
         builder_ = new Z3AssertArrayBuilder(solver_);*/
-    builder_ = new Z3IteBuilder(context_);
-    last_constraints_ = new ConditionNodeList();
+    // TODO: Build an appropriate builder
+    builder_.reset(new Z3IteBuilder(context_));
 }
 
 
-Z3SolverImpl::~Z3SolverImpl() {
-    delete builder_;
-    delete last_constraints_;
+Z3BaseSolverImpl::~Z3BaseSolverImpl() {
+
 }
 
 
-void Z3SolverImpl::configureSolver() {
+bool Z3BaseSolverImpl::check(const Query &query,
+                             const std::vector<const Array*> &objects,
+                             std::vector<std::vector<unsigned char> > &values,
+                             bool &hasSolution) {
+
+    // Note that we're checking for validity (or a counterexample)
+    solver_.add(!builder_->construct(query.expr));
+
+    z3::check_result result = solver_.check();
+
+    if (result != z3::sat) {
+        hasSolution = false;
+        return true;
+    }
+
+    z3::model model = solver_.get_model();
+
+    values.reserve(objects.size());
+    for (std::vector<const Array*>::const_iterator it = objects.begin(),
+            ie = objects.end(); it != ie; ++it) {
+        const Array *array = *it;
+        std::vector<unsigned char> data;
+
+        data.reserve(array->size);
+        for (unsigned offset = 0; offset < array->size; ++offset) {
+            z3::expr value_ast = model.eval(
+                    builder_->getInitialRead(array, offset), true);
+            unsigned value_num;
+
+            Z3_bool conv_result = Z3_get_numeral_uint(context_, value_ast,
+                    &value_num);
+            assert(conv_result == Z3_TRUE && "Could not convert value");
+            assert(value_num < (1 << 8*sizeof(unsigned char))
+                    && "Invalid model value");
+
+            data.push_back((unsigned char)value_num);
+        }
+        values.push_back(data);
+    }
+
+    hasSolution = true;
+    return true;
+
+}
+
+
+void Z3BaseSolverImpl::configureSolver() {
     // TODO: Turn this into some sort of optional logging...
     llvm::errs() << "[Z3] Initializing..." << '\n';
 
@@ -141,7 +223,7 @@ void Z3SolverImpl::configureSolver() {
 }
 
 
-bool Z3SolverImpl::computeTruth(const Query &query, bool &isValid) {
+bool Z3BaseSolverImpl::computeTruth(const Query &query, bool &isValid) {
     std::vector<const Array*> objects;
     std::vector<std::vector<unsigned char> > values;
     bool hasSolution;
@@ -154,7 +236,7 @@ bool Z3SolverImpl::computeTruth(const Query &query, bool &isValid) {
 }
 
 // TODO: Use model evaluation in Z3
-bool Z3SolverImpl::computeValue(const Query &query, ref<Expr> &result) {
+bool Z3BaseSolverImpl::computeValue(const Query &query, ref<Expr> &result) {
     std::vector<const Array*> objects;
     std::vector<std::vector<unsigned char> > values;
     bool hasSolution;
@@ -171,7 +253,42 @@ bool Z3SolverImpl::computeValue(const Query &query, ref<Expr> &result) {
 }
 
 
-void Z3SolverImpl::prepareContext(const Query &query) {
+bool Z3BaseSolverImpl::computeInitialValues(const Query &query,
+                                        const std::vector<const Array*> &objects,
+                                        std::vector<std::vector<unsigned char> > &values,
+                                        bool &hasSolution) {
+    ++stats::queries;
+    ++stats::queryCounterexamples;
+
+    preCheck(query);
+    bool result = check(query, objects, values, hasSolution);
+    postCheck(query);
+
+    if (hasSolution) {
+        ++stats::queriesInvalid;
+    } else {
+        ++stats::queriesValid;
+    }
+
+    return result;
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+
+
+Z3IncrementalSolverImpl::Z3IncrementalSolverImpl()
+    : Z3BaseSolverImpl(),
+      last_constraints_(new ConditionNodeList()) {
+
+}
+
+Z3IncrementalSolverImpl::~Z3IncrementalSolverImpl() {
+
+}
+
+
+void Z3IncrementalSolverImpl::preCheck(const Query &query) {
     llvm::errs() << "====> Query size: " << query.constraints.size() << '\n';
 
     ConditionNodeList *cur_constraints = new ConditionNodeList();
@@ -213,67 +330,50 @@ void Z3SolverImpl::prepareContext(const Query &query) {
         }
     }
 
-    delete last_constraints_;
-    last_constraints_ = cur_constraints;
-}
-
-
-bool Z3SolverImpl::computeInitialValues(const Query &query,
-                                        const std::vector<const Array*> &objects,
-                                        std::vector<std::vector<unsigned char> > &values,
-                                        bool &hasSolution) {
-    ++stats::queries;
-    ++stats::queryCounterexamples;
-
-    prepareContext(query);
+    last_constraints_.reset(cur_constraints);
 
     solver_.push();
-
-    // Note that we're checking for validity (or a counterexample)
-    solver_.add(!builder_->construct(query.expr));
-
-    z3::check_result result = solver_.check();
-
-    if (result == z3::sat) {
-        z3::model model = solver_.get_model();
-
-        values.reserve(objects.size());
-        for (std::vector<const Array*>::const_iterator it = objects.begin(),
-                ie = objects.end(); it != ie; ++it) {
-            const Array *array = *it;
-            std::vector<unsigned char> data;
-
-            data.reserve(array->size);
-            for (unsigned offset = 0; offset < array->size; ++offset) {
-                z3::expr value_ast = model.eval(
-                        builder_->getInitialRead(array, offset), true);
-                unsigned value_num;
-
-                Z3_bool conv_result = Z3_get_numeral_uint(context_, value_ast,
-                        &value_num);
-                assert(conv_result == Z3_TRUE && "Could not convert value");
-                assert(value_num < (1 << 8*sizeof(unsigned char))
-                        && "Invalid model value");
-
-                data.push_back((unsigned char)value_num);
-            }
-            values.push_back(data);
-        }
-
-        hasSolution = true;
-    } else {
-        hasSolution = false;
-    }
-
-    solver_.pop();
-
-    if (hasSolution) {
-        ++stats::queriesInvalid;
-    } else {
-        ++stats::queriesValid;
-    }
-
-    return true;
 }
+
+
+void Z3IncrementalSolverImpl::postCheck(const Query&) {
+    solver_.pop();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+
+Z3SolverImpl::Z3SolverImpl() : Z3BaseSolverImpl() {
+
+}
+
+
+Z3SolverImpl::~Z3SolverImpl() {
+
+}
+
+
+void Z3SolverImpl::preCheck(const Query &query) {
+    llvm::errs() << "====> Query size: " << query.constraints.size() << '\n';
+
+    std::list<ConditionNodeRef> cur_constraints;
+
+    for (ConditionNodeRef node = query.constraints.head(),
+            root = query.constraints.root();
+            node != root; node = node->parent()) {
+        cur_constraints.push_front(node);
+    }
+
+    for (std::list<ConditionNodeRef>::iterator it = cur_constraints.begin(),
+            ie = cur_constraints.end(); it != ie; ++it) {
+        solver_.add(builder_->construct((*it)->expr()));
+    }
+}
+
+
+void Z3SolverImpl::postCheck(const Query&) {
+    solver_.reset();
+}
+
 
 }

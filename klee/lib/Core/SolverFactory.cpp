@@ -98,6 +98,11 @@ cl::opt<bool>
 DebugValidateSolver("debug-validate-solver",
             cl::init(false));
 
+cl::opt<bool>
+UseIncrementalSolving("use-incremental-solving",
+                      cl::init(true),
+                      cl::desc("Use incremental solving, if available"));
+
 }
 
 
@@ -114,7 +119,7 @@ Solver *DefaultSolverFactory::createEndSolver() {
     if (EndSolver == SOLVER_STP) {
         return new STPSolver(UseForkedSTP);
     } else if (EndSolver == SOLVER_Z3) {
-        return new Z3Solver();
+        return new Z3Solver(UseIncrementalSolving);
     }
     return NULL;
 }

@@ -296,7 +296,7 @@ int main(int argc, char **argv, char **envp) {
     DefaultSolverFactory solver_factory(NULL);
     Solver *klee_solver = solver_factory.createEndSolver();
     klee_solver = solver_factory.decorateSolver(klee_solver);
-    Z3Solver z3_solver;
+    Z3Solver z3_solver(true);
     //STPSolver stp_solver(false);
 
     TimeValue total_recorded(TimeValue::ZeroTime);

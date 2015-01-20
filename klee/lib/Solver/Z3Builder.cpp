@@ -43,6 +43,7 @@
 
 namespace {
 
+// TODO: Make this a solver factory option and factor it out
 llvm::cl::opt<bool>
 UseConstructHash("z3-use-hash-consing",
                  llvm::cl::desc("Use hash consing during Z3 query construction."),
