@@ -49,6 +49,7 @@ extern CPUArchState *env;
 
 #include <s2e/S2EExecutionState.h>
 #include <s2e/S2EExecutor.h>
+#include <s2e/OSTracer.h>
 
 #include <s2e/s2e_qemu.h>
 #include <s2e/s2e_config.h>
@@ -93,7 +94,7 @@ void CorePlugin::initializeTimers()
 
 void CorePlugin::initialize()
 {
-
+    m_OSTracer = new OSTracer(*s2e(), *this);
 }
 
 /******************************/
