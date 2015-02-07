@@ -52,22 +52,22 @@ private:
 class OSTracer;
 
 
-class OSThread : public ExecutionStream {
+class OSThread {
 public:
-    int tid() {
+    int tid() const {
         return tid_;
     }
 
-    bool kernel_mode() {
+    bool kernel_mode() const {
         return kernel_mode_;
     }
 
-    ExecutionStream &execution_stream() {
-        return exec_stream_;
+    bool running() const {
+        return running_;
     }
 
-    ExecutionStream &user_execution_stream() {
-        return user_exec_stream_;
+    bool terminated() const {
+        return terminated_;
     }
 
 private:
@@ -76,11 +76,31 @@ private:
     int tid_;
     uint64_t address_space_;
     bool kernel_mode_;
-
-    ExecutionStreamFilter exec_stream_;
-    ExecutionStreamFilter user_exec_stream_;
+    bool running_;
+    bool terminated_;
 
     friend class OSTracer;
+};
+
+
+typedef boost::shared_ptr<OSThread> OSThreadRef;
+
+
+class OSThreadMatcher {
+public:
+    OSThreadMatcher(OSThreadRef thread, bool include_kernel)
+        : thread_(thread),
+          include_kernel_(include_kernel) {
+
+    }
+
+    bool operator()() {
+        return thread_->running() && (include_kernel_ || !thread_->kernel_mode());
+    }
+
+private:
+    OSThreadRef thread_;
+    bool include_kernel_;
 };
 
 
@@ -93,9 +113,13 @@ public:
         return exec_stream_;
     }
 
+    sigc::signal<void, S2EExecutionState*, OSThreadRef> onThreadCreate;
+    sigc::signal<void, S2EExecutionState*, OSThreadRef> onThreadExit;
+    sigc::signal<void, S2EExecutionState*, OSThreadRef, OSThreadRef> onThreadSwitch;
+
 private:
-    typedef std::map<int, boost::shared_ptr<OSThread> > ThreadMap;
-    typedef std::map<uint64_t, boost::shared_ptr<OSThread> > AddressSpaceMap;
+    typedef std::map<int, OSThreadRef> ThreadMap;
+    typedef std::map<uint64_t, OSThreadRef> AddressSpaceMap;
 
     S2E &s2e_;
     ExecutionStream &exec_stream_;
@@ -107,7 +131,7 @@ private:
     ThreadMap threads_;
     AddressSpaceMap address_spaces_;
 
-    boost::shared_ptr<OSThread> active_;
+    boost::shared_ptr<OSThread> active_thread_;
 
     void onCustomInstruction(S2EExecutionState *state, uint64_t arg);
     void onPrivilegeChange(S2EExecutionState *state,
