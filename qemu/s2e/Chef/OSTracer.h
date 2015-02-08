@@ -10,10 +10,16 @@
 
 #include <s2e/Signals/Signals.h>
 #include <s2e/ExecutionStream.h>
+
 #include <boost/shared_ptr.hpp>
 #include <boost/scoped_ptr.hpp>
+
 #include <stdint.h>
 #include <map>
+
+namespace llvm {
+class raw_ostream;
+}
 
 namespace s2e {
 
@@ -58,6 +64,10 @@ public:
         return tid_;
     }
 
+    const std::string &name() const {
+        return name_;
+    }
+
     bool kernel_mode() const {
         return kernel_mode_;
     }
@@ -74,6 +84,7 @@ private:
     OSThread(OSTracer &tracer, int tid, uint64_t address_space);
 
     int tid_;
+    std::string name_;
     uint64_t address_space_;
     bool kernel_mode_;
     bool running_;
@@ -81,6 +92,8 @@ private:
 
     friend class OSTracer;
 };
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &out, const OSThread &thread);
 
 
 typedef boost::shared_ptr<OSThread> OSThreadRef;
@@ -109,20 +122,16 @@ public:
     OSTracer(S2E &s2e, ExecutionStream &estream);
     ~OSTracer();
 
-    ExecutionStream &exec_stream() {
-        return exec_stream_;
-    }
-
     sigc::signal<void, S2EExecutionState*, OSThreadRef> onThreadCreate;
     sigc::signal<void, S2EExecutionState*, OSThreadRef> onThreadExit;
     sigc::signal<void, S2EExecutionState*, OSThreadRef, OSThreadRef> onThreadSwitch;
+    sigc::signal<void, S2EExecutionState*, OSThreadRef, bool> onThreadPrivilegeChange;
 
 private:
     typedef std::map<int, OSThreadRef> ThreadMap;
     typedef std::map<uint64_t, OSThreadRef> AddressSpaceMap;
 
     S2E &s2e_;
-    ExecutionStream &exec_stream_;
 
     sigc::connection on_custom_instruction_;
     sigc::connection on_privilege_change_;

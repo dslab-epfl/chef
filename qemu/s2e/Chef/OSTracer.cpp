@@ -61,10 +61,16 @@ OSThread::OSThread(OSTracer &tracer, int tid, uint64_t address_space)
 
 }
 
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &out, const OSThread &thread) {
+    out << thread.name() << "[" << thread.tid() << "]";
+    return out;
+}
+
 // OSTracer ////////////////////////////////////////////////////////////////////
 
 OSTracer::OSTracer(S2E &s2e, ExecutionStream &estream)
-        : s2e_(s2e), exec_stream_(estream) {
+        : s2e_(s2e) {
     on_custom_instruction_ = estream.onCustomInstruction.connect(
             sigc::mem_fun(*this, &OSTracer::onCustomInstruction));
     on_privilege_change_ = estream.onPrivilegeChange.connect(
@@ -111,13 +117,18 @@ void OSTracer::onCustomInstruction(S2EExecutionState *state, uint64_t arg) {
             s2e_.getWarningsStream(state) << "Could not read thread descriptor" << '\n';
             return;
         }
-        s2e_.getMessagesStream(state) << "Thread start: " << s2e_thread.pid
-                << " Address space: " << llvm::format("0x%x", s2e_thread.address_space) << '\n';
 
         ThreadMap::iterator it = threads_.find(s2e_thread.pid);
 
         shared_ptr<OSThread> os_thread = shared_ptr<OSThread>(new OSThread(*this,
                 s2e_thread.pid, s2e_thread.address_space));
+
+        if (!state->mem()->readString(s2e_thread.name, os_thread->name_, 256)) {
+            s2e_.getWarningsStream(state) << "Could not read thread name" << '\n';
+        }
+
+        s2e_.getMessagesStream(state) << "Thread start: " << *os_thread
+                << " Address space: " << llvm::format("0x%x", s2e_thread.address_space) << '\n';
 
         if (it != threads_.end()) {
             // FIXME
@@ -135,11 +146,11 @@ void OSTracer::onCustomInstruction(S2EExecutionState *state, uint64_t arg) {
     }
     case S2E_THREAD_EXIT: {
         int tid = (int)data;
-        s2e_.getMessagesStream(state) << "Thread exit: " << tid << '\n';
         ThreadMap::iterator it = threads_.find(tid);
         if (it == threads_.end()) {
-            s2e_.getWarningsStream(state) << "Unknown thread exiting. Ignoring." << '\n';
+            s2e_.getWarningsStream(state) << "Unknown thread exiting (" << tid << "). Ignoring." << '\n';
         } else {
+            s2e_.getMessagesStream(state) << "Thread exit: " << *it->second << '\n';
             onThreadExit.emit(state, it->second);
             address_spaces_.erase(it->second->address_space_);
             threads_.erase(it);
@@ -169,6 +180,8 @@ void OSTracer::onPrivilegeChange(S2EExecutionState *state,
 
     if (active_thread_->kernel_mode_ != kernel_mode) {
         active_thread_->kernel_mode_ = kernel_mode;
+        onThreadPrivilegeChange.emit(state, active_thread_, kernel_mode);
+
 #if 0
         if (active_thread_->kernel_mode_) {
             active_thread_->user_exec_stream_.disconnect();
@@ -189,8 +202,6 @@ void OSTracer::onPageDirectoryChange(S2EExecutionState *state,
         return;
     }
 
-    s2e_.getMessagesStream(state) << "Process scheduled: " << it->second->tid() << '\n';
-
 #if 0
     if (active_thread_) {
         assert(active_thread_->kernel_mode_);
@@ -199,6 +210,8 @@ void OSTracer::onPageDirectoryChange(S2EExecutionState *state,
 #endif
 
     if (active_thread_ != it->second) {
+        s2e_.getMessagesStream(state) << "Process scheduled: " << *it->second << '\n';
+
         OSThreadRef old_thread = active_thread_;
         active_thread_ = it->second;
         onThreadSwitch.emit(state, old_thread, active_thread_);
