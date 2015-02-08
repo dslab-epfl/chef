@@ -63,7 +63,6 @@ struct Query;
 namespace s2e {
 
 class S2EExecutionState;
-class OSTracer;
 
 /** A type of a signal emitted on instruction execution. Instances of this signal
     will be dynamically created and destroyed on demand during translation. */
@@ -84,7 +83,6 @@ private:
     SYMB_MMIO_CHECK m_isMmioSymbolicCb;
     void *m_isPortSymbolicOpaque;
     void *m_isMmioSymbolicOpaque;
-    OSTracer *m_OSTracer;
 
 public:
     CorePlugin(S2E* s2e): Plugin(s2e) {
@@ -93,7 +91,6 @@ public:
         m_isMmioSymbolicCb = NULL;
         m_isPortSymbolicOpaque = NULL;
         m_isMmioSymbolicOpaque = NULL;
-        m_OSTracer = NULL;
     }
 
     void initialize();

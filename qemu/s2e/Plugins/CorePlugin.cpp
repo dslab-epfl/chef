@@ -94,7 +94,7 @@ void CorePlugin::initializeTimers()
 
 void CorePlugin::initialize()
 {
-    m_OSTracer = new OSTracer(*s2e(), *this);
+
 }
 
 /******************************/
