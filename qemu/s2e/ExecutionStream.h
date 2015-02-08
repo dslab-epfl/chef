@@ -85,6 +85,22 @@ public:
                  uint64_t /* current page directory base */>
           onPageDirectoryChange;
 
+    /**
+     *  Triggered *after* each instruction is translated to notify
+     *  plugins of which registers are used by the instruction.
+     *  Each bit of the mask corresponds to one of the registers of
+     *  the architecture (e.g., R_EAX, R_ECX, etc).
+     */
+    sigc::signal<void,
+                 ExecutionSignal*,
+                 S2EExecutionState* /* current state */,
+                 TranslationBlock*,
+                 uint64_t /* program counter of the instruction */,
+                 uint64_t /* registers read by the instruction */,
+                 uint64_t /* registers written by the instruction */,
+                 bool /* instruction accesses memory */>
+          onTranslateRegisterAccessEnd;
+
 private:
     ExecutionStream(const ExecutionStream&);
     void operator=(const ExecutionStream&);
