@@ -80,12 +80,24 @@ public:
         return terminated_;
     }
 
+    uint64_t address_space() const {
+        return address_space_;
+    }
+
+    uint64_t stack_top() const {
+        return stack_top_;
+    }
+
 private:
-    OSThread(OSTracer &tracer, int tid, uint64_t address_space);
+    OSThread(OSTracer &tracer, int tid, uint64_t address_space,
+            uint64_t stack_top);
 
     int tid_;
     std::string name_;
+
+    // TODO: Move into an address space (process?) structure
     uint64_t address_space_;
+    uint64_t stack_top_;
     bool kernel_mode_;
     bool running_;
     bool terminated_;

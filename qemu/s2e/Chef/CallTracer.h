@@ -13,6 +13,8 @@
 
 #include <boost/shared_ptr.hpp>
 
+#include <vector>
+
 namespace s2e {
 
 class S2E;
@@ -20,11 +22,31 @@ class OSThread;
 class OSTracer;
 
 struct StackFrame {
-    uint64_t fn_address;
     uint64_t call_site;
     uint64_t top;
-    uint64_t size;
+    uint64_t bottom;
 };
+
+class CallStack {
+public:
+    CallStack(uint64_t top, uint64_t sp);
+
+    void update(S2EExecutionState *state, uint64_t pc, uint64_t sp,
+            bool is_call);
+
+    unsigned size() {
+        return frames_.size();
+    }
+
+private:
+    uint64_t top_;
+    std::vector<StackFrame> frames_;
+
+    // Non-copyable
+    CallStack(const CallStack&);
+    void operator=(const CallStack&);
+};
+
 
 class CallTracer {
 public:
@@ -49,6 +71,9 @@ private:
     ExecutionStream &exec_stream_;
     boost::shared_ptr<OSThread> tracked_thread_;
 
+    CallStack call_stack_;
+
+    sigc::connection on_thread_privilege_change_;
     sigc::connection on_translate_block_start_;
     sigc::connection on_translate_register_access_;
 

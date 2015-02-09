@@ -52,9 +52,11 @@ namespace s2e {
 
 // OSThread ////////////////////////////////////////////////////////////////////
 
-OSThread::OSThread(OSTracer &tracer, int tid, uint64_t address_space)
+OSThread::OSThread(OSTracer &tracer, int tid, uint64_t address_space,
+        uint64_t stack_top)
     : tid_(tid),
       address_space_(address_space),
+      stack_top_(stack_top),
       kernel_mode_(true),
       running_(false),
       terminated_(false) {
@@ -121,7 +123,7 @@ void OSTracer::onCustomInstruction(S2EExecutionState *state, uint64_t arg) {
         ThreadMap::iterator it = threads_.find(s2e_thread.pid);
 
         shared_ptr<OSThread> os_thread = shared_ptr<OSThread>(new OSThread(*this,
-                s2e_thread.pid, s2e_thread.address_space));
+                s2e_thread.pid, s2e_thread.address_space, s2e_thread.stack_top));
 
         if (!state->mem()->readString(s2e_thread.name, os_thread->name_, 256)) {
             s2e_.getWarningsStream(state) << "Could not read thread name" << '\n';
