@@ -22,37 +22,33 @@ namespace s2e {
 
 
 CallStack::CallStack(uint64_t top, uint64_t sp) : top_(top) {
-    StackFrame root;
-    root.call_site = 0;
-    root.top = top;
-    root.bottom = sp;
-
-    frames_.push_back(root);
+    frames_.push_back(CallStackFrame(0, 0, top, sp));
 }
 
-void CallStack::update(S2EExecutionState *state, uint64_t pc, uint64_t sp,
-        bool is_call) {
+
+void CallStack::newFrame(uint64_t call_site, uint64_t function, uint64_t sp) {
     assert(!frames_.empty());
+    assert(sp < frames_.back().bottom);
 
-    if (is_call) {
-        assert(sp < frames_.back().bottom);
+    frames_.push_back(CallStackFrame(call_site, function, frames_.back().bottom, sp));
+    onStackFramePush.emit(this);
+}
 
-        StackFrame frame;
-        frame.call_site = pc;
-        frame.top = frames_.back().bottom;
-        frame.bottom = sp;
 
-        frames_.push_back(frame);
-    }
-
+void CallStack::update(uint64_t sp) {
+    assert(!frames_.empty());
     // Unwind
     while (sp >= frames_.back().top) {
         frames_.pop_back();
+        onStackFramePop.emit(this);
         assert(!frames_.empty());
     }
 
     // Resize
-    frames_.back().bottom = sp;
+    if (frames_.back().bottom != sp) {
+        frames_.back().bottom = sp;
+        onStackFrameResize.emit(this);
+    }
 }
 
 
@@ -62,33 +58,29 @@ CallTracer::CallTracer(S2E &s2e, ExecutionStream &estream, OSTracer &os_tracer,
         boost::shared_ptr<OSThread> thread)
     : s2e_(s2e),
       exec_stream_(estream),
-      tracked_thread_(thread),
-      call_stack_(thread->stack_top() + 8, thread->stack_top()) { // FIXME
+      tracked_thread_(thread) {
 
-    on_thread_privilege_change_ = os_tracer.onThreadPrivilegeChange.connect(
-            sigc::mem_fun(*this, &CallTracer::onThreadPrivilegeChange));
+    // FIXME: Obtain the upper bound from VMAs
+    call_stack_ = boost::shared_ptr<CallStack>(
+            new CallStack(thread->stack_top() + 8, thread->stack_top()));
+
+    on_thread_switch_ = os_tracer.onThreadSwitch.connect(
+            sigc::mem_fun(*this, &CallTracer::onThreadSwitch));
 }
 
 CallTracer::~CallTracer() {
-    // XXX: Bug, the per-translation block signals are never disconnected.
-    on_thread_privilege_change_.disconnect();
-    on_translate_block_start_.disconnect();
+    on_thread_switch_.disconnect();
     on_translate_register_access_.disconnect();
+
     s2e_tb_safe_flush();
-}
-
-
-void CallTracer::onTranslateBlockStart(ExecutionSignal *signal,
-        S2EExecutionState *state, TranslationBlock *tb, uint64_t pc) {
-    s2e_.getMessagesStream(state) << "Block translated at " << llvm::format("0x%x", pc) << '\n';
 }
 
 
 void CallTracer::onTranslateRegisterAccess(ExecutionSignal *signal,
         S2EExecutionState *state, TranslationBlock *tb, uint64_t pc,
         uint64_t rmask, uint64_t wmask, bool accessesMemory) {
-    // The stack is manipulated by operating the ESP register (either by a CALL
-    // instruction or by explicit register write).
+    if (tracked_thread_->kernel_mode())
+        return;
 
     // s2e_.getMessagesStream(state) << "Register access: " << llvm::format("pc=0x%x wmask=0x%016llx", pc, wmask) << '\n';
 
@@ -103,48 +95,37 @@ void CallTracer::onTranslateRegisterAccess(ExecutionSignal *signal,
 }
 
 
-void CallTracer::onThreadPrivilegeChange(S2EExecutionState *state,
-        boost::shared_ptr<OSThread> thread, bool kernel_mode) {
-    // TODO: Use a filter object, create per-thread connectors, or filtered
-    // execution streams.  Execution streams could also be specified as a
-    // hierarchy (user stream -> machine stream).
+void CallTracer::onThreadSwitch(S2EExecutionState *state,
+            boost::shared_ptr<OSThread> prev, boost::shared_ptr<OSThread> next) {
+    if (next == tracked_thread_) {
+        on_translate_register_access_ = exec_stream_.onTranslateRegisterAccessEnd.connect(
+                sigc::mem_fun(*this, &CallTracer::onTranslateRegisterAccess));
 
-    if (thread != tracked_thread_) {
-        // Not the thread of interest
-        return;
-    }
-
-    if (kernel_mode) {
-        s2e_.getMessagesStream(state) << "Entering kernel mode." << '\n';
-        // The current user process goes out of scope
-        on_translate_block_start_.disconnect();
+        // TODO: Ideally, this should happen whenever onTranslate* callbacks are
+        // modified.
+        s2e_tb_safe_flush();
+    } else if (prev == tracked_thread_) {
         on_translate_register_access_.disconnect();
-
-        // TODO: Do this only when switching context between threads.
-        return;
     }
-
-    s2e_.getMessagesStream(state) << "Entering user mode." << '\n';
-
-    on_translate_block_start_ = exec_stream_.onTranslateBlockStart.connect(
-            sigc::mem_fun(*this, &CallTracer::onTranslateBlockStart));
-    on_translate_register_access_ = exec_stream_.onTranslateRegisterAccessEnd.connect(
-            sigc::mem_fun(*this, &CallTracer::onTranslateRegisterAccess));
-
-    // TODO: Ideally, this should happen whenever onTranslate* callbacks are
-    // modified.
-    s2e_tb_safe_flush();
-
 }
+
 
 void CallTracer::onStackPointerModification(S2EExecutionState *state, uint64_t pc,
         bool isCall) {
     uint64_t sp = state->getSp();
+
+#if 0
     s2e_.getMessagesStream(state)
             << llvm::format("ESP=0x%x@pc=0x%x EIP=0x%x Top=0x%x/Size=%d",
                     sp, pc, state->getPc(), tracked_thread_->stack_top(), call_stack_.size())
             << '\n';
-    call_stack_.update(state, pc, sp, isCall);
+#endif
+
+    if (isCall) {
+        call_stack_->newFrame(pc, state->getPc(), sp);
+    } else {
+        call_stack_->update(sp);
+    }
 }
 
 } /* namespace s2e */
