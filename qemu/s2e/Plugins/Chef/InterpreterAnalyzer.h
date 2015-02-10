@@ -18,6 +18,7 @@ namespace s2e {
 class OSTracer;
 class OSThread;
 class CallTracer;
+class CallGraphMonitor;
 
 namespace plugins {
 
@@ -31,9 +32,14 @@ public:
 private:
     void onThreadCreate(S2EExecutionState *state,
             boost::shared_ptr<OSThread> thread);
+    void onThreadExit(S2EExecutionState *state,
+            boost::shared_ptr<OSThread> thread);
 
     boost::scoped_ptr<OSTracer> os_tracer_;
     boost::scoped_ptr<CallTracer> call_tracer_;
+    boost::scoped_ptr<CallGraphMonitor> call_graph_monitor_;
+
+    boost::shared_ptr<OSThread> tracked_thread_;
 };
 
 } /* namespace plugins */
