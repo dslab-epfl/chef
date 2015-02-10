@@ -168,6 +168,8 @@ void OSTracer::onCustomInstruction(S2EExecutionState *state, uint64_t arg) {
         }
         break;
     }
+    default:
+        assert(0 && "FIXME");
     }
 }
 
