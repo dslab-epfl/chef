@@ -13,6 +13,7 @@
 #include <s2e/Chef/CallGraphMonitor.h>
 #include <s2e/ExecutionStream.h>
 #include <s2e/Plugins/CorePlugin.h>
+#include <s2e/Plugins/Opcodes.h>
 
 #include <llvm/Support/Format.h>
 
@@ -27,6 +28,11 @@ namespace plugins {
 S2E_DEFINE_PLUGIN(InterpreterAnalyzer,
         "Analyze the structure of an interpreter binary.",
         "");
+
+enum {
+    S2E_CHEF_CALIBRATE = 0x1000,
+    S2E_CHEF_CALIBRATE_END = 0x1001
+};
 
 
 class CallCountAnalyzer {
@@ -90,6 +96,7 @@ void InterpreterAnalyzer::initialize() {
             sigc::mem_fun(*this, &InterpreterAnalyzer::onThreadExit));
 }
 
+
 void InterpreterAnalyzer::onThreadCreate(S2EExecutionState *state,
             boost::shared_ptr<OSThread> thread) {
     if (thread->name() != "python") {
@@ -101,13 +108,20 @@ void InterpreterAnalyzer::onThreadCreate(S2EExecutionState *state,
     call_tracer_.reset(new CallTracer(*s2e(), *s2e()->getCorePlugin(),
             *os_tracer_, thread));
     call_graph_monitor_.reset(new CallGraphMonitor(call_tracer_->call_stack()));
+
+    on_custom_instruction_ = s2e()->getCorePlugin()->onCustomInstruction.connect(
+            sigc::mem_fun(*this, &InterpreterAnalyzer::onCustomInstruction));
+
 }
+
 
 void InterpreterAnalyzer::onThreadExit(S2EExecutionState *state,
         boost::shared_ptr<OSThread> thread) {
-    if (thread != tracked_thread_ ) {
+    if (thread != tracked_thread_) {
         return;
     }
+
+    on_custom_instruction_.disconnect();
 
     CallCountAnalyzer cca(call_graph_monitor_.get());
     CallCountAnalyzer::CallerList cl;
@@ -119,6 +133,34 @@ void InterpreterAnalyzer::onThreadExit(S2EExecutionState *state,
                 << '\n';
     }
 
+}
+
+
+void InterpreterAnalyzer::onCustomInstruction(S2EExecutionState *state,
+        uint64_t arg) {
+    if (!OPCODE_CHECK(arg, SYSCALL_OPCODE))
+        return;
+
+    // FIXME: Offer a customInstruction hook in the thread object.
+    if (!tracked_thread_->running() || tracked_thread_->kernel_mode()) {
+        return;
+    }
+
+    target_uint syscall_id = 0;
+
+    if (!state->readCpuRegisterConcrete(CPU_OFFSET(regs[R_EAX]), &syscall_id, sizeof(syscall_id))) {
+        s2e()->getWarningsStream(state) << "Could not read syscall parameters" << '\n';
+        return;
+    }
+
+    switch (syscall_id) {
+    case S2E_CHEF_CALIBRATE:
+        s2e()->getMessagesStream(state) << "Calibration checkpoint." << '\n';
+        break;
+    case S2E_CHEF_CALIBRATE_END:
+        s2e()->getMessagesStream(state) << "Calibration ended." << '\n';
+        break;
+    }
 }
 
 } /* namespace plugins */

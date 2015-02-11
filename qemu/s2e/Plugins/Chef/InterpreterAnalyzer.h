@@ -35,11 +35,15 @@ private:
     void onThreadExit(S2EExecutionState *state,
             boost::shared_ptr<OSThread> thread);
 
+    void onCustomInstruction(S2EExecutionState *state, uint64_t arg);
+
     boost::scoped_ptr<OSTracer> os_tracer_;
     boost::scoped_ptr<CallTracer> call_tracer_;
     boost::scoped_ptr<CallGraphMonitor> call_graph_monitor_;
 
     boost::shared_ptr<OSThread> tracked_thread_;
+
+    sigc::connection on_custom_instruction_;
 };
 
 } /* namespace plugins */
