@@ -90,6 +90,8 @@ OSTracer::~OSTracer() {
 
 
 void OSTracer::onCustomInstruction(S2EExecutionState *state, uint64_t arg) {
+    // FIXME: Factor this out in a mixin or base class
+
     // We only look at the syscall convention
     if (!OPCODE_CHECK(arg, SYSCALL_OPCODE))
         return;
@@ -153,6 +155,7 @@ void OSTracer::onCustomInstruction(S2EExecutionState *state, uint64_t arg) {
             s2e_.getWarningsStream(state) << "Unknown thread exiting (" << tid << "). Ignoring." << '\n';
         } else {
             s2e_.getMessagesStream(state) << "Thread exit: " << *it->second << '\n';
+            it->second->terminated_ = true;
             onThreadExit.emit(state, it->second);
             address_spaces_.erase(it->second->address_space_);
             threads_.erase(it);
@@ -168,8 +171,6 @@ void OSTracer::onCustomInstruction(S2EExecutionState *state, uint64_t arg) {
         }
         break;
     }
-    default:
-        assert(0 && "FIXME");
     }
 }
 
@@ -214,10 +215,18 @@ void OSTracer::onPageDirectoryChange(S2EExecutionState *state,
 #endif
 
     if (active_thread_ != it->second) {
+        if (active_thread_) {
+            assert(active_thread_->running_);
+            active_thread_->running_ = false;
+        }
+        assert(!it->second->running_);
+        it->second->running_ = true;
+
         s2e_.getMessagesStream(state) << "Process scheduled: " << *it->second << '\n';
 
         OSThreadRef old_thread = active_thread_;
         active_thread_ = it->second;
+
         onThreadSwitch.emit(state, old_thread, active_thread_);
     }
 
