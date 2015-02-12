@@ -1,0 +1,216 @@
+#!/usr/bin/env sh
+
+username="$(id -un)"
+imagename="$username/zopf_base"
+s2e_docker_repo_url='https://github.com/stefanbucur/s2e_docker'
+
+# Paths on host:
+runname="$(basename "$0")"         # name of the script
+runpath="$(readlink -f "$(dirname "$0")")"  # full path to script w/o scriptname
+rundir="$(basename "$runpath")"    # directory name the script resides in
+repopath="$(dirname "$runpath")"   # full path to chef repo
+repodir="$(basename "$repopath")"  # name of chef repo (probably s2e-chef)
+sharepath="$(dirname "$repopath")" # full path to shared dir. (repo-location/..)
+tmppath="$runpath/${runname}.tmp"  # full path to temporary dir.
+
+# Paths in container:
+host_='/chef'                      # full path to shared dir.
+host_repopath="$host_/$repodir"    # full path to chef repo
+host_runpath="$host_repopath/$rundir"       # full path to script w/o scriptname
+
+# HELPERS ======================================================================
+
+die()
+{
+	retval=$1
+	format="$2"
+	shift 2
+	printf "$format\n" "$@" >&2
+	exit $retval
+}
+
+# COMMAND: BUILD ===============================================================
+
+dr_build_usage()
+{
+	cat >&2 <<- EOF
+
+	$0 build: Create new docker container and compile S²E-chef
+
+	Usage: $0 build [OPTIONS ...] CONFIG
+
+	Options:
+	    -f   Force-rebuild S²E-chef
+	    -h   Show this help
+
+	Configs:
+	    debug         Build S²E-chef in debug mode
+	    release       Build S²E-chef in release mode
+
+	EOF
+	exit 1
+}
+
+dr_build()
+{
+	# Options:
+	forcebuild=1
+	while getopts fh opt; do
+		case "$opt" in
+			f) forcebuild=0;;
+			h) dr_build_usage;;
+			'?') die 1 "Run \`$0 build -h\` for help."
+		esac
+	done
+	shift $(($OPTIND - 1))
+
+	# Configuration:
+	config="$1"
+	test -n "$config" || dr_build_usage
+	shift
+	case "$config" in
+		debug|release) ;;
+		*) dr_build_usage;;
+	esac
+
+	# Trailing options:
+	test -z "$1" || die 1 "Trailing command line: \`$@\`"
+
+	# Get Dockerfile:
+	mkdir -p "$tmppath"
+	if [ ! -d "$tmppath/s2e_docker" ]; then
+		git clone "$s2e_docker_repo_url" "$tmppath/s2e_docker"
+	else
+		cd "$tmppath/s2e_docker"
+		git pull
+		cd -
+	fi
+
+	# Container:
+	cname="$username/zopf:$config"
+	if ! docker inspect "$cname" >/dev/null 2>&1; then
+		printf "\033[1m>>> image $cname not found, building ... %s\033[0m\n" \
+		       '(this may take some time)'
+		docker build --rm --tag="$cname" "$tmppath/s2e_docker/image/chef"
+	else
+		printf "\033[1m>>> image $cname found, not rebuilding\033[0m\n"
+	fi
+
+	# Run container:
+	ccmd=$(printf '%s/%s make %s %s' \
+	              "$host_runpath" "$runname" \
+	              "$(test $forcebuild -eq 0 && echo "-f")" $config)
+	docker run --name=zopf_$config -t -i -v "$sharepath":"$host_" "$cname" $ccmd
+}
+
+# COMMAND: MAKE ================================================================
+
+dr_make_usage()
+{
+	cat >&2 <<- EOF
+
+	$0 make: Build S²E-chef from within the container
+
+	Usage: $0 make [OPTIONS ...] CONFIG
+
+	Options:
+	    -f   Force recompilation
+	    -h   Show this help
+
+	Run \`$0 build -h\` for a list of supported configurations.
+
+	EOF
+	exit 1
+}
+
+dr_make()
+{
+	# Options:
+	forcebuild=1
+	while getopts fh opt; do
+		case "$opt" in
+			f) forcebuild=0;;
+			h) dr_make_usage;;
+			'?') die 1 "Run \`$0 make -h\` for help."
+		esac
+	done
+	shift $(($OPTIND - 1))
+
+	# Configuration:
+	config="$1"
+	case "$config" in
+		debug) builddir='build-debug';;
+		release) builddir='build-release';;
+		*) dr_make_usage;;
+	esac
+	shift
+
+	# Trailing options:
+	test -z "$1" || die 1 "Trailing command line: \`$@\`"
+
+	# Set up build directory:
+	ln -s "$host_repopath" s2e
+	test ! -d "$builddir" || test $forcebuild -eq 0 || die 4 '%s %s' \
+	    "Build directory $builddir already exists." \
+	    "Pass \`-f\` to force rebuild."
+	mkdir "$builddir"
+	cd "$builddir"
+	ln -s "$host_repopath/Makefile.docker" Makefile
+
+	# Build chef:
+	make all-$config guest-tools
+}
+
+# COMMAND: RUN =================================================================
+
+dr_run()
+{
+	# TODO
+	die 127 'this function is not implemented yet'
+}
+
+# MAIN =========================================================================
+
+usage()
+{
+	cat >&2 <<- EOF
+
+	Usage: $0 COMMAND [ARGS ...]
+
+	Commands:
+	    build    Create a new docker container
+	    make     Build S²E-chef (to be called from within the container)
+	    run      Run a test in a docker container
+
+	Run \`$0 COMMAND --help\` for more information on a specific command.
+
+	EOF
+	exit 1
+}
+
+main()
+{
+	# Get command:
+	cmd="$1"
+	test -n "$cmd" || usage
+	shift
+
+	# Check docker permission:
+	if [ "$cmd" != 'make' ] && ! docker ps >/dev/null 2>&1; then
+		die 2 '%s %s' \
+		      'You do not seem to have the permission to run docker.' \
+		      "Make sure you are in the 'docker' group, or run $0 as root."
+	fi
+
+	# Execute command:
+	set -e
+	case "$cmd" in
+		build) dr_build $@ ;;
+		run) dr_run $@ ;;
+		make) dr_make $@ ;;
+		*) usage ;;
+	esac
+	set +e
+}
+
+main $@
