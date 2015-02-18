@@ -26,17 +26,29 @@ die_help()
 	die 1 "Run \`$0 -h\` for help."
 }
 
+die_clean()
+{
+	rm -rf "$1"
+	exit 2
+}
+
 milestone()
 {
-	msg="$1"
+	milestone_ok=0
+	milestone_msg="$1"
 	shift
-	printf "[    ] %s ..." "$msg"
-	if "$@" >/dev/null; then
-		printf "\r[ \033[32mOK\033[0m ] %s     \n" "$msg"
-	else
-		printf "\r[\033[31mFAIL\033[0m] %s     \n" "$msg"
-		exit 2
-	fi
+	printf "[    ] %s ..." "$milestone_msg"
+	{
+		if [ $QUIET -eq 0 ]; then
+			"$@" >/dev/null 2>&1
+		else
+			"$@" >/dev/null
+		fi
+	} || milestone_ok=1
+	printf "\r[\033[%s\033[0m] %s    \n" \
+		"$(test $milestone_ok -eq 0 && printf "32m OK " || printf "31mFAIL")" \
+		"$milestone_msg"
+	return $milestone_ok
 }
 
 note()
@@ -64,7 +76,7 @@ check_builddir()
 {
 	if [ -d "$1" ]; then
 		if [ $FORCE -ne 0 ]; then
-			skip "$1 found, not rebuilding"
+			skip "$1 exists, not rebuilding"
 			return 1
 		else
 			rm -rf "$1"
@@ -86,7 +98,7 @@ lua_build()
 	lua_buildpath="$BUILDPATH/$lua_builddir"
 
 	# Build directory:
-	check_builddir "$lua_builddir" || return
+	check_builddir "$lua_buildpath" || return 0
 	if [ -e "$lua_tarball" ]; then
 		skip "$lua_tarball found, not downloading again"
 	else
@@ -96,7 +108,9 @@ lua_build()
 	cd "$lua_buildpath"
 
 	# Build:
-	milestone 'building lua' make -j$JOBS linux
+	milestone 'building lua' \
+		make -j$JOBS linux || \
+		die_clean "$lua_buildpath"
 }
 
 # STP ==========================================================================
@@ -110,7 +124,7 @@ stp_build()
 	stp_buildpath="$BUILDPATH/stp"
 
 	# Build directory:
-	check_builddir "$stp_buildpath" || return
+	check_builddir "$stp_buildpath" || return 0
 	cp -r "$stp_srcpath" "$stp_buildpath"
 	cd "$stp_buildpath"
 
@@ -123,7 +137,9 @@ stp_build()
 		$(test $ASAN -eq 0 && echo '--with-address-sanitizer')
 
 	# Build:
-	milestone 'building STP' make -j$JOBS
+	milestone 'building STP' \
+		make -j$JOBS || \
+		die_clean "$stp_buildpath"
 }
 
 # KLEE =========================================================================
@@ -134,7 +150,7 @@ klee_build()
 	klee_buildpath="$BUILDPATH/opt"
 
 	# Build directory:
-	check_builddir "$klee_buildpath" || return
+	check_builddir "$klee_buildpath" || return 0
 	mkdir -p "$klee_buildpath"
 	cd "$klee_buildpath"
 
@@ -165,7 +181,9 @@ klee_build()
 	else
 		klee_buildopts='ENABLE_OPTIMIZED=1'
 	fi
-	milestone 'building KLEE' make -j$JOBS $klee_buildopts
+	milestone 'building KLEE' \
+		make -j$JOBS $klee_buildopts || \
+		die_clean "$klee_buildpath"
 }
 
 # LIBMEMTRACER =================================================================
@@ -176,7 +194,7 @@ libmt_build()
 	libmt_buildpath="$BUILDPATH/libmemtracer"
 
 	# Build directory:
-	check_builddir "$libmt_buildpath" || return
+	check_builddir "$libmt_buildpath" || return 0
 	mkdir -p "$libmt_buildpath"
 	cd "$libmt_buildpath"
 
@@ -188,7 +206,9 @@ libmt_build()
 
 	# Make:
 	libmt_buildopts="CLANG_CC=$LLVM_NATIVE_CC CLANG_CXX=$LLVM_NATIVE_CXX"
-	milestone 'building libmemtracer' make -j$JOBS $libmt_buildopts
+	milestone 'building libmemtracer' \
+		make -j$JOBS $libmt_buildopts || \
+		die_clean "$libmt_buildpath"
 }
 
 # LIBVMI =======================================================================
@@ -253,25 +273,26 @@ usage()
 
 	Options:
 	    -b PATH     Build chef in PATH [$BUILDBASE]
-		-c          Clean (instead of build) [false]
-		-f          Force-rebuild [false]
+	    -c          Clean (instead of build) [false]
+	    -f          Force-rebuild [false]
 	    -h          Display this help
 	    -j N        Compile with N jobs [$JOBS]
 	    -l PATH     Path to where the native the LLVM-3.2 files are installed
 	                [$LLVM_BASE]
+	    -q          Suppress compilation warnings
 
 	Architectures:
-	    i386         Build 32 bit x86
-	    x86_64       Build 64 bit x86
-	    all-archs    Build both 32 bit and 64 bit x86
+	    i386        Build 32 bit x86
+	    x86_64      Build 64 bit x86
+	    all-archs   Build both 32 bit and 64 bit x86
 
 	Modes:
-	    release      Release mode
-	    debug        Debug mode
-	    all-modes    Both release and debug mode
+	    release     Release mode
+	    debug       Debug mode
+	    all-modes   Both release and debug mode
 
 	Flags:
-	    asan         Build with Address Sanitizer
+	    asan        Build with Address Sanitizer
 
 	EOF
 	exit 1
@@ -284,6 +305,7 @@ main()
 	CLEAN=1
 	FORCE=1
 	LLVM_BASE='/opt/s2e/llvm'
+	QUIET=1
 	case "$(uname)" in
 		Darwin) JOBS=$(sysctl hw.ncpu | cut -d ':' -f 2); alias cp=gcp ;;
 		Linux)  JOBS=$(grep -c '^processor' /proc/cpuinfo)             ;;
@@ -291,7 +313,7 @@ main()
 	esac
 
 	# Options:
-	while getopts b:cfhj:l: opt; do
+	while getopts b:cfhj:l:q opt; do
 		case "$opt" in
 			b) BUILDBASE="$OPTARG" ;;
 			c) CLEAN=0 ;;
@@ -299,6 +321,7 @@ main()
 			h) usage ;;
 			j) JOBS="$OPTARG" ;;
 			l) LLVM_BASE="$OPTARG" ;;
+			q) QUIET=0 ;;
 			'?') die_help ;;
 		esac
 	done
@@ -356,7 +379,6 @@ main()
 
 			# Build:
 			test $ASAN -eq 0 && BUILDPATH="$BUILDPATH-asan"
-			test -d "$BUILDPATH" && note "$BUILDPATH already exists"
 			mkdir -p "$BUILDPATH"
 			cd "$BUILDPATH"
 
