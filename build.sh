@@ -1,9 +1,9 @@
 #!/usr/bin/env sh
 
-runname="$(basename "$0")"
-runpath="$(readlink -f "$(dirname "$0")")"
-repopath="$runpath"
-repodir="$(basename "$repopath")"
+RUNNAME="$(basename "$0")"
+RUNPATH="$(readlink -f "$(dirname "$0")")"
+REPOPATH="$RUNPATH"
+REPODIR="$(basename "$REPOPATH")"
 
 # HELPERS ======================================================================
 
@@ -60,28 +60,33 @@ warn()
 	printf "[\033[33mWARN\033[0m] %s\n" "$msg"
 }
 
-# LUA ==========================================================================
+check_builddir()
+{
+	if [ -d "$1" ]; then
+		if [ $FORCE -ne 0 ]; then
+			skip "$1 found, not rebuilding"
+			return 1
+		else
+			rm -rf "$1"
+		fi
+	fi
+	true
+}
 
-lua_name='lua'
-lua_version='5.1'
-lua_dir="$lua_name-$lua_version"
-lua_baseurl='http://www.lua.org/ftp'
-lua_tarball="${lua_dir}.tar.gz"
+# LUA ==========================================================================
 
 lua_build()
 {
-	# Get source:
-	if [ -d "$lua_dir" ]; then
-		if [ $FORCE -ne 0 ]; then
-			skip "$lua_dir found, not rebuilding"
-			return
-		else
-			skip "$lua_dir found, not extracting again"
-			rm -rf "$lua_dir"
-		fi
-	fi
+	lua_name='lua'
+	lua_version='5.1'
+	lua_vname="$lua_name-$lua_version"
+	lua_baseurl='http://www.lua.org/ftp'
+	lua_tarball="${lua_vname}.tar.gz"
+	lua_builddir="$(basename "$lua_tarball" .tar.gz)"
+	lua_buildpath="$BUILDPATH/$lua_builddir"
 
-	# Extract source:
+	# Build directory:
+	check_builddir "$lua_builddir" || return
 	if [ -e "$lua_tarball" ]; then
 		skip "$lua_tarball found, not downloading again"
 	else
@@ -90,7 +95,7 @@ lua_build()
 	tar xzf "$lua_tarball"
 
 	# Build:
-	milestone 'building lua' make -j$JOBS -C "$lua_dir" linux
+	milestone 'building lua' make -j$JOBS -C "$lua_buildpath" linux
 }
 
 # STP ==========================================================================
@@ -98,84 +103,111 @@ lua_build()
 # not pollute stuff, we need to copy the entire thing.
 # Yay!
 
-stp_dir='stp'
-stp_path="$repopath/$stp_dir"
-
 stp_build()
 {
-	stp_llvm_native="$LLVM_BASE/llvm-3.2-native"
+	stp_srcpath="$REPOPATH/stp"
+	stp_buildpath="$BUILDPATH/stp"
 
-	# Get source:
-	if [ -d "$stp_dir" ]; then
-		if [ $FORCE -ne 0 ]; then
-			skip "$stp_dir found, not rebuilding again"
-			return
-		else
-			rm -rf "$stp_dir"
-		fi
-	fi
-	cp -r "$stp_path" "$stp_dir"
-	cd "$stp_dir"
+	# Build directory:
+	check_builddir "$stp_buildpath" || return
+	cp -r "$stp_srcpath" "$stp_buildpath"
+	cd "$stp_buildpath"
 
 	# Configure:
 	milestone 'configuring STP' scripts/configure \
-		--with-prefix=$(pwd) \
+		--with-prefix="$stp_buildpath" \
 		--with-fpic \
-		--with-g++="$stp_llvm_native/bin/clang++" \
-		--with-gcc="$stp_llvm_native/bin/clang" \
+		--with-gcc="$LLVM_NATIVE_CC" \
+		--with-g++="$LLVM_NATIVE_CXX" \
 		$(test $ASAN -eq 0 && echo '--with-address-sanitizer')
 
 	# Build:
-	milestone 'building STP' make
+	milestone 'building STP' make -j$JOBS
 }
 
 # KLEE =========================================================================
 
 klee_build()
 {
-	warn 'klee build not implemented yet'
+	klee_srcpath="$REPOPATH/klee"
+	klee_buildpath="$BUILDPATH/klee"
+
+	# Build directory:
+	check_builddir "$klee_buildpath" || return
+	mkdir -p "$klee_buildpath"
+	cd "$klee_buildpath"
+
+	# Configure:
+	if [ "$MODE" = 'debug' ]; then
+		klee_cxxflags='-g -O0'
+		klee_ldflags='-g'
+	fi
+	if [ $ASAN -eq 0 ]; then
+		klee_cxxflags="$klee_cxxflags -fsanitize=address"
+		klee_ldflags="$klee_ldflags -fsanizite=address"
+	fi
+	milestone 'configuring KLEE' "$klee_srcpath"/configure \
+		--prefix="$klee_buildpath" \
+		--with-llvmsrc="$LLVM_SRC" \
+		--with-llvmobj="$LLVM_BUILD" \
+		--target=x86_64 \
+		--enable-exceptions \
+		--with-stp="$stp_buildpath" \
+		CC="$LLVM_NATIVE_CC" \
+		CXX="$LLVM_NATIVE_CXX" \
+		$klee_cxxflags \
+		$klee_ldflags
+
+	# Build:
+	if [ "$MODE" = 'debug' ]; then
+		klee_buildopts='ENABLE_OPTIMIZED=0'
+	else
+		klee_buildopts='ENABLE_OPTIMIZED=1'
+	fi
+	milestone 'building KLEE' \
+		make -j$JOBS -C "$klee_buildpath" $klee_buildopts
 }
 
 # LIBMEMTRACER =================================================================
 
 libmt_build()
 {
-	warn 'libmemtracer build not implemented yet'
+	true
 }
 
 # LIBVMI =======================================================================
 
 libvmi_build()
 {
-	warn 'libvmi build not implemented yet'
+	true
 }
 
 # QEMU =========================================================================
 
 qemu_build()
 {
-	warn 'qemu build not implemented yet'
+	true
 }
 
 # TOOLS ========================================================================
 
 tools_build()
 {
-	warn 'tools build not implemented yet'
+	true
 }
 
 # GUEST TOOLS ==================================================================
 
 guest_build()
 {
-	warn 'guest tools build not implemented yet'
+	true
 }
 
 # TEST SUITE ===================================================================
 
 test_build()
 {
-	warn 'test suite build not implemented yet'
+	true
 }
 
 # ALL ==========================================================================
@@ -199,7 +231,7 @@ usage()
 {
 	cat >&2 <<- EOF
 
-	$runname: build S²E-chef in a specific configuration.
+	$RUNNAME: build S²E-chef in a specific configuration.
 
 	Usage: $0 [OPTION ...] ARCH MODE [FLAGS]
 
@@ -287,23 +319,30 @@ main()
 		shift
 	done
 
+	# Native LLVM:
+	LLVM_NATIVE="$LLVM_BASE/llvm-3.2-native"
+	LLVM_SRC="$LLVM_BASE/llvm-3.2.src"
+	LLVM_BUILD="$LLVM_BASE/llvm-3.2.build"
+	LLVM_NATIVE_CC="$LLVM_NATIVE/bin/clang"
+	LLVM_NATIVE_CXX="$LLVM_NATIVE/bin/clang++"
+
 	# Build/clean each configuration:
 	BUILDBASE="$(readlink -f "$BUILDBASE")"
 	for a in $ARCH; do
 		for m in $MODE; do
-			buildpath="$BUILDBASE/$a/$m"
+			BUILDPATH="$BUILDBASE/$a/$m"
 
 			# Clean:
 			if [ $CLEAN -eq 0 ]; then
-				milestone "removing $buildpath" rm -rf $buildpath
+				milestone "removing $BUILDPATH" rm -rf $BUILDPATH
 				continue
 			fi
 
 			# Build:
-			test $ASAN -eq 0 && buildpath="$buildpath-asan"
-			test -d "$buildpath" && note "$buildpath already exists"
-			mkdir -p "$buildpath"
-			cd "$buildpath"
+			test $ASAN -eq 0 && BUILDPATH="$BUILDPATH-asan"
+			test -d "$BUILDPATH" && note "$BUILDPATH already exists"
+			mkdir -p "$BUILDPATH"
+			cd "$BUILDPATH"
 
 			# Build in build directory:
 			all_build
