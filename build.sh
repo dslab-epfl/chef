@@ -43,7 +43,7 @@ note()
 {
 	msg="$1"
 	shift
-	printf "       %s\n" "$msg"
+	printf "[\033[1mNOTE\033[0m] %s\n" "$msg"
 }
 
 skip()
@@ -70,23 +70,63 @@ lua_tarball="${lua_dir}.tar.gz"
 
 lua_build()
 {
-	if [ -d "$lua_dir" ] && [ $FORCE -ne 0 ] ; then
-		skip "$lua_dir found, not rebuilding again"
-		return
-	elif [ -e "$lua_tarball" ]; then
+	# Get source:
+	if [ -d "$lua_dir" ]; then
+		if [ $FORCE -ne 0 ]; then
+			skip "$lua_dir found, not rebuilding"
+			return
+		else
+			skip "$lua_dir found, not extracting again"
+			rm -rf "$lua_dir"
+		fi
+	fi
+
+	# Extract source:
+	if [ -e "$lua_tarball" ]; then
 		skip "$lua_tarball found, not downloading again"
 	else
 		wget "$lua_baseurl/$lua_tarball"
-		tar xzf "$lua_tarball"
 	fi
+	tar xzf "$lua_tarball"
+
+	# Build:
 	milestone 'building lua' make -j$JOBS -C "$lua_dir" linux
 }
 
 # STP ==========================================================================
+# STP does not seem to allow building outside the source directory, so in order
+# not pollute stuff, we need to copy the entire thing.
+# Yay!
+
+stp_dir='stp'
+stp_path="$repopath/$stp_dir"
 
 stp_build()
 {
-	warn 'stp build not implemented yet'
+	stp_llvm_native="$LLVM_BASE/llvm-3.2-native"
+
+	# Get source:
+	if [ -d "$stp_dir" ]; then
+		if [ $FORCE -ne 0 ]; then
+			skip "$stp_dir found, not rebuilding again"
+			return
+		else
+			rm -rf "$stp_dir"
+		fi
+	fi
+	cp -r "$stp_path" "$stp_dir"
+	cd "$stp_dir"
+
+	# Configure:
+	milestone 'configuring STP' scripts/configure \
+		--with-prefix=$(pwd) \
+		--with-fpic \
+		--with-g++="$stp_llvm_native/bin/clang++" \
+		--with-gcc="$stp_llvm_native/bin/clang" \
+		$(test $ASAN -eq 0 && echo '--with-address-sanitizer')
+
+	# Build:
+	milestone 'building STP' make
 }
 
 # KLEE =========================================================================
@@ -164,11 +204,13 @@ usage()
 	Usage: $0 [OPTION ...] ARCH MODE [FLAGS]
 
 	Options:
-	    -b BUILDPATH Build chef in BUILDPATH (default: ./build)
-	    -c           Clean (instead of build)
-	    -f           Force-rebuild (if build-directory already exists)
-	    -h           Display this help
-	    -j JOBS      Compile with JOBS jobs
+	    -b PATH     Build chef in PATH [$BUILDBASE]
+		-c          Clean (instead of build) [false]
+		-f          Force-rebuild [false]
+	    -h          Display this help
+	    -j N        Compile with N jobs [$JOBS]
+	    -l PATH     Path to where the native the LLVM-3.2 files are installed
+	                [$LLVM_BASE]
 
 	Architectures:
 	    i386         Build 32 bit x86
@@ -190,9 +232,10 @@ usage()
 main()
 {
 	# Options (default values):
-	BUILDBASE='build'
+	BUILDBASE='./build'
 	CLEAN=1
 	FORCE=1
+	LLVM_BASE='/opt/s2e/llvm'
 	case "$(uname)" in
 		Darwin) JOBS=$(sysctl hw.ncpu | cut -d ':' -f 2); alias cp=gcp ;;
 		Linux)  JOBS=$(grep -c '^processor' /proc/cpuinfo)             ;;
@@ -200,13 +243,14 @@ main()
 	esac
 
 	# Options:
-	while getopts b:cfhj: opt; do
+	while getopts b:cfhj:l: opt; do
 		case "$opt" in
 			b) BUILDBASE="$OPTARG" ;;
 			c) CLEAN=0 ;;
 			f) FORCE=0 ;;
 			h) usage ;;
 			j) JOBS="$OPTARG" ;;
+			l) LLVM_BASE="$OPTARG" ;;
 			'?') die_help ;;
 		esac
 	done
@@ -256,11 +300,8 @@ main()
 			fi
 
 			# Build:
-			test $ASAN -eq 0 && cbuildpath="$buildpath-asan"
-			if [ -d "$buildpath" ] && [ $FORCE -ne 0 ]; then
-				skip "$buildpath exists, not rebuilding"
-				continue
-			fi
+			test $ASAN -eq 0 && buildpath="$buildpath-asan"
+			test -d "$buildpath" && note "$buildpath already exists"
 			mkdir -p "$buildpath"
 			cd "$buildpath"
 
