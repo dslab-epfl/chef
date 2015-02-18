@@ -93,9 +93,10 @@ lua_build()
 		wget "$lua_baseurl/$lua_tarball"
 	fi
 	tar xzf "$lua_tarball"
+	cd "$lua_buildpath"
 
 	# Build:
-	milestone 'building lua' make -j$JOBS -C "$lua_buildpath" linux
+	milestone 'building lua' make -j$JOBS linux
 }
 
 # STP ==========================================================================
@@ -130,7 +131,7 @@ stp_build()
 klee_build()
 {
 	klee_srcpath="$REPOPATH/klee"
-	klee_buildpath="$BUILDPATH/klee"
+	klee_buildpath="$BUILDPATH/opt"
 
 	# Build directory:
 	check_builddir "$klee_buildpath" || return
@@ -164,15 +165,30 @@ klee_build()
 	else
 		klee_buildopts='ENABLE_OPTIMIZED=1'
 	fi
-	milestone 'building KLEE' \
-		make -j$JOBS -C "$klee_buildpath" $klee_buildopts
+	milestone 'building KLEE' make -j$JOBS $klee_buildopts
 }
 
 # LIBMEMTRACER =================================================================
 
 libmt_build()
 {
-	true
+	libmt_srcpath="$REPOPATH/libmemtracer"
+	libmt_buildpath="$BUILDPATH/libmemtracer"
+
+	# Build directory:
+	check_builddir "$libmt_buildpath" || return
+	mkdir -p "$libmt_buildpath"
+	cd "$libmt_buildpath"
+
+	# Configure:
+	milestone 'configuring libmemtracer' "$libmt_srcpath"/configure \
+		--enable-debug \
+		CC="$LLVM_NATIVE_CC" \
+		CXX="$LLVM_NATIVE_CXX" \
+
+	# Make:
+	libmt_buildopts="CLANG_CC=$LLVM_NATIVE_CC CLANG_CXX=$LLVM_NATIVE_CXX"
+	milestone 'building libmemtracer' make -j$JOBS $libmt_buildopts
 }
 
 # LIBVMI =======================================================================
