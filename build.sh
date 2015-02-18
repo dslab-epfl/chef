@@ -32,23 +32,23 @@ die_clean()
 	exit 2
 }
 
-milestone()
+track()
 {
-	milestone_ok=0
-	milestone_msg="$1"
+	track_ok=0
+	track_msg="$1"
 	shift
-	printf "[    ] %s ..." "$milestone_msg"
+	printf "[    ] %s ..." "$track_msg"
 	{
 		if [ $QUIET -eq 0 ]; then
 			"$@" >/dev/null 2>&1
 		else
 			"$@" >/dev/null
 		fi
-	} || milestone_ok=1
+	} || track_ok=1
 	printf "\r[\033[%s\033[0m] %s    \n" \
-		"$(test $milestone_ok -eq 0 && printf "32m OK " || printf "31mFAIL")" \
-		"$milestone_msg"
-	return $milestone_ok
+		"$(test $track_ok -eq 0 && printf "32m OK " || printf "31mFAIL")" \
+		"$track_msg"
+	return $track_ok
 }
 
 note()
@@ -108,7 +108,7 @@ lua_build()
 	cd "$lua_buildpath"
 
 	# Build:
-	milestone 'building lua' \
+	track 'building lua' \
 		make -j$JOBS linux || \
 		die_clean "$lua_buildpath"
 }
@@ -129,7 +129,7 @@ stp_build()
 	cd "$stp_buildpath"
 
 	# Configure:
-	milestone 'configuring STP' scripts/configure \
+	track 'configuring STP' scripts/configure \
 		--with-prefix="$stp_buildpath" \
 		--with-fpic \
 		--with-gcc="$LLVM_NATIVE_CC" \
@@ -137,7 +137,7 @@ stp_build()
 		$(test $ASAN -eq 0 && echo '--with-address-sanitizer')
 
 	# Build:
-	milestone 'building STP' \
+	track 'building STP' \
 		make -j$JOBS || \
 		die_clean "$stp_buildpath"
 }
@@ -163,7 +163,7 @@ klee_build()
 		klee_cxxflags="$klee_cxxflags -fsanitize=address"
 		klee_ldflags="$klee_ldflags -fsanizite=address"
 	fi
-	milestone 'configuring KLEE' "$klee_srcpath"/configure \
+	track 'configuring KLEE' "$klee_srcpath"/configure \
 		--prefix="$klee_buildpath" \
 		--with-llvmsrc="$LLVM_SRC" \
 		--with-llvmobj="$LLVM_BUILD" \
@@ -181,7 +181,7 @@ klee_build()
 	else
 		klee_buildopts='ENABLE_OPTIMIZED=1'
 	fi
-	milestone 'building KLEE' \
+	track 'building KLEE' \
 		make -j$JOBS $klee_buildopts || \
 		die_clean "$klee_buildpath"
 }
@@ -199,14 +199,14 @@ libmt_build()
 	cd "$libmt_buildpath"
 
 	# Configure:
-	milestone 'configuring libmemtracer' "$libmt_srcpath"/configure \
+	track 'configuring libmemtracer' "$libmt_srcpath"/configure \
 		--enable-debug \
 		CC="$LLVM_NATIVE_CC" \
 		CXX="$LLVM_NATIVE_CXX" \
 
-	# Make:
+	# Build:
 	libmt_buildopts="CLANG_CC=$LLVM_NATIVE_CC CLANG_CXX=$LLVM_NATIVE_CXX"
-	milestone 'building libmemtracer' \
+	track 'building libmemtracer' \
 		make -j$JOBS $libmt_buildopts || \
 		die_clean "$libmt_buildpath"
 }
@@ -298,19 +298,19 @@ usage()
 	exit 1
 }
 
-main()
+get_options()
 {
-	# Options (default values):
+	# Default values:
 	BUILDBASE='./build'
 	CLEAN=1
 	FORCE=1
-	LLVM_BASE='/opt/s2e/llvm'
-	QUIET=1
 	case "$(uname)" in
 		Darwin) JOBS=$(sysctl hw.ncpu | cut -d ':' -f 2); alias cp=gcp ;;
 		Linux)  JOBS=$(grep -c '^processor' /proc/cpuinfo)             ;;
 		*)      JOBS=2                                                 ;;
 	esac
+	LLVM_BASE='/opt/s2e/llvm'
+	QUIET=1
 
 	# Options:
 	while getopts b:cfhj:l:q opt; do
@@ -325,9 +325,17 @@ main()
 			'?') die_help ;;
 		esac
 	done
-	shift $(($OPTIND - 1))
 
-	# Architecture:
+	# Dependent values:
+	LLVM_NATIVE="$LLVM_BASE/llvm-3.2-native"
+	LLVM_SRC="$LLVM_BASE/llvm-3.2.src"
+	LLVM_BUILD="$LLVM_BASE/llvm-3.2.build"
+	LLVM_NATIVE_CC="$LLVM_NATIVE/bin/clang"
+	LLVM_NATIVE_CXX="$LLVM_NATIVE/bin/clang++"
+}
+
+get_architecture()
+{
 	ARCH="$1"
 	case "$ARCH" in
 		i386|x86_64) ;;
@@ -335,9 +343,10 @@ main()
 		'') die_help "missing architecture" ;;
 		*) die_help "invalid architecture: '%s'" "$ARCH" ;;
 	esac
-	shift
+}
 
-	# Mode:
+get_mode()
+{
 	MODE="$1"
 	case "$MODE" in
 		release|debug) ;;
@@ -345,9 +354,10 @@ main()
 		'') die_help "missing mode" ;;
 		*) die_help "invalid mode: '%s'" "$MODE" ;;
 	esac
-	shift
+}
 
-	# Flags:
+get_flags()
+{
 	ASAN=1
 	while [ -n "$1" ]; do
 		flag="$1"
@@ -357,13 +367,21 @@ main()
 		esac
 		shift
 	done
+}
 
-	# Native LLVM:
-	LLVM_NATIVE="$LLVM_BASE/llvm-3.2-native"
-	LLVM_SRC="$LLVM_BASE/llvm-3.2.src"
-	LLVM_BUILD="$LLVM_BASE/llvm-3.2.build"
-	LLVM_NATIVE_CC="$LLVM_NATIVE/bin/clang"
-	LLVM_NATIVE_CXX="$LLVM_NATIVE/bin/clang++"
+main()
+{
+	# Command line arguments:
+	get_options "$@"
+	shift $(($OPTIND - 1))
+	get_architecture "$@"
+	shift
+	get_mode "$@"
+	shift
+	get_flags "$@"
+
+	# Check for trailing arguments:
+	test -z "$1" || die_help "trailing arguments: $@"
 
 	# Build/clean each configuration:
 	BUILDBASE="$(readlink -f "$BUILDBASE")"
@@ -373,7 +391,7 @@ main()
 
 			# Clean:
 			if [ $CLEAN -eq 0 ]; then
-				milestone "removing $BUILDPATH" rm -rf $BUILDPATH
+				track "removing $BUILDPATH" rm -rf $BUILDPATH
 				continue
 			fi
 
