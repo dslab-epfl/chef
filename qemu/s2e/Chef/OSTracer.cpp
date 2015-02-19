@@ -11,6 +11,7 @@
 #include <s2e/S2EExecutionState.h>
 #include <s2e/S2E.h>
 #include <s2e/Plugins/Opcodes.h>
+#include <s2e/Chef/S2ESyscallMonitor.h>
 
 #include <llvm/Support/Format.h>
 
@@ -22,9 +23,13 @@ using boost::shared_ptr;
 
 enum
 {
-    S2E_THREAD_START = 0xBEEF,
+    S2E_OSTRACER_START = 0xBEEF,
+
+    S2E_THREAD_START = S2E_OSTRACER_START,
     S2E_THREAD_EXIT,
-    S2E_VM_ALLOC
+    S2E_VM_ALLOC,
+
+    S2E_OSTRACER_END
 };
 
 struct s2e_thread_struct
@@ -52,10 +57,9 @@ namespace s2e {
 
 // OSThread ////////////////////////////////////////////////////////////////////
 
-OSThread::OSThread(OSTracer &tracer, int tid, uint64_t address_space,
-        uint64_t stack_top)
-    : tid_(tid),
-      address_space_(address_space),
+OSThread::OSThread(int tid, shared_ptr<OSAddressSpace> address_space, uint64_t stack_top)
+    : address_space_(address_space),
+      tid_(tid),
       stack_top_(stack_top),
       kernel_mode_(true),
       running_(false),
@@ -71,48 +75,32 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &out, const OSThread &thread) {
 
 // OSTracer ////////////////////////////////////////////////////////////////////
 
-OSTracer::OSTracer(S2E &s2e, ExecutionStream &estream)
-        : s2e_(s2e) {
-    on_custom_instruction_ = estream.onCustomInstruction.connect(
-            sigc::mem_fun(*this, &OSTracer::onCustomInstruction));
+OSTracer::OSTracer(S2E &s2e, ExecutionStream &estream,
+        boost::shared_ptr<S2ESyscallMonitor> &smonitor)
+        : s2e_(s2e),
+          stream_(estream) {
     on_privilege_change_ = estream.onPrivilegeChange.connect(
             sigc::mem_fun(*this, &OSTracer::onPrivilegeChange));
     on_page_directory_change_ = estream.onPageDirectoryChange.connect(
             sigc::mem_fun(*this, &OSTracer::onPageDirectoryChange));
+
+    syscall_range_ = smonitor->registerForRange(S2E_OSTRACER_START,
+            S2E_OSTRACER_END);
+    syscall_range_->onS2ESystemCall.connect(
+            sigc::mem_fun(*this, &OSTracer::onS2ESyscall));
 }
 
 
 OSTracer::~OSTracer() {
-    on_custom_instruction_.disconnect();
+    syscall_range_->deregister();
+
     on_privilege_change_.disconnect();
     on_page_directory_change_.disconnect();
 }
 
 
-void OSTracer::onCustomInstruction(S2EExecutionState *state, uint64_t arg) {
-    // FIXME: Factor this out in a mixin or base class
-
-    // We only look at the syscall convention
-    if (!OPCODE_CHECK(arg, SYSCALL_OPCODE))
-        return;
-
-    target_uint syscall_id = 0;
-    target_ulong data = 0;
-    target_uint size = 0;
-    bool success = true;
-
-    success &= state->readCpuRegisterConcrete(CPU_OFFSET(regs[R_EAX]),
-            &syscall_id, sizeof(syscall_id));
-    success &= state->readCpuRegisterConcrete(CPU_OFFSET(regs[R_ECX]),
-            &data, sizeof(data));
-    success &= state->readCpuRegisterConcrete(CPU_OFFSET(regs[R_EDX]),
-            &size, sizeof(size));
-
-    if (!success) {
-        s2e_.getWarningsStream(state) << "Could not read syscall parameters" << '\n';
-        return;
-    }
-
+void OSTracer::onS2ESyscall(S2EExecutionState *state, uint64_t syscall_id,
+                uint64_t data, uint64_t size) {
     switch (syscall_id) {
     case S2E_THREAD_START: {
         s2e_thread_struct s2e_thread;
@@ -124,8 +112,22 @@ void OSTracer::onCustomInstruction(S2EExecutionState *state, uint64_t arg) {
 
         ThreadMap::iterator it = threads_.find(s2e_thread.pid);
 
-        shared_ptr<OSThread> os_thread = shared_ptr<OSThread>(new OSThread(*this,
-                s2e_thread.pid, s2e_thread.address_space, s2e_thread.stack_top));
+        if (it != threads_.end()) {
+            // FIXME
+            s2e_.getWarningsStream(state) << "Existing thread. Cleaning old one first." << '\n';
+            // Make sure we erase the old address space
+            onThreadExit.emit(state, it->second);
+            address_spaces_.erase(it->second->address_space_->page_table());
+            threads_.erase(it);
+        }
+
+        shared_ptr<OSAddressSpace> address_space = shared_ptr<OSAddressSpace>(
+                new OSAddressSpace(s2e_thread.address_space));
+        address_spaces_.insert(std::make_pair(address_space->page_table(), address_space));
+
+        shared_ptr<OSThread> os_thread = shared_ptr<OSThread>(new OSThread(
+                s2e_thread.pid, address_space, s2e_thread.stack_top));
+        address_space->thread_ = os_thread;
 
         if (!state->mem()->readString(s2e_thread.name, os_thread->name_, 256)) {
             s2e_.getWarningsStream(state) << "Could not read thread name" << '\n';
@@ -134,17 +136,8 @@ void OSTracer::onCustomInstruction(S2EExecutionState *state, uint64_t arg) {
         s2e_.getMessagesStream(state) << "Thread start: " << *os_thread
                 << " Address space: " << llvm::format("0x%x", s2e_thread.address_space) << '\n';
 
-        if (it != threads_.end()) {
-            // FIXME
-            s2e_.getWarningsStream(state) << "Existing thread. Cleaning old one first." << '\n';
-            // Make sure we erase the old address space
-            onThreadExit.emit(state, it->second);
-            address_spaces_.erase(it->second->address_space_);
-            threads_.erase(it);
-        }
-
         threads_.insert(std::make_pair(os_thread->tid_, os_thread));
-        address_spaces_.insert(std::make_pair(os_thread->address_space_, os_thread));
+
         onThreadCreate.emit(state, os_thread);
         break;
     }
@@ -157,7 +150,7 @@ void OSTracer::onCustomInstruction(S2EExecutionState *state, uint64_t arg) {
             s2e_.getMessagesStream(state) << "Thread exit: " << *it->second << '\n';
             it->second->terminated_ = true;
             onThreadExit.emit(state, it->second);
-            address_spaces_.erase(it->second->address_space_);
+            address_spaces_.erase(it->second->address_space_->page_table());
             threads_.erase(it);
         }
         break;
@@ -186,54 +179,37 @@ void OSTracer::onPrivilegeChange(S2EExecutionState *state,
     if (active_thread_->kernel_mode_ != kernel_mode) {
         active_thread_->kernel_mode_ = kernel_mode;
         onThreadPrivilegeChange.emit(state, active_thread_, kernel_mode);
-
-#if 0
-        if (active_thread_->kernel_mode_) {
-            active_thread_->user_exec_stream_.disconnect();
-        } else {
-            active_thread_->user_exec_stream_.connect();
-        }
-#endif
     }
 }
 
 
 void OSTracer::onPageDirectoryChange(S2EExecutionState *state,
-        uint64_t previous, uint64_t current) {
-    AddressSpaceMap::iterator it = address_spaces_.find(current);
+        uint64_t previous, uint64_t next) {
+    PageTableMap::iterator it = address_spaces_.find(next);
     if (it == address_spaces_.end()) {
         s2e_.getWarningsStream(state) << "Unknown process scheduled: Address space "
-                << llvm::format("0x%x", current) << '\n';
+                << llvm::format("0x%x", next) << '\n';
         return;
     }
 
-#if 0
-    if (active_thread_) {
-        assert(active_thread_->kernel_mode_);
-        active_thread_->exec_stream_.disconnect();
-    }
-#endif
+    OSThreadRef next_thread = it->second->thread();
+    assert(next_thread);
 
-    if (active_thread_ != it->second) {
+    if (active_thread_ != next_thread) {
         if (active_thread_) {
             assert(active_thread_->running_);
             active_thread_->running_ = false;
         }
-        assert(!it->second->running_);
-        it->second->running_ = true;
+        assert(!next_thread->running_);
+        next_thread->running_ = true;
 
-        s2e_.getMessagesStream(state) << "Process scheduled: " << *it->second << '\n';
+        s2e_.getMessagesStream(state) << "Process scheduled: " << *next_thread << '\n';
 
         OSThreadRef old_thread = active_thread_;
-        active_thread_ = it->second;
+        active_thread_ = next_thread;
 
         onThreadSwitch.emit(state, old_thread, active_thread_);
     }
-
-#if 0
-    assert(active_thread_->kernel_mode_);
-    active_thread_->exec_stream_.connect();
-#endif
 }
 
 } /* namespace s2e */

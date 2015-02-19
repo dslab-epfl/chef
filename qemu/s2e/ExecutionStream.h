@@ -8,7 +8,7 @@
 #ifndef QEMU_S2E_EXECUTIONSTREAM_H_
 #define QEMU_S2E_EXECUTIONSTREAM_H_
 
-
+#include <klee/Expr.h>
 #include <s2e/Signals/Signals.h>
 #include <stdint.h>
 
@@ -100,6 +100,26 @@ public:
                  uint64_t /* registers written by the instruction */,
                  bool /* instruction accesses memory */>
           onTranslateRegisterAccessEnd;
+
+    /**
+     * Signal emitted before handling a memory address.
+     * - The concrete address is one example of an address that satisfies
+     * the constraints.
+     * - The concretize flag can be set to ask the engine to concretize the address.
+     */
+    sigc::signal<void, S2EExecutionState*,
+                 klee::ref<klee::Expr> /* virtualAddress */,
+                 uint64_t /* concreteAddress */,
+                 bool & /* concretize */>
+            onSymbolicMemoryAddress;
+
+    /* Optimized signal for concrete accesses */
+    sigc::signal<void, S2EExecutionState*,
+                 uint64_t /* virtualAddress */,
+                 uint64_t /* value */,
+                 uint8_t /* size */,
+                 unsigned /* flags */>
+            onConcreteDataMemoryAccess;
 
 private:
     ExecutionStream(const ExecutionStream&);

@@ -13,6 +13,7 @@
 
 #include <boost/shared_ptr.hpp>
 #include <boost/scoped_ptr.hpp>
+#include <boost/weak_ptr.hpp>
 
 #include <stdint.h>
 #include <map>
@@ -27,35 +28,53 @@ namespace s2e {
 class ExecutionStream;
 class ExecutionStreamFilter;
 class S2E;
+class S2ESyscallMonitor;
+class S2ESyscallRange;
 
+class OSThread;
 
-class OSVirtualMemoryArea {
-public:
-    OSVirtualMemoryArea()
-        : name(),
-          start(0), end(0),
-          readable(false), writable(false), executable(false) {}
-
-    std::string name;
-    uint64_t start;
-    uint64_t end;
-
-    bool readable;
-    bool writable;
-    bool executable;
-};
-
-
+// TODO: Maybe at some point we can differentiate between processes and
+// address spaces.
 class OSAddressSpace {
 public:
-    OSAddressSpace() {}
+    struct VMArea {
+        std::string name;
+        uint64_t start;
+        uint64_t end;
+
+        bool readable;
+        bool writable;
+        bool executable;
+
+        VMArea() : name(),
+                   start(0), end(0),
+                   readable(false), writable(false), executable(false) {}
+    };
+
+public:
+    uint64_t page_table() const {
+        return page_table_;
+    }
+
+    // FIXME
+    boost::shared_ptr<OSThread> thread() {
+        return thread_.lock();
+    }
 
 private:
-    std::map<uint64_t, OSVirtualMemoryArea> memory_map_;
+    OSAddressSpace(uint64_t page_table)
+        : page_table_(page_table) {
+
+    }
+
+    uint64_t page_table_;
+    std::map<uint64_t, VMArea> memory_map_;
+
+    // FIXME: In general, one or more threads share an address space.
+    boost::weak_ptr<OSThread> thread_;
+
+    friend class OSTracer;
 };
-
-
-class OSTracer;
 
 
 class OSThread {
@@ -80,7 +99,7 @@ public:
         return terminated_;
     }
 
-    uint64_t address_space() const {
+    boost::shared_ptr<OSAddressSpace> address_space() const {
         return address_space_;
     }
 
@@ -89,14 +108,14 @@ public:
     }
 
 private:
-    OSThread(OSTracer &tracer, int tid, uint64_t address_space,
+    OSThread(int tid, boost::shared_ptr<OSAddressSpace> address_space,
             uint64_t stack_top);
+
+    boost::shared_ptr<OSAddressSpace> address_space_;
 
     int tid_;
     std::string name_;
 
-    // TODO: Move into an address space (process?) structure
-    uint64_t address_space_;
     uint64_t stack_top_;
     bool kernel_mode_;
     bool running_;
@@ -111,28 +130,15 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &out, const OSThread &thread);
 typedef boost::shared_ptr<OSThread> OSThreadRef;
 
 
-class OSThreadMatcher {
-public:
-    OSThreadMatcher(OSThreadRef thread, bool include_kernel)
-        : thread_(thread),
-          include_kernel_(include_kernel) {
-
-    }
-
-    bool operator()() {
-        return thread_->running() && (include_kernel_ || !thread_->kernel_mode());
-    }
-
-private:
-    OSThreadRef thread_;
-    bool include_kernel_;
-};
-
-
 class OSTracer {
 public:
-    OSTracer(S2E &s2e, ExecutionStream &estream);
+    OSTracer(S2E &s2e, ExecutionStream &estream,
+            boost::shared_ptr<S2ESyscallMonitor> &smonitor);
     ~OSTracer();
+
+    ExecutionStream &stream() {
+        return stream_;
+    }
 
     sigc::signal<void, S2EExecutionState*, OSThreadRef> onThreadCreate;
     sigc::signal<void, S2EExecutionState*, OSThreadRef> onThreadExit;
@@ -141,20 +147,22 @@ public:
 
 private:
     typedef std::map<int, OSThreadRef> ThreadMap;
-    typedef std::map<uint64_t, OSThreadRef> AddressSpaceMap;
+    typedef std::map<uint64_t, boost::shared_ptr<OSAddressSpace> > PageTableMap;
 
     S2E &s2e_;
+    ExecutionStream &stream_;
+    boost::shared_ptr<S2ESyscallRange> syscall_range_;
 
-    sigc::connection on_custom_instruction_;
     sigc::connection on_privilege_change_;
     sigc::connection on_page_directory_change_;
 
     ThreadMap threads_;
-    AddressSpaceMap address_spaces_;
+    PageTableMap address_spaces_;
 
-    boost::shared_ptr<OSThread> active_thread_;
+    OSThreadRef active_thread_;
 
-    void onCustomInstruction(S2EExecutionState *state, uint64_t arg);
+    void onS2ESyscall(S2EExecutionState *state, uint64_t syscall_id,
+                uint64_t data, uint64_t size);
     void onPrivilegeChange(S2EExecutionState *state,
             unsigned previous, unsigned current);
     void onPageDirectoryChange(S2EExecutionState *state,

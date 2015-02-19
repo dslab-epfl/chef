@@ -534,6 +534,8 @@ s2eobj-y += s2e/ExecutionStream.o
 s2eobj-y += s2e/Chef/OSTracer.o
 s2eobj-y += s2e/Chef/CallTracer.o
 s2eobj-y += s2e/Chef/CallGraphMonitor.o
+s2eobj-y += s2e/Chef/S2ESyscallMonitor.o
+s2eobj-y += s2e/Chef/InterpreterDetector.o
 
 s2eobj-y += s2e/S2E.o
 s2eobj-y += s2e/x64.o
