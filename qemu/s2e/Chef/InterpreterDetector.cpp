@@ -250,7 +250,8 @@ InterpreterDetector::InterpreterDetector(S2E &s2e, OSTracer &os_tracer,
       os_tracer_(os_tracer),
       thread_(thread),
       calibrating_(false),
-      min_opcode_count_(0) {
+      min_opcode_count_(0),
+      instrumentation_pc_(0) {
 
     syscall_range_ = syscall_monitor->registerForRange(
             S2E_CHEF_START, S2E_CHEF_END);
@@ -260,7 +261,9 @@ InterpreterDetector::InterpreterDetector(S2E &s2e, OSTracer &os_tracer,
 
 
 InterpreterDetector::~InterpreterDetector() {
+    resetInstrumentationPc(0);
     syscall_range_->deregister();
+    on_concrete_data_memory_access_.disconnect();
 }
 
 
@@ -270,42 +273,45 @@ void InterpreterDetector::onConcreteDataMemoryAccess(S2EExecutionState *state,
         return;
     }
 
-    memory_recording_->recordMemoryOp(state->getPc(), address, value, size,
-            flags & S2E_MEM_TRACE_FLAG_WRITE);
+    if (calibrating_) {
+        memory_recording_->recordMemoryOp(state->getPc(), address, value, size,
+                flags & S2E_MEM_TRACE_FLAG_WRITE);
+    } else {
+        // XXX: Could there be any race condition causing the memory access
+        // to be deferred (e.g., hw interrupt)?
+        assert(state->getPc() == instrumentation_pc_);
+
+        assert(!(flags & S2E_MEM_TRACE_FLAG_WRITE));
+
+#if 0
+        s2e_.getMessagesStream(state) << "HLPC: "
+                << llvm::format("0x%x", address) << '\n';
+#endif
+
+        onHighLevelInstructionStart.emit(state, address);
+
+        on_concrete_data_memory_access_.disconnect();
+    }
 }
 
 
 void InterpreterDetector::onS2ESyscall(S2EExecutionState *state,
         uint64_t syscall_id, uint64_t data, uint64_t size) {
+    if (!thread_->running()) {
+        return;
+    }
+
     switch (syscall_id) {
     case S2E_CHEF_CALIBRATE:
         if (!calibrating_) {
-            calibrating_ = true;
-
-            s2e_.getMessagesStream(state)
-                    << "Starting interpreter detector calibration." << '\n';
-
-            memory_recording_.reset(new MemoryOpRecorder());
-            on_concrete_data_memory_access_ = os_tracer_.stream().
-                    onConcreteDataMemoryAccess.connect(
-                            sigc::mem_fun(*this, &InterpreterDetector::onConcreteDataMemoryAccess));
-            min_opcode_count_ = 0;
+            startCalibration(state);
         } else {
             s2e_.getMessagesStream(state) << "Calibration checkpoint." << '\n';
             min_opcode_count_++;
         }
         break;
     case S2E_CHEF_CALIBRATE_END:
-        assert(calibrating_ && "Calibration end attempted before start");
-        s2e_.getMessagesStream(state) << "Calibration ended." << '\n';
-
-        min_opcode_count_++;
-
-        computeCalibration(state);
-
-        memory_recording_.reset();
-        on_concrete_data_memory_access_.disconnect();
-        calibrating_ = false;
+        endCalibration(state);
         break;
     default:
         assert(0 && "FIXME");
@@ -313,10 +319,93 @@ void InterpreterDetector::onS2ESyscall(S2EExecutionState *state,
 }
 
 
-void InterpreterDetector::computeCalibration(S2EExecutionState *state) {
+void InterpreterDetector::resetInstrumentationPc(uint64_t value) {
+    instrumentation_pc_ = value;
+
+    if (!instrumentation_pc_) {
+        on_translate_instruction_start_.disconnect();
+    } else {
+        if (!on_translate_instruction_start_.connected()) {
+            on_translate_instruction_start_ = os_tracer_.stream().
+                    onTranslateInstructionStart.connect(
+                            sigc::mem_fun(*this, &InterpreterDetector::onTranslateInstructionStart));
+        }
+    }
+
+    s2e_tb_safe_flush();
+}
+
+
+void InterpreterDetector::startCalibration(S2EExecutionState *state) {
+    assert(!calibrating_ && "Calibration start attempted while running");
+
+    calibrating_ = true;
+
+    resetInstrumentationPc(0);
+
+    s2e_.getMessagesStream(state)
+            << "Starting interpreter detector calibration." << '\n';
+
+    memory_recording_.reset(new MemoryOpRecorder());
+    on_concrete_data_memory_access_ = os_tracer_.stream().
+            onConcreteDataMemoryAccess.connect(
+                    sigc::mem_fun(*this, &InterpreterDetector::onConcreteDataMemoryAccess));
+    min_opcode_count_ = 0;
+}
+
+
+void InterpreterDetector::endCalibration(S2EExecutionState *state) {
+    assert(calibrating_ && "Calibration end attempted before start");
+    s2e_.getMessagesStream(state) << "Calibration ended." << '\n';
+
+    min_opcode_count_++;
+
+    computeInstrumentation(state);
+
+    memory_recording_.reset();
+    on_concrete_data_memory_access_.disconnect();
+    calibrating_ = false;
+}
+
+
+void InterpreterDetector::computeInstrumentation(S2EExecutionState *state) {
     MemoryOpAnalyzer analyzer(s2e_, state, memory_recording_->mem_ops,
             min_opcode_count_);
-    analyzer.analyze();
+
+    if (!analyzer.analyze())
+        return;
+
+    resetInstrumentationPc(analyzer.instrumentation_pc);
+}
+
+
+void InterpreterDetector::onTranslateInstructionStart(ExecutionSignal *signal,
+        S2EExecutionState *state, TranslationBlock *tb, uint64_t pc) {
+    if (!thread_->running()) {
+        return;
+    }
+
+    assert(instrumentation_pc_ && "Callback should have not been enabled");
+    assert(!calibrating_);
+
+    if (pc != instrumentation_pc_) {
+        return;
+    }
+
+    s2e_.getMessagesStream(state)
+            << "Instrumentation point encountered.  Instrumenting..." << '\n';
+
+    signal->connect(
+            sigc::mem_fun(*this, &InterpreterDetector::onInstrumentationHit));
+}
+
+void InterpreterDetector::onInstrumentationHit(S2EExecutionState *state, uint64_t pc) {
+    assert(pc == instrumentation_pc_);
+    assert(!on_concrete_data_memory_access_.connected());
+
+    on_concrete_data_memory_access_ = os_tracer_.stream().
+            onConcreteDataMemoryAccess.connect(
+                    sigc::mem_fun(*this, &InterpreterDetector::onConcreteDataMemoryAccess));
 }
 
 

@@ -49,6 +49,23 @@ public:
             uint64_t /* static target pc */>
             onTranslateBlockEnd;
 
+    /**
+     * Signal that is emitted when the translator finishes
+     * translating the block.
+     */
+    sigc::signal<void, S2EExecutionState*,
+            TranslationBlock*,
+            uint64_t /* ending instruction pc */>
+            onTranslateBlockComplete;
+
+
+    /** Signal that is emitted on code generation for each instruction */
+    sigc::signal<void, ExecutionSignal*,
+            S2EExecutionState*,
+            TranslationBlock*,
+            uint64_t /* instruction PC */>
+            onTranslateInstructionStart, onTranslateInstructionEnd;
+
     /** Signal that is emitted on code generation for each jump instruction */
     sigc::signal<void, ExecutionSignal*,
             S2EExecutionState*,

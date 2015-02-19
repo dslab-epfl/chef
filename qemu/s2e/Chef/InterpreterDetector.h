@@ -9,6 +9,7 @@
 #define QEMU_S2E_CHEF_INTERPRETERDETECTOR_H_
 
 #include <s2e/Signals/Signals.h>
+#include <s2e/ExecutionStream.h>
 
 #include <boost/shared_ptr.hpp>
 #include <boost/scoped_ptr.hpp>
@@ -33,6 +34,15 @@ public:
             boost::shared_ptr<S2ESyscallMonitor> syscall_monitor);
     ~InterpreterDetector();
 
+    uint64_t instrumentation_pc() const {
+        return instrumentation_pc_;
+    }
+
+    sigc::signal<void,
+            S2EExecutionState *,
+            uint64_t   /* high-level PC */>
+            onHighLevelInstructionStart;
+
 private:
     struct MemoryOpRecorder;
 
@@ -41,7 +51,15 @@ private:
     void onS2ESyscall(S2EExecutionState *state, uint64_t syscall_id,
             uint64_t data, uint64_t size);
 
-    void computeCalibration(S2EExecutionState *state);
+    void onTranslateInstructionStart(ExecutionSignal *signal,
+            S2EExecutionState *state, TranslationBlock *tb, uint64_t pc);
+    void onInstrumentationHit(S2EExecutionState *state, uint64_t pc);
+
+    void startCalibration(S2EExecutionState *state);
+    void endCalibration(S2EExecutionState *state);
+    void computeInstrumentation(S2EExecutionState *state);
+
+    void resetInstrumentationPc(uint64_t value);
 
     S2E &s2e_;
     OSTracer &os_tracer_;
@@ -51,8 +69,12 @@ private:
     // Calibration state
     bool calibrating_;
     unsigned min_opcode_count_;
-    sigc::connection on_concrete_data_memory_access_;
     boost::scoped_ptr<MemoryOpRecorder> memory_recording_;
+    uint64_t instrumentation_pc_;
+
+    // Signals
+    sigc::connection on_concrete_data_memory_access_;
+    sigc::connection on_translate_instruction_start_;
 };
 
 } /* namespace s2e */
