@@ -9,27 +9,21 @@ REPODIR="$(basename "$REPOPATH")"
 
 die()
 {
-	retval=$1
-	format="$2"
+	die_retval=$1
+	die_format="$2"
 	shift 2
-	printf "$format\n" "$@" >&2
-	exit $retval
+	printf "$die_format\n" "$@" >&2
+	exit $die_retval
 }
 
 die_help()
 {
-	format="$1"
-	if [ -n "$format" ]; then
+	die_format="$1"
+	if [ -n "$die_format" ]; then
 		shift
-		printf "$format\n" "$@" >&2
+		printf "$die_format\n" "$@" >&2
 	fi
 	die 1 "Run \`$0 -h\` for help."
-}
-
-die_clean()
-{
-	test $KEEPDIRTY -ne 0 && rm -rf "$1"
-	exit 2
 }
 
 track()
@@ -47,36 +41,45 @@ track()
 
 note()
 {
-	msg="$1"
-	shift
-	printf "[\033[1mNOTE\033[0m] %s\n" "$msg"
+	printf "[\033[1mNOTE\033[0m] %s\n" "$1"
 }
 
 skip()
 {
-	msg="$1"
-	shift
-	printf "[\033[34mSKIP\033[0m] %s\n" "$msg"
+	printf "[\033[34mSKIP\033[0m] %s\n" "$1"
 }
 
 warn()
 {
-	msg="$1"
-	shift
-	printf "[\033[33mWARN\033[0m] %s\n" "$msg"
+	printf "[\033[33mWARN\033[0m] %s\n" "$1"
 }
 
 check_builddir()
 {
-	if [ -d "$1" ]; then
-		if [ $FORCE -ne 0 ]; then
-			skip "$1 exists, not rebuilding"
+	if [ $FORCE -eq 0 ]; then
+		note "${1}: force-rebuild, ignoring status file"
+		rm -rf "$1"
+		rm -f "${1}.status"
+	elif [ -e "${1}" ]; then
+		if [ ! -e "${1}.status" ]; then
+			warn "${1}: corresponding status file not found (skipping)"
 			return 1
 		else
-			rm -rf "$1"
+			if [ "$(cat "${1}.status")" = '0' ]; then
+				skip "$1: already built successfully, not rebuilding"
+				return 1
+			else
+				note "$1: previously failed attempt to build, rebuilding"
+			fi
 		fi
 	fi
-	true
+	return 0
+}
+
+mark_builddir()
+{
+	echo $1 > "${2}.status"
+	test $1 -eq 0 || exit 2
 }
 
 # LUA ==========================================================================
@@ -104,7 +107,9 @@ lua_build()
 	# Build:
 	track 'building lua' \
 		make -j$JOBS linux || \
-		die_clean "$lua_buildpath"
+
+	# Finish:
+	mark_builddir $? "$lua_buildpath"
 }
 
 # STP ==========================================================================
@@ -131,9 +136,10 @@ stp_build()
 		$(test $ASAN -eq 0 && echo '--with-address-sanitizer')
 
 	# Build:
-	track 'building STP' \
-		make -j$JOBS || \
-		die_clean "$stp_buildpath"
+	track 'building STP' make -j$JOBS
+
+	# Finish:
+	mark_builddir $? "$stp_buildpath"
 }
 
 # KLEE =========================================================================
@@ -175,9 +181,10 @@ klee_build()
 	else
 		klee_buildopts='ENABLE_OPTIMIZED=1'
 	fi
-	track 'building KLEE' \
-		make -j$JOBS $klee_buildopts || \
-		die_clean "$klee_buildpath"
+	track 'building KLEE' make -j$JOBS $klee_buildopts
+
+	# Finish:
+	mark_builddir $? "$klee_buildpath"
 }
 
 # LIBMEMTRACER =================================================================
@@ -200,9 +207,10 @@ libmt_build()
 
 	# Build:
 	libmt_buildopts="CLANG_CC=$LLVM_NATIVE_CC CLANG_CXX=$LLVM_NATIVE_CXX"
-	track 'building libmemtracer' \
-		make -j$JOBS $libmt_buildopts || \
-		die_clean "$libmt_buildpath"
+	track 'building libmemtracer' make -j$JOBS $libmt_buildopts
+
+	# Finish:
+	mark_builddir $? "$libmt_buildpath"
 }
 
 # LIBVMI =======================================================================
@@ -226,16 +234,24 @@ libvmi_build()
 		CXX=$LLVM_NATIVE_CXX
 
 	# Build:
-	track 'building libvmi' \
-		make -j$JOBS || \
-		die_clean "$libvmi_buildpath"
+	track 'building libvmi' make -j$JOBS
+
+	# Finish:
+	mark_builddir $? "$libvmi_buildpath"
 }
 
 # QEMU =========================================================================
 
 qemu_build()
 {
-	true
+	qemu_srcpath="$REPOPATH/qemu"
+	qemu_buildpath="$BUILDPATH/qemu"
+
+	return
+
+	# Build directory:
+	#check_builddir "$qemu_buildpath" || return 0
+	#mkdir -p "$qemu_buildpath"
 }
 
 # TOOLS ========================================================================
@@ -291,7 +307,6 @@ usage()
 	    -f          Force-rebuild
 	    -h          Display this help
 	    -j N        Compile with N jobs [default=$JOBS]
-	    -k          Keep sub-project directory after failed build attempt
 	    -l PATH     Path to where the native the LLVM-3.2 files are installed
 	                [default=$LLVM_BASE]
 
@@ -319,7 +334,6 @@ get_options()
 		Linux)  JOBS=$(grep -c '^processor' /proc/cpuinfo)             ;;
 		*)      JOBS=2                                                 ;;
 	esac
-	KEEPDIRTY=1
 	LLVM_BASE='/opt/s2e/llvm'
 
 	# Options:
@@ -331,7 +345,6 @@ get_options()
 			f) FORCE=0 ;;
 			h) usage ;;
 			j) JOBS="$OPTARG" ;;
-			k) KEEPDIRTY=0 ;;
 			l) LLVM_BASE="$OPTARG" ;;
 			'?') die_help ;;
 		esac
