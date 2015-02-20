@@ -28,7 +28,7 @@ die_help()
 
 die_clean()
 {
-	rm -rf "$1"
+	test $KEEPDIRTY -ne 0 && rm -rf "$1"
 	exit 2
 }
 
@@ -38,13 +38,7 @@ track()
 	track_msg="$1"
 	shift
 	printf "[    ] %s ..." "$track_msg"
-	{
-		if [ $QUIET -eq 0 ]; then
-			"$@" >/dev/null 2>&1
-		else
-			"$@" >/dev/null
-		fi
-	} || track_ok=1
+	"$@" >/dev/null || track_ok=1
 	printf "\r[\033[%s\033[0m] %s    \n" \
 		"$(test $track_ok -eq 0 && printf "32m OK " || printf "31mFAIL")" \
 		"$track_msg"
@@ -215,7 +209,26 @@ libmt_build()
 
 libvmi_build()
 {
-	true
+	libvmi_srcpath="$REPOPATH/libvmi"
+	libvmi_buildpath="$BUILDPATH/libvmi"
+
+	# Build directory:
+	check_builddir "$libvmi_buildpath" || return 0
+	mkdir -p "$libvmi_buildpath"
+	cd "$libvmi_buildpath"
+
+	# Configure:
+	track 'configuring libvmi' "$libvmi_srcpath"/configure \
+		--with-llvm="$LLVM_BUILD_SUB" \
+		--with-libmemtracer-src="$libmt_srcpath" \
+		$(test "$MODE" = 'debug' && echo '--enable-debug') \
+		CC=$LLVM_NATIVE_CC \
+		CXX=$LLVM_NATIVE_CXX
+
+	# Build:
+	track 'building libvmi' \
+		make -j$JOBS || \
+		die_clean "$libvmi_buildpath"
 }
 
 # QEMU =========================================================================
@@ -269,30 +282,26 @@ usage()
 
 	$RUNNAME: build S²E-chef in a specific configuration.
 
-	Usage: $0 [OPTION ...] ARCH MODE [FLAGS]
+	Usage: $0 [OPTIONS ...] ARCH MODE
 
 	Options:
-	    -b PATH     Build chef in PATH [$BUILDBASE]
-	    -c          Clean (instead of build) [false]
-	    -f          Force-rebuild [false]
+	    -a          Build with Address Sanitizer
+	    -b PATH     Build chef in PATH [default=$BUILDDIR]
+	    -c          Clean (instead of build)
+	    -f          Force-rebuild
 	    -h          Display this help
-	    -j N        Compile with N jobs [$JOBS]
+	    -j N        Compile with N jobs [default=$JOBS]
+	    -k          Keep sub-project directory after failed build attempt
 	    -l PATH     Path to where the native the LLVM-3.2 files are installed
-	                [$LLVM_BASE]
-	    -q          Suppress compilation warnings
+	                [default=$LLVM_BASE]
 
 	Architectures:
 	    i386        Build 32 bit x86
 	    x86_64      Build 64 bit x86
-	    all-archs   Build both 32 bit and 64 bit x86
 
 	Modes:
 	    release     Release mode
 	    debug       Debug mode
-	    all-modes   Both release and debug mode
-
-	Flags:
-	    asan        Build with Address Sanitizer
 
 	EOF
 	exit 1
@@ -301,7 +310,8 @@ usage()
 get_options()
 {
 	# Default values:
-	BUILDBASE='./build'
+	ASAN=1
+	BUILDDIR='./build'
 	CLEAN=1
 	FORCE=1
 	case "$(uname)" in
@@ -309,19 +319,20 @@ get_options()
 		Linux)  JOBS=$(grep -c '^processor' /proc/cpuinfo)             ;;
 		*)      JOBS=2                                                 ;;
 	esac
+	KEEPDIRTY=1
 	LLVM_BASE='/opt/s2e/llvm'
-	QUIET=1
 
 	# Options:
-	while getopts b:cfhj:l:q opt; do
+	while getopts ab:cfhj:kl: opt; do
 		case "$opt" in
-			b) BUILDBASE="$OPTARG" ;;
+			a) ASAN=0 ;;
+			b) BUILDDIR="$OPTARG" ;;
 			c) CLEAN=0 ;;
 			f) FORCE=0 ;;
 			h) usage ;;
 			j) JOBS="$OPTARG" ;;
+			k) KEEPDIRTY=0 ;;
 			l) LLVM_BASE="$OPTARG" ;;
-			q) QUIET=0 ;;
 			'?') die_help ;;
 		esac
 	done
@@ -339,7 +350,6 @@ get_architecture()
 	ARCH="$1"
 	case "$ARCH" in
 		i386|x86_64) ;;
-		all-archs) ARCH='i386 x86_64' ;;
 		'') die_help "missing architecture" ;;
 		*) die_help "invalid architecture: '%s'" "$ARCH" ;;
 	esac
@@ -349,24 +359,11 @@ get_mode()
 {
 	MODE="$1"
 	case "$MODE" in
-		release|debug) ;;
-		all-modes) MODE='release debug' ;;
+		release) LLVM_BUILD_SUB="$LLVM_BUILD/Release+Asserts";;
+		debug)   LLVM_BUILD_SUB="$LLVM_BUILD/Debug+Asserts"  ;;
 		'') die_help "missing mode" ;;
 		*) die_help "invalid mode: '%s'" "$MODE" ;;
 	esac
-}
-
-get_flags()
-{
-	ASAN=1
-	while [ -n "$1" ]; do
-		flag="$1"
-		case "$flag" in
-			asan) ASAN=0 ;;
-			*) usage ;;
-		esac
-		shift
-	done
 }
 
 main()
@@ -378,32 +375,26 @@ main()
 	shift
 	get_mode "$@"
 	shift
-	get_flags "$@"
 
 	# Check for trailing arguments:
 	test -z "$1" || die_help "trailing arguments: $@"
 
 	# Build/clean each configuration:
-	BUILDBASE="$(readlink -f "$BUILDBASE")"
-	for a in $ARCH; do
-		for m in $MODE; do
-			BUILDPATH="$BUILDBASE/$a/$m"
+	BUILDPATH="$(readlink -f "$BUILDDIR")"
 
-			# Clean:
-			if [ $CLEAN -eq 0 ]; then
-				track "removing $BUILDPATH" rm -rf $BUILDPATH
-				continue
-			fi
+	# Clean:
+	if [ $CLEAN -eq 0 ]; then
+		track "removing $BUILDPATH" rm -rf $BUILDPATH
+		continue
+	fi
 
-			# Build:
-			test $ASAN -eq 0 && BUILDPATH="$BUILDPATH-asan"
-			mkdir -p "$BUILDPATH"
-			cd "$BUILDPATH"
+	# Build:
+	test $ASAN -eq 0 && BUILDPATH="$BUILDPATH-asan"
+	mkdir -p "$BUILDPATH"
+	cd "$BUILDPATH"
 
-			# Build in build directory:
-			all_build
-		done
-	done
+	# Build in build directory:
+	all_build
 }
 
 set -e
