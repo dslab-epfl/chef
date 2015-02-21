@@ -2,8 +2,8 @@
 
 RUNNAME="$(basename "$0")"
 RUNPATH="$(readlink -f "$(dirname "$0")")"
-REPOPATH="$RUNPATH"
-REPODIR="$(basename "$REPOPATH")"
+SRCPATH_BASE="$RUNPATH"
+SRCDIR_BASE="$(basename "$SRCPATH_BASE")"
 
 # HELPERS ======================================================================
 
@@ -12,7 +12,7 @@ die()
 	die_retval=$1
 	die_format="$2"
 	shift 2
-	printf "$die_format\n" "$@" >&2
+	printf "$die_format\n" "$@" | tee -a "$LOGFILE" >&2
 	exit $die_retval
 }
 
@@ -21,65 +21,90 @@ die_help()
 	die_format="$1"
 	if [ -n "$die_format" ]; then
 		shift
-		printf "$die_format\n" "$@" >&2
+		printf "$die_format\n" "$@" | tee -a "$LOGFILE" >&2
 	fi
 	die 1 "Run \`$0 -h\` for help."
 }
 
-track()
-{
-	track_ok=0
-	track_msg="$1"
-	shift
-	printf "[    ] %s ..." "$track_msg"
-	"$@" >/dev/null || track_ok=1
-	printf "\r[\033[%s\033[0m] %s    \n" \
-		"$(test $track_ok -eq 0 && printf "32m OK " || printf "31mFAIL")" \
-		"$track_msg"
-	return $track_ok
-}
-
 note()
 {
-	printf "[\033[1mNOTE\033[0m] %s\n" "$1"
+	note_format="$1"
+	shift
+	printf "       $note_format\n" "$@" | tee -a "$LOGFILE"
 }
 
 skip()
 {
-	printf "[\033[34mSKIP\033[0m] %s\n" "$1"
+	skip_format="$1"
+	shift
+	printf "[\033[34mSKIP\033[0m] $skip_format\n" "$@" | tee -a "$LOGFILE"
 }
 
 warn()
 {
-	printf "[\033[33mWARN\033[0m] %s\n" "$1"
+	warn_format="$1"
+	shift
+	printf "[\033[33mWARN\033[0m] $warn_format\n" "$@" | tee -a "$LOGFILE"
 }
 
-check_builddir()
+success()
+{
+	printf "\033[1;32m>>>\033[0m Build successful in %s.\n" "$BUILDPATH_BASE"
+}
+
+fail()
+{
+	printf "\033[1;31m>>>\033[0m Build failed. See %s.\n" "$LOGFILE"
+	exit 2
+}
+
+check_status()
 {
 	if [ $FORCE -eq 0 ]; then
-		note "${1}: force-rebuild, ignoring status file"
-		rm -rf "$1"
-		rm -f "${1}.status"
-	elif [ -e "${1}" ]; then
-		if [ ! -e "${1}.status" ]; then
-			warn "${1}: corresponding status file not found (skipping)"
+		rm -rf "$BUILDPATH"
+		printf 1 > "$STATUSFILE"
+		return 1
+	elif [ -e "$BUILDPATH" ]; then
+		if [ ! -e "$STATUSFILE" ]; then
+			warn "%s not found, rebuilding" "$STATUSFILE"
+			rm -rf "$BUILDPATH"
+			printf 1 > "$STATUSFILE"
 			return 1
 		else
-			if [ "$(cat "${1}.status")" = '0' ]; then
-				skip "$1: already built successfully, not rebuilding"
-				return 1
+			if [ "$(cat "$STATUSFILE")" = '0' ]; then
+				skip '%s' "$BUILDPATH"
+				return 0
 			else
-				note "$1: previously failed attempt to build, rebuilding"
+				note '%s previously failed, rebuilding' "$BUILDPATH"
+				return 1
 			fi
 		fi
+	else
+		return 1
 	fi
-	return 0
 }
 
-mark_builddir()
+set_status()
 {
-	echo $1 > "${2}.status"
-	test $1 -eq 0 || exit 2
+	printf '%d' "$1" >"$STATUSFILE"
+}
+
+track()
+{
+	track_msg="$1"
+	shift
+
+	printf "[    ] %s ..." "$track_msg" | tee -a "$LOGFILE"
+	track_status=0
+	if [ $VERBOSE -eq 0 ]; then
+		{ "$@" || track_status=1; } 2>&1 | tee -a "$LOGFILE"
+	else
+		{ "$@" || track_status=1; } >>"$LOGFILE" 2>>"$LOGFILE"
+	fi
+	printf "\r[\033[%s\033[0m] %s    \n" \
+		"$(test $track_status -eq 0 && printf "32m OK " || printf "31mFAIL")" \
+		"$track_msg" | tee -a "$LOGFILE"
+	test $track_status -eq 0 || fail
 }
 
 # LUA ==========================================================================
@@ -91,25 +116,19 @@ lua_build()
 	lua_vname="$lua_name-$lua_version"
 	lua_baseurl='http://www.lua.org/ftp'
 	lua_tarball="${lua_vname}.tar.gz"
-	lua_builddir="$(basename "$lua_tarball" .tar.gz)"
-	lua_buildpath="$BUILDPATH/$lua_builddir"
 
 	# Build directory:
-	check_builddir "$lua_buildpath" || return 0
 	if [ -e "$lua_tarball" ]; then
-		skip "$lua_tarball found, not downloading again"
+		skip "%s: Existing, not downloading again" "$lua_tarball"
 	else
-		wget "$lua_baseurl/$lua_tarball"
+		track 'Downloading LUA' wget "$lua_baseurl/$lua_tarball"
 	fi
 	tar xzf "$lua_tarball"
-	cd "$lua_buildpath"
+	mv "$(basename "$lua_tarball" .tar.gz)" "$BUILDPATH"
+	cd "$BUILDPATH"
 
 	# Build:
-	track 'building lua' \
-		make -j$JOBS linux || \
-
-	# Finish:
-	mark_builddir $? "$lua_buildpath"
+	track 'Building LUA' make -j$JOBS linux
 }
 
 # STP ==========================================================================
@@ -119,40 +138,33 @@ lua_build()
 
 stp_build()
 {
-	stp_srcpath="$REPOPATH/stp"
-	stp_buildpath="$BUILDPATH/stp"
+	stp_srcpath="$SRCPATH_BASE/stp"
 
 	# Build directory:
-	check_builddir "$stp_buildpath" || return 0
-	cp -r "$stp_srcpath" "$stp_buildpath"
-	cd "$stp_buildpath"
+	cp -r "$stp_srcpath" "$BUILDPATH"
+	cd "$BUILDPATH"
 
 	# Configure:
-	track 'configuring STP' scripts/configure \
-		--with-prefix="$stp_buildpath" \
+	track 'Configuring STP' scripts/configure \
+		--with-prefix="$BUILDPATH" \
 		--with-fpic \
 		--with-gcc="$LLVM_NATIVE_CC" \
 		--with-g++="$LLVM_NATIVE_CXX" \
 		$(test $ASAN -eq 0 && echo '--with-address-sanitizer')
 
 	# Build:
-	track 'building STP' make -j$JOBS
-
-	# Finish:
-	mark_builddir $? "$stp_buildpath"
+	track 'Building STP' make -j$JOBS
 }
 
 # KLEE =========================================================================
 
 klee_build()
 {
-	klee_srcpath="$REPOPATH/klee"
-	klee_buildpath="$BUILDPATH/opt"
+	klee_srcpath="$SRCPATH_BASE/klee"
 
 	# Build directory:
-	check_builddir "$klee_buildpath" || return 0
-	mkdir -p "$klee_buildpath"
-	cd "$klee_buildpath"
+	mkdir -p "$BUILDPATH"
+	cd "$BUILDPATH"
 
 	# Configure:
 	if [ "$MODE" = 'debug' ]; then
@@ -163,13 +175,13 @@ klee_build()
 		klee_cxxflags="$klee_cxxflags -fsanitize=address"
 		klee_ldflags="$klee_ldflags -fsanizite=address"
 	fi
-	track 'configuring KLEE' "$klee_srcpath"/configure \
-		--prefix="$klee_buildpath" \
+	track 'Configuring KLEE' "$klee_srcpath"/configure \
+		--prefix="$BUILDPATH_BASE/opt" \
 		--with-llvmsrc="$LLVM_SRC" \
 		--with-llvmobj="$LLVM_BUILD" \
 		--target=x86_64 \
 		--enable-exceptions \
-		--with-stp="$stp_buildpath" \
+		--with-stp="$BUILDPATH_BASE/stp" \
 		CC="$LLVM_NATIVE_CC" \
 		CXX="$LLVM_NATIVE_CXX" \
 		$klee_cxxflags \
@@ -181,77 +193,63 @@ klee_build()
 	else
 		klee_buildopts='ENABLE_OPTIMIZED=1'
 	fi
-	track 'building KLEE' make -j$JOBS $klee_buildopts
-
-	# Finish:
-	mark_builddir $? "$klee_buildpath"
+	track 'Building KLEE' make -j$JOBS $klee_buildopts
 }
 
 # LIBMEMTRACER =================================================================
 
-libmt_build()
+libmemtracer_build()
 {
-	libmt_srcpath="$REPOPATH/libmemtracer"
-	libmt_buildpath="$BUILDPATH/libmemtracer"
+	libmemtracer_srcpath="$SRCPATH_BASE/libmemtracer"
 
 	# Build directory:
-	check_builddir "$libmt_buildpath" || return 0
-	mkdir -p "$libmt_buildpath"
-	cd "$libmt_buildpath"
+	mkdir -p "$BUILDPATH"
+	cd "$BUILDPATH"
 
 	# Configure:
-	track 'configuring libmemtracer' "$libmt_srcpath"/configure \
+	track 'Configuring libmemtracer' "$libmemtracer_srcpath"/configure \
 		--enable-debug \
 		CC="$LLVM_NATIVE_CC" \
-		CXX="$LLVM_NATIVE_CXX" \
+		CXX="$LLVM_NATIVE_CXX"
 
 	# Build:
-	libmt_buildopts="CLANG_CC=$LLVM_NATIVE_CC CLANG_CXX=$LLVM_NATIVE_CXX"
-	track 'building libmemtracer' make -j$JOBS $libmt_buildopts
-
-	# Finish:
-	mark_builddir $? "$libmt_buildpath"
+	libmemtracer_buildopts="CLANG_CC=$LLVM_NATIVE_CC CLANG_CXX=$LLVM_NATIVE_CXX"
+	track 'Building libmemtracer' make -j$JOBS $libmemtracer_buildopts
 }
 
 # LIBVMI =======================================================================
 
 libvmi_build()
 {
-	libvmi_srcpath="$REPOPATH/libvmi"
-	libvmi_buildpath="$BUILDPATH/libvmi"
+	libvmi_srcpath="$SRCPATH_BASE/libvmi"
 
 	# Build directory:
-	check_builddir "$libvmi_buildpath" || return 0
-	mkdir -p "$libvmi_buildpath"
-	cd "$libvmi_buildpath"
+	mkdir -p "$BUILDPATH"
+	cd "$BUILDPATH"
 
 	# Configure:
-	track 'configuring libvmi' "$libvmi_srcpath"/configure \
+	track 'Configuring libvmi' "$libvmi_srcpath"/configure \
 		--with-llvm="$LLVM_BUILD_SUB" \
-		--with-libmemtracer-src="$libmt_srcpath" \
+		--with-libmemtracer-src="$SRCPATH_BASE/libmemtracer" \
 		$(test "$MODE" = 'debug' && echo '--enable-debug') \
 		CC=$LLVM_NATIVE_CC \
 		CXX=$LLVM_NATIVE_CXX
 
 	# Build:
-	track 'building libvmi' make -j$JOBS
-
-	# Finish:
-	mark_builddir $? "$libvmi_buildpath"
+	track 'Building libvmi' make -j$JOBS
 }
 
 # QEMU =========================================================================
 
 qemu_build()
 {
-	qemu_srcpath="$REPOPATH/qemu"
+	qemu_srcpath="$SRCPATH_BASE/qemu"
 	qemu_buildpath="$BUILDPATH/qemu"
 
-	return
+	true
 
 	# Build directory:
-	#check_builddir "$qemu_buildpath" || return 0
-	#mkdir -p "$qemu_buildpath"
+	#mkdir -p "$BUILDPATH"
 }
 
 # TOOLS ========================================================================
@@ -270,7 +268,7 @@ guest_build()
 
 # TEST SUITE ===================================================================
 
-test_build()
+tests_build()
 {
 	true
 }
@@ -279,15 +277,29 @@ test_build()
 
 all_build()
 {
-	lua_build
-	stp_build
-	klee_build
-	libmt_build
-	libvmi_build
-	qemu_build
-	tools_build
-	guest_build
-	test_build
+	for BUILDDIR in lua stp klee libmemtracer libvmi qemu tools guest tests; do
+		BUILDPATH="$BUILDPATH_BASE/$BUILDDIR"
+		STATUSFILE="${BUILDPATH}.status"
+		LOGFILE="${BUILDPATH}.log"
+		printf '' > "$LOGFILE"
+		if ! check_status; then
+			case "$BUILDDIR" in
+				lua) lua_build ;;
+				stp) stp_build ;;
+				klee) klee_build ;;
+				libmemtracer) libmemtracer_build ;;
+				libvmi) libvmi_build ;;
+				qemu) qemu_build ;;
+				tools) tools_build ;;
+				guest) guest_build ;;
+				tests) tests_build ;;
+				*) die 127 'unhandled component: %s' "$BUILDDIR"
+			esac
+		fi
+		LOGFILE='/dev/null'
+		printf '0' >"$STATUSFILE"
+	done
+	success
 }
 
 # MAIN =========================================================================
@@ -302,13 +314,12 @@ usage()
 
 	Options:
 	    -a          Build with Address Sanitizer
-	    -b PATH     Build chef in PATH [default=$BUILDDIR]
-	    -c          Clean (instead of build)
+	    -b PATH     Build chef in PATH [default=$BUILDDIR_BASE]
 	    -f          Force-rebuild
 	    -h          Display this help
 	    -j N        Compile with N jobs [default=$JOBS]
-	    -l PATH     Path to where the native the LLVM-3.2 files are installed
-	                [default=$LLVM_BASE]
+	    -l PATH     Path to where the native LLVM-3.2 files are installed [default=$LLVM_BASE]
+	    -v          Verbose: show compilation messages/warnings/errors on the console
 
 	Architectures:
 	    i386        Build 32 bit x86
@@ -326,26 +337,26 @@ get_options()
 {
 	# Default values:
 	ASAN=1
-	BUILDDIR='./build'
-	CLEAN=1
+	BUILDDIR_BASE='./build'
 	FORCE=1
 	case "$(uname)" in
 		Darwin) JOBS=$(sysctl hw.ncpu | cut -d ':' -f 2); alias cp=gcp ;;
-		Linux)  JOBS=$(grep -c '^processor' /proc/cpuinfo)             ;;
-		*)      JOBS=2                                                 ;;
+		Linux) JOBS=$(grep -c '^processor' /proc/cpuinfo) ;;
+		*) JOBS=2 ;;
 	esac
 	LLVM_BASE='/opt/s2e/llvm'
+	VERBOSE=1
 
 	# Options:
-	while getopts ab:cfhj:kl: opt; do
+	while getopts ab:fhj:l:v opt; do
 		case "$opt" in
 			a) ASAN=0 ;;
-			b) BUILDDIR="$OPTARG" ;;
-			c) CLEAN=0 ;;
+			b) BUILDDIR_BASE="$OPTARG" ;;
 			f) FORCE=0 ;;
 			h) usage ;;
 			j) JOBS="$OPTARG" ;;
 			l) LLVM_BASE="$OPTARG" ;;
+			v) VERBOSE=0 ;;
 			'?') die_help ;;
 		esac
 	done
@@ -373,7 +384,7 @@ get_mode()
 	MODE="$1"
 	case "$MODE" in
 		release) LLVM_BUILD_SUB="$LLVM_BUILD/Release+Asserts";;
-		debug)   LLVM_BUILD_SUB="$LLVM_BUILD/Debug+Asserts"  ;;
+		debug) LLVM_BUILD_SUB="$LLVM_BUILD/Debug+Asserts" ;;
 		'') die_help "missing mode" ;;
 		*) die_help "invalid mode: '%s'" "$MODE" ;;
 	esac
@@ -381,6 +392,8 @@ get_mode()
 
 main()
 {
+	LOGFILE='/dev/null'
+
 	# Command line arguments:
 	get_options "$@"
 	shift $(($OPTIND - 1))
@@ -388,23 +401,12 @@ main()
 	shift
 	get_mode "$@"
 	shift
-
-	# Check for trailing arguments:
 	test -z "$1" || die_help "trailing arguments: $@"
 
-	# Build/clean each configuration:
-	BUILDPATH="$(readlink -f "$BUILDDIR")"
-
-	# Clean:
-	if [ $CLEAN -eq 0 ]; then
-		track "removing $BUILDPATH" rm -rf $BUILDPATH
-		continue
-	fi
-
 	# Build:
-	test $ASAN -eq 0 && BUILDPATH="$BUILDPATH-asan"
-	mkdir -p "$BUILDPATH"
-	cd "$BUILDPATH"
+	BUILDPATH_BASE="$(readlink -f "$BUILDDIR_BASE")"
+	mkdir -p "$BUILDPATH_BASE"
+	cd "$BUILDPATH_BASE"
 
 	# Build in build directory:
 	all_build
