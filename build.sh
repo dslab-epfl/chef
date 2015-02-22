@@ -309,7 +309,25 @@ qemu_build()
 
 tools_build()
 {
-	true
+	tools_srcdir="$SRCPATH_BASE/tools"
+
+	# Build directory:
+	mkdir -p "$BUILDPATH"
+	cd "$BUILDPATH"
+
+	# Configure:
+	track 'Configuring tools' "$tools_srcdir"/configure \
+		--with-llvmsrc="$LLVM_SRC" \
+		--with-llvmobj="$LLVM_BUILD" \
+		--with-s2esrc="$SRCPATH_BASE/qemu" \
+		--target=x86_64 \
+		CC="$LLVM_NATIVE_CC" \
+		CXX="$LLVM_NATIVE_CXX" \
+		ENABLE_OPTIMIZED=$(test "$MODE" = 'release' && echo 1 || echo 0) \
+		REQUIRES_RTTI=1
+
+	# Build:
+	track 'Building tools' make -j$JOBS
 }
 
 # GUEST TOOLS ==================================================================
