@@ -63,11 +63,12 @@ fail()
 	exit 2
 }
 
-error()
+internal_error()
 {
-	error_format="$1"
+	internal_error_format="$1"
 	shift
-	printf "[\033[31mFATAL\033[0m] $error_format\n" "$@" >&2
+	printf "[\033[31mFATAL\033[0m] Internal Error: $internal_error_format\n" \
+	       "$@" >&2
 	exit 127
 }
 
@@ -330,7 +331,22 @@ tools_build()
 
 guest_build()
 {
-	true
+	guest_srcpath="$SRCPATH_BASE/guest"
+
+	# Build directory:
+	mkdir -p "$BUILDPATH"
+	cd "$BUILDPATH"
+
+	# Configure:
+	track 'Configuring guest tools' "$guest_srcpath"/configure
+
+	# Build:
+	case "$ARCH" in
+		i386) guest_cflags='-m32' ;;
+		x86_64) guest_cflags='-m64' ;;
+		*) internal_error 'Unknown architecture: %s' "$ARCH" ;;
+	esac
+	track 'Building guest tools' make -j$JOBS CFLAGS="$guest_cflags"
 }
 
 # TEST SUITE ===================================================================
@@ -360,7 +376,7 @@ all_build()
 				tools) tools_build ;;
 				guest) guest_build ;;
 				tests) tests_build ;;
-				*) error 'Unhandled component: %s' "$BUILDDIR"
+				*) internal_error 'Unhandled component: %s' "$BUILDDIR"
 			esac
 		fi
 		LOGFILE='/dev/null'
