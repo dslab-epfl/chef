@@ -12,7 +12,7 @@ die()
 	die_retval=$1
 	die_format="$2"
 	shift 2
-	printf "$die_format\n" "$@" | tee -a "$LOGFILE" >&2
+	printf "$die_format\n" "$@" >&2
 	exit $die_retval
 }
 
@@ -21,7 +21,7 @@ die_help()
 	die_format="$1"
 	if [ -n "$die_format" ]; then
 		shift
-		printf "$die_format\n" "$@" | tee -a "$LOGFILE" >&2
+		printf "$die_format\n" "$@" >&2
 	fi
 	die 1 "Run \`$0 -h\` for help."
 }
@@ -30,21 +30,21 @@ note()
 {
 	note_format="$1"
 	shift
-	printf "       $note_format\n" "$@" | tee -a "$LOGFILE"
+	printf "       $note_format\n" "$@"
 }
 
 skip()
 {
 	skip_format="$1"
 	shift
-	printf "[\033[34mSKIP\033[0m] $skip_format\n" "$@" | tee -a "$LOGFILE"
+	printf "[\033[34mSKIP\033[0m] $skip_format\n" "$@"
 }
 
 warn()
 {
 	warn_format="$1"
 	shift
-	printf "[\033[33mWARN\033[0m] $warn_format\n" "$@" | tee -a "$LOGFILE"
+	printf "[\033[33mWARN\033[0m] $warn_format\n" "$@" >&2
 }
 
 success()
@@ -54,8 +54,16 @@ success()
 
 fail()
 {
-	printf "\033[1;31m>>>\033[0m Build failed. See %s.\n" "$LOGFILE"
+	printf "\033[1;31m>>>\033[0m Build failed. See %s.\n" "$LOGFILE" >&2
 	exit 2
+}
+
+error()
+{
+	error_format="$1"
+	shift
+	printf "[\033[31mFATAL\033[0m] $error_format\n" "$@" >&2
+	exit 127
 }
 
 check_status()
@@ -94,7 +102,7 @@ track()
 	track_msg="$1"
 	shift
 
-	printf "[    ] %s ..." "$track_msg" | tee -a "$LOGFILE"
+	printf "[    ] %s ..." "$track_msg"
 	track_status=0
 	if [ $VERBOSE -eq 0 ]; then
 		{ "$@" || track_status=1; } 2>&1 | tee -a "$LOGFILE"
@@ -103,7 +111,7 @@ track()
 	fi
 	printf "\r[\033[%s\033[0m] %s    \n" \
 		"$(test $track_status -eq 0 && printf "32m OK " || printf "31mFAIL")" \
-		"$track_msg" | tee -a "$LOGFILE"
+		"$track_msg"
 	test $track_status -eq 0 || fail
 }
 
@@ -229,7 +237,7 @@ libvmi_build()
 
 	# Configure:
 	track 'Configuring libvmi' "$libvmi_srcpath"/configure \
-		--with-llvm="$LLVM_BUILD_SUB" \
+		--with-llvm="$LLVM_BUILD/$ASSERTS" \
 		--with-libmemtracer-src="$SRCPATH_BASE/libmemtracer" \
 		$(test "$MODE" = 'debug' && echo '--enable-debug') \
 		CC=$LLVM_NATIVE_CC \
@@ -244,12 +252,48 @@ libvmi_build()
 qemu_build()
 {
 	qemu_srcpath="$SRCPATH_BASE/qemu"
-	qemu_buildpath="$BUILDPATH/qemu"
 
 	true
 
 	# Build directory:
-	#mkdir -p "$BUILDPATH"
+	mkdir -p "$BUILDPATH"
+	cd "$BUILDPATH"
+
+	# Configure:
+	case "$ARCH" in
+		x86_64) qemu_target_list='x86_64-s2e-softmmu,x86_64-softmmu' ;;
+		i386) qemu_target_list='i386-s2e-softmmu,i386-softmmu' ;;
+		*) error 'qemu: internal error when determining architecture' ;;
+	esac
+	track 'Configuring qemu' "$qemu_srcpath"/configure \
+	#echo \
+		--with-klee="$BUILDPATH_BASE/klee/$ASSERTS" \
+		--with-llvm="$LLVM_BUILD/$ASSERTS" \
+		--with-libvmi-libdir="$BUILDPATH_BASE/libvmi" \
+		$(test "$MODE" = 'debug' && echo '--enable-debug') \
+		--prefix="$BUILDPATH_BASE/opt" \
+		--cc="$LLVM_NATIVE_CC" \
+		--cxx="$LLVM_NATIVE_CXX" \
+		--target-list="$qemu_target_list" \
+		--enable-llvm \
+		--enable-s2e \
+		--with-pkgversion=S2E \
+		--enable-boost \
+		--with-liblua="$BUILDPATH_BASE/lua/src" \
+		--extra-cxxflags=-Wno-deprecated \
+		--with-libvmi-incdir="$SRCPATH_BASE/libvmi/include" \
+		--disable-virtfs \
+		--with-stp="$BUILDPATH_BASE/stp" \
+		$(test $ASAN -eq 0 && printf '--enable-address-sanitizer') \
+		$(test $WITH_LIBMT -eq 0 \
+		 && echo "--extra-ldflags='-L$BUILDPATH_BASE/libmemtracer -lmemtracer'"\
+		 && echo '--enable-memory-tracer') \
+		"$QEMU_FLAGS"
+
+	# Build:
+	#track 'Building qemu' make -j$JOBS
+
+	false
 }
 
 # TOOLS ========================================================================
@@ -293,7 +337,7 @@ all_build()
 				tools) tools_build ;;
 				guest) guest_build ;;
 				tests) tests_build ;;
-				*) die 127 'unhandled component: %s' "$BUILDDIR"
+				*) error 'Unhandled component: %s' "$BUILDDIR"
 			esac
 		fi
 		LOGFILE='/dev/null'
@@ -313,12 +357,14 @@ usage()
 	Usage: $0 [OPTIONS ...] ARCH MODE
 
 	Options:
-	    -a          Build with Address Sanitizer
+	    -a          Build chef with Address Sanitizer
 	    -b PATH     Build chef in PATH [default=$BUILDDIR_BASE]
 	    -f          Force-rebuild
 	    -h          Display this help
 	    -j N        Compile with N jobs [default=$JOBS]
 	    -l PATH     Path to where the native LLVM-3.2 files are installed [default=$LLVM_BASE]
+	    -m          Build chef with libmemtracer
+	    -q FLAGS    Additional flags passed to qemu's \`configure\` script
 	    -v          Verbose: show compilation messages/warnings/errors on the console
 
 	Architectures:
@@ -345,10 +391,12 @@ get_options()
 		*) JOBS=2 ;;
 	esac
 	LLVM_BASE='/opt/s2e/llvm'
+	WITH_LIBMT=1
+	QEMU_FLAGS=''
 	VERBOSE=1
 
 	# Options:
-	while getopts ab:fhj:l:v opt; do
+	while getopts ab:fhj:l:mq:v opt; do
 		case "$opt" in
 			a) ASAN=0 ;;
 			b) BUILDDIR_BASE="$OPTARG" ;;
@@ -356,6 +404,8 @@ get_options()
 			h) usage ;;
 			j) JOBS="$OPTARG" ;;
 			l) LLVM_BASE="$OPTARG" ;;
+			m) WITH_LIBMT=0 ;;
+			q) QEMU_FLAGS="$OPTARG" ;;
 			v) VERBOSE=0 ;;
 			'?') die_help ;;
 		esac
@@ -383,8 +433,8 @@ get_mode()
 {
 	MODE="$1"
 	case "$MODE" in
-		release) LLVM_BUILD_SUB="$LLVM_BUILD/Release+Asserts";;
-		debug) LLVM_BUILD_SUB="$LLVM_BUILD/Debug+Asserts" ;;
+		release) ASSERTS='Release+Asserts' ;;
+		debug) ASSERTS='Debug+Asserts' ;;
 		'') die_help "missing mode" ;;
 		*) die_help "invalid mode: '%s'" "$MODE" ;;
 	esac
