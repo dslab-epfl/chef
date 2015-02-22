@@ -6,6 +6,9 @@ SRCPATH_BASE="$RUNPATH"
 SRCDIR_BASE="$(basename "$SRCPATH_BASE")"
 
 # HELPERS ======================================================================
+# Various helper functions for displaying error/warning/normal messages and
+# checking, setting and displaying the compilation status of all the components.
+# Some also interact with the user.
 
 die()
 {
@@ -54,7 +57,8 @@ success()
 
 fail()
 {
-	printf "\033[1;31m>>>\033[0m Build failed. See %s.\n" "$LOGFILE" >&2
+	printf "\033[1;31m>>>\033[0m Build failed.\n"
+	confirm "Do you want to examine $LOGFILE?" && less "$LOGFILE"
 	exit 2
 }
 
@@ -95,6 +99,20 @@ check_status()
 set_status()
 {
 	printf '%d' "$1" >"$STATUSFILE"
+}
+
+confirm()
+{
+	confirm_msg="$1"
+	shift
+	while true; do
+		printf "$confirm_msg [Y/n] "
+		read a
+		case "$a" in
+			[Yy]*|'') return 0;;
+			[Nn]*) return 1;;
+		esac
+	done
 }
 
 track()
@@ -253,8 +271,6 @@ qemu_build()
 {
 	qemu_srcpath="$SRCPATH_BASE/qemu"
 
-	true
-
 	# Build directory:
 	mkdir -p "$BUILDPATH"
 	cd "$BUILDPATH"
@@ -291,9 +307,7 @@ qemu_build()
 		"$QEMU_FLAGS"
 
 	# Build:
-	#track 'Building qemu' make -j$JOBS
-
-	false
+	track 'Building qemu' make -j$JOBS
 }
 
 # TOOLS ========================================================================
@@ -410,6 +424,11 @@ get_options()
 			'?') die_help ;;
 		esac
 	done
+
+	# Check conflicts:
+	if [ $WITH_LIBMT -eq 0 ] && [ $ASAN -eq 0 ]; then
+		die 1 'Cannot use libmemtracer and Address Sanitizer simultaneously.'
+	fi
 
 	# Dependent values:
 	LLVM_NATIVE="$LLVM_BASE/llvm-3.2-native"
