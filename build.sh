@@ -92,6 +92,7 @@ check_status()
 			fi
 		fi
 	else
+		printf 1 > "$STATUSFILE"
 		return 1
 	fi
 }
@@ -210,8 +211,8 @@ klee_build()
 		--with-stp="$BUILDPATH_BASE/stp" \
 		CC="$LLVM_NATIVE_CC" \
 		CXX="$LLVM_NATIVE_CXX" \
-		$klee_cxxflags \
-		$klee_ldflags
+		CXXFLAGS="$klee_cxxflags" \
+		LDFLAGS="$klee_ldflags"
 
 	# Build:
 	if [ "$MODE" = 'debug' ]; then
@@ -276,13 +277,7 @@ qemu_build()
 	cd "$BUILDPATH"
 
 	# Configure:
-	case "$ARCH" in
-		x86_64) qemu_target_list='x86_64-s2e-softmmu,x86_64-softmmu' ;;
-		i386) qemu_target_list='i386-s2e-softmmu,i386-softmmu' ;;
-		*) error 'qemu: internal error when determining architecture' ;;
-	esac
 	track 'Configuring qemu' "$qemu_srcpath"/configure \
-	#echo \
 		--with-klee="$BUILDPATH_BASE/klee/$ASSERTS" \
 		--with-llvm="$LLVM_BUILD/$ASSERTS" \
 		--with-libvmi-libdir="$BUILDPATH_BASE/libvmi" \
@@ -290,7 +285,7 @@ qemu_build()
 		--prefix="$BUILDPATH_BASE/opt" \
 		--cc="$LLVM_NATIVE_CC" \
 		--cxx="$LLVM_NATIVE_CXX" \
-		--target-list="$qemu_target_list" \
+		--target-list="$ARCH-s2e-softmmu,$ARCH-softmmu" \
 		--enable-llvm \
 		--enable-s2e \
 		--with-pkgversion=S2E \
@@ -304,7 +299,7 @@ qemu_build()
 		$(test $WITH_LIBMT -eq 0 \
 		 && echo "--extra-ldflags='-L$BUILDPATH_BASE/libmemtracer -lmemtracer'"\
 		 && echo '--enable-memory-tracer') \
-		"$QEMU_FLAGS"
+		$QEMU_FLAGS
 
 	# Build:
 	track 'Building qemu' make -j$JOBS
