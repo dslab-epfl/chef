@@ -52,7 +52,8 @@ warn()
 
 success()
 {
-	printf "\033[1;32m>>>\033[0m Build successful in %s.\n" "$BUILDPATH_BASE"
+	printf "\033[1;32m>>>\033[0m Successfully built S²E-chef in %s.\n" \
+	       "$BUILDPATH_BASE"
 }
 
 fail()
@@ -70,36 +71,31 @@ error()
 	exit 127
 }
 
-check_status()
+check_stamp()
 {
 	if [ $FORCE -eq 0 ]; then
+		# Build from scratch (forced):
 		rm -rf "$BUILDPATH"
-		printf 1 > "$STATUSFILE"
+		rm -f "$STAMPFILE"
 		return 1
 	elif [ -e "$BUILDPATH" ]; then
-		if [ ! -e "$STATUSFILE" ]; then
-			warn "%s not found, rebuilding" "$STATUSFILE"
-			rm -rf "$BUILDPATH"
-			printf 1 > "$STATUSFILE"
-			return 1
+		# Build from last state (if previously failed):
+		if [ -e "$STAMPFILE" ]; then
+			skip '%s' "$BUILDPATH"
+			return 0
 		else
-			if [ "$(cat "$STATUSFILE")" = '0' ]; then
-				skip '%s' "$BUILDPATH"
-				return 0
-			else
-				note '%s previously failed, rebuilding' "$BUILDPATH"
-				return 1
-			fi
+			note '%s previously failed, rebuilding' "$BUILDPATH"
+			return 1
 		fi
 	else
-		printf 1 > "$STATUSFILE"
+		# Build from scratch:
 		return 1
 	fi
 }
 
-set_status()
+set_stamp()
 {
-	printf '%d' "$1" >"$STATUSFILE"
+	touch "$STAMPFILE"
 }
 
 confirm()
@@ -350,10 +346,10 @@ all_build()
 {
 	for BUILDDIR in lua stp klee libmemtracer libvmi qemu tools guest tests; do
 		BUILDPATH="$BUILDPATH_BASE/$BUILDDIR"
-		STATUSFILE="${BUILDPATH}.status"
+		STAMPFILE="${BUILDPATH}.stamp"
 		LOGFILE="${BUILDPATH}.log"
-		printf '' > "$LOGFILE"
-		if ! check_status; then
+		if ! check_stamp; then
+			printf '' > "$LOGFILE"
 			case "$BUILDDIR" in
 				lua) lua_build ;;
 				stp) stp_build ;;
@@ -368,7 +364,7 @@ all_build()
 			esac
 		fi
 		LOGFILE='/dev/null'
-		printf '0' >"$STATUSFILE"
+		set_stamp
 	done
 	success
 }
