@@ -58,8 +58,8 @@ success()
 
 fail()
 {
-	printf "\033[1;31m>>>\033[0m Build failed.\n"
-	confirm "Do you want to examine $LOGFILE?" && less "$LOGFILE"
+	confirm "\033[1;31m>>>\033[0m Build failed. Examine $LOGFILE?" && \
+	        less "$LOGFILE"
 	exit 2
 }
 
@@ -142,13 +142,15 @@ lua_build()
 	lua_tarball="${lua_vname}.tar.gz"
 
 	# Build directory:
-	if [ -e "$lua_tarball" ]; then
-		skip "%s: Existing, not downloading again" "$lua_tarball"
-	else
-		track 'Downloading LUA' wget "$lua_baseurl/$lua_tarball"
+	if [ ! -d "$BUILDPATH" ]; then
+		if [ -e "$lua_tarball" ]; then
+			skip '%s found, not downloading again' "$lua_tarball"
+		else
+			track 'Downloading LUA' wget "$lua_baseurl/$lua_tarball"
+		fi
+		tar xzf "$lua_tarball"
+		mv "$(basename "$lua_tarball" .tar.gz)" "$BUILDPATH"
 	fi
-	tar xzf "$lua_tarball"
-	mv "$(basename "$lua_tarball" .tar.gz)" "$BUILDPATH"
 	cd "$BUILDPATH"
 
 	# Build:
@@ -349,6 +351,55 @@ guest_build()
 	track 'Building guest tools' make -j$JOBS CFLAGS="$guest_cflags"
 }
 
+# GMOCK ========================================================================
+
+gmock_build_build()
+{
+	make -j$JOBS
+	cd lib
+	"$LLVM_NATIVE_CC" \
+		-D__STDC_LIMIT_MACROS \
+		-D__STDC_CONSTANT_MACROS \
+		-I"$LLVM_SRC/include" \
+		-I"$LLVM_NATIVE/include" \
+		-I"$gtest_path/include" \
+		-I"$gtest_path" \
+		-I"$BUILDDIR/include" \
+		-I"$BUILDDIR" \
+		-c"$BUILDDIR/src/gmock-all.cc"
+	ar -rv libgmock.la gmock-all.o
+}
+
+gmock_build()
+{
+	gmock_name='gmock'
+	gmock_version='1.6.0'
+	gmock_vname="$gmock_name-$gmock_version"
+	gmock_baseurl='http://googlemock.googlecode.com/files'
+	gmock_zip="${gmock_vname}.zip"
+	gtest_path="$LLVM_SRC/utils/unittest/googletest"
+
+	# Build directory:
+	if [ ! -d "$BUILDPATH" ]; then
+		if [ -e "$gmock_zip" ]; then
+			skip '%s found, not downloading again' "$gmock_zip"
+		else
+			track 'Downloading Google Mock' wget "$gmock_baseurl/$gmock_zip"
+		fi
+		unzip -q "$gmock_zip"
+		mv "$(basename "$gmock_zip" .zip)" "$BUILDPATH"
+	fi
+	cd "$BUILDPATH"
+
+	# Configure:
+	track 'Configuring Google Mock' ./configure \
+		CC="$LLVM_NATIVE_CC" \
+		CXX="$LLVM_NATIVE_CXX"
+
+	# Build:
+	track 'Building Google Mock' gmock_build_build
+}
+
 # TEST SUITE ===================================================================
 
 tests_build()
@@ -360,7 +411,8 @@ tests_build()
 
 all_build()
 {
-	for BUILDDIR in lua stp klee libmemtracer libvmi qemu tools guest tests; do
+	for BUILDDIR in lua stp klee libmemtracer libvmi qemu tools guest gmock tests
+	do
 		BUILDPATH="$BUILDPATH_BASE/$BUILDDIR"
 		STAMPFILE="${BUILDPATH}.stamp"
 		LOGFILE="${BUILDPATH}.log"
@@ -375,6 +427,7 @@ all_build()
 				qemu) qemu_build ;;
 				tools) tools_build ;;
 				guest) guest_build ;;
+				gmock) gmock_build ;;
 				tests) tests_build ;;
 				*) internal_error 'Unhandled component: %s' "$BUILDDIR"
 			esac
