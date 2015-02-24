@@ -33,21 +33,21 @@ note()
 {
 	note_format="$1"
 	shift
-	printf "       $note_format\n" "$@"
+	test $VERBOSE -ne 0 && printf "       $note_format\n" "$@"
 }
 
 skip()
 {
 	skip_format="$1"
 	shift
-	printf "[\033[34mSKIP\033[0m] $skip_format\n" "$@"
+	test $VERBOSE -ne 0 && printf "[\033[34mSKIP\033[0m] $skip_format\n" "$@"
 }
 
 warn()
 {
 	warn_format="$1"
 	shift
-	printf "[\033[33mWARN\033[0m] $warn_format\n" "$@" >&2
+	test $VERBOSE -ne 0 && printf "[\033[33mWARN\033[0m] $warn_format\n" "$@">&2
 }
 
 success()
@@ -118,14 +118,14 @@ track()
 	track_msg="$1"
 	shift
 
-	printf "[    ] %s ..." "$track_msg"
+	test $VERBOSE -ne 0 && printf "[    ] %s ..." "$track_msg"
 	track_status=0
 	if [ $VERBOSE -eq 0 ]; then
 		{ "$@" || track_status=1; } 2>&1 | tee -a "$LOGFILE"
 	else
 		{ "$@" || track_status=1; } >>"$LOGFILE" 2>>"$LOGFILE"
 	fi
-	printf "\r[\033[%s\033[0m] %s    \n" \
+	test $VERBOSE -ne 0 && printf "\r[\033[%s\033[0m] %s    \n" \
 		"$(test $track_status -eq 0 && printf "32m OK " || printf "31mFAIL")" \
 		"$track_msg"
 	test $track_status -eq 0 || fail
@@ -364,10 +364,10 @@ gmock_build_build()
 		-I"$LLVM_NATIVE/include" \
 		-I"$gtest_path/include" \
 		-I"$gtest_path" \
-		-I"$BUILDDIR/include" \
-		-I"$BUILDDIR" \
-		-c"$BUILDDIR/src/gmock-all.cc"
-	ar -rv libgmock.la gmock-all.o
+		-I"$BUILDPATH/include" \
+		-I"$BUILDPATH" \
+		-c "$BUILDPATH/src/gmock-all.cc"
+	ar -rv libgmock.a gmock-all.o
 }
 
 gmock_build()
@@ -404,7 +404,33 @@ gmock_build()
 
 tests_build()
 {
-	true
+	tests_srcpath="$SRCPATH_BASE/testsuite"
+
+	# Build directory:
+	mkdir -p "$BUILDPATH"
+	cd "$BUILDPATH"
+
+	# Configure:
+	track 'Configuring test suite' "$tests_srcpath"/configure \
+		--with-llvmsrc="$LLVM_SRC" \
+		--with-llvmobj="$LLVM_BUILD" \
+		--with-s2e-src="$SRCPATH_BASE/qemu" \
+		--with-s2eobj-release="$BUILDPATH_BASE/qemu" \
+		--with-s2eobj-debug="$BUILDPATH_BASE/qemu" \
+		--with-klee-src="$SRCPATH_BASE/klee" \
+		--with-klee-obj="$BUILDPATH_BASE/klee" \
+		--with-gmock="$BUILDPATH_BASE/gmock" \
+		--with-stp="$BUILDPATH_BASE/stp" \
+		--with-clang-profile-lib="$LLVM_NATIVE_LIB" \
+		--target=x86_64 \
+		CC="$LLVM_NATIVE_CC" \
+		CXX="$LLVM_NATIVE_CXX" \
+		REQUIRES_EH=1
+
+	# Build:
+	tests_isopt=$(test "$MODE" = 'debug' && echo 0 || echo 1)
+	tests_buildopts="REQUIRES_RTTI=1 REQUIRE_EH=1 ENABLE_OPTIMIZED=$tests_isopt"
+	track 'Building test suite' make -j$JOBS $tests_buildopts
 }
 
 # ALL ==========================================================================
@@ -413,24 +439,13 @@ all_build()
 {
 	for BUILDDIR in lua stp klee libmemtracer libvmi qemu tools guest gmock tests
 	do
+		cd "$BUILDPATH_BASE"
 		BUILDPATH="$BUILDPATH_BASE/$BUILDDIR"
 		STAMPFILE="${BUILDPATH}.stamp"
 		LOGFILE="${BUILDPATH}.log"
 		if ! check_stamp; then
 			printf '' > "$LOGFILE"
-			case "$BUILDDIR" in
-				lua) lua_build ;;
-				stp) stp_build ;;
-				klee) klee_build ;;
-				libmemtracer) libmemtracer_build ;;
-				libvmi) libvmi_build ;;
-				qemu) qemu_build ;;
-				tools) tools_build ;;
-				guest) guest_build ;;
-				gmock) gmock_build ;;
-				tests) tests_build ;;
-				*) internal_error 'Unhandled component: %s' "$BUILDDIR"
-			esac
+			${BUILDDIR}_build
 		fi
 		LOGFILE='/dev/null'
 		set_stamp
@@ -509,11 +524,12 @@ get_options()
 	fi
 
 	# Dependent values:
-	LLVM_NATIVE="$LLVM_BASE/llvm-3.2-native"
 	LLVM_SRC="$LLVM_BASE/llvm-3.2.src"
 	LLVM_BUILD="$LLVM_BASE/llvm-3.2.build"
+	LLVM_NATIVE="$LLVM_BASE/llvm-3.2-native"
 	LLVM_NATIVE_CC="$LLVM_NATIVE/bin/clang"
 	LLVM_NATIVE_CXX="$LLVM_NATIVE/bin/clang++"
+	LLVM_NATIVE_LIB="$LLVM_NATIVE/lib"
 }
 
 get_architecture()
