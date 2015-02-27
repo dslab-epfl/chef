@@ -279,13 +279,9 @@ qemu_build()
 
 	# Configure:
 	case "$MODE" in
-	asan)
-		qemu_confopt='--enable-address-sanitizer' ;;
-	libmemtracer)
-		qemu_confopt="--enable-memory-tracer"
-		;;
-	*)
-		;;
+		asan) qemu_confopt='--enable-address-sanitizer' ;;
+		libmemtracer) qemu_confopt='--enable-memory-tracer' ;;
+		*) ;;
 	esac
 	track 'Configuring qemu' "$qemu_srcpath"/configure \
 		--with-klee="$BUILDPATH_BASE/klee/$ASSERTS" \
@@ -306,8 +302,8 @@ qemu_build()
 		--disable-virtfs \
 		--with-stp="$BUILDPATH_BASE/stp" \
 		$qemu_confopt \
-		$(test "$MODE" = 'libmemtracer' && \
-		  echo "--extra-ldflags='-L$BUILDPATH_BASE/libmemtracer -lmemtracer'")\
+		--extra-ldflags="$(test "$MODE" = 'libmemtracer' && \
+		  echo "-L$BUILDPATH_BASE/libmemtracer -lmemtracer")"\
 		$QEMU_FLAGS
 
 	# Build:
