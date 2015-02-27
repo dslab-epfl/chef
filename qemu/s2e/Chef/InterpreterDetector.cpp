@@ -13,6 +13,7 @@
 #include <s2e/Chef/S2ESyscallMonitor.h>
 
 #include <llvm/Support/Format.h>
+#include <llvm/Support/raw_ostream.h>
 
 #include <boost/shared_ptr.hpp>
 
@@ -85,8 +86,7 @@ private:
 struct MemoryOpAnalyzer {
     MemoryOpAnalyzer(S2E &s2e, S2EExecutionState *state,
             const MemoryOpSequence &mem_ops, int min_opcodes)
-        : instrumentation_pc(0),
-          s2e_(s2e),
+        : s2e_(s2e),
           state_(state),
           mem_ops_(mem_ops),
           min_opcodes_(min_opcodes) {
@@ -96,23 +96,82 @@ struct MemoryOpAnalyzer {
     bool analyze() {
         if (!computeCandidateHLPC())
             return false;
-        return computeInstrumentationPoint();
+        printCandidateHLPC();
+
+        if (!computeCandidateRanges())
+            return false;
+        printCandidateRanges();
+
+        ValueSet instrumentation_pcs;
+
+        for (std::vector<ValueRange>::iterator rit = candidate_ranges.begin(),
+                rie = candidate_ranges.end(); rit != rie; ++rit) {
+            ValueSet pcs;
+            computeInstrumentationPoint(*rit, pcs);
+            if (pcs.empty()) {
+                continue;
+            }
+            s2e_.getMessagesStream(state_) << "Valid range found: "
+                    << llvm::format("0x%x-0x%x", rit->first, rit->second)
+                    << '\n';
+            if (!instrumentation_pcs.empty()) {
+                s2e_.getWarningsStream(state_)
+                        << "Multiple valid bytecode buffers found. "
+                        << "Could not differentiate between them." << '\n';
+                return false;
+            }
+            instrumentation_pcs = pcs;
+        }
+
+        return false;
     }
 
     typedef std::vector<uint64_t> ValueSequence;
     typedef std::set<uint64_t> ValueSet;
     typedef std::map<uint64_t, shared_ptr<ValueSequence> > ValueSequenceMap;
+    typedef std::pair<uint64_t, uint64_t> ValueRange;
 
     ValueSequenceMap candidate_hlpcs;
     ValueSet discarded_hlpcs;
-    std::pair<uint64_t, uint64_t> bytecode_range;
 
-    ValueSequenceMap candidate_pcs;
-    ValueSet discarded_pcs;
-
-    uint64_t instrumentation_pc;
+    std::vector<ValueRange> candidate_ranges;
 
 private:
+    void printCandidateHLPC() {
+        std::string output;
+        llvm::raw_string_ostream os(output);
+
+        for (ValueSequenceMap::iterator vsit = candidate_hlpcs.begin(),
+                vsie = candidate_hlpcs.end(); vsit != vsie; ++vsit) {
+            os << llvm::format("[HLPC]=0x%x", vsit->first) << " | ";
+            for (ValueSequence::iterator it = vsit->second->begin(),
+                    ie = vsit->second->end(); it != ie; ++it) {
+                os << llvm::format("0x%x", *it) << " ";
+            }
+            os << '\n';
+        }
+
+        s2e_.getMessagesStream(state_) << "Discarded HLPC variables: "
+                << discarded_hlpcs.size() << '\n';
+        s2e_.getMessagesStream(state_) << "Minimum update length: "
+                << min_opcodes_ << '\n';
+        s2e_.getMessagesStream(state_) << "Candidate HLPC variables:" << '\n'
+                << os.str();
+    }
+
+    void printCandidateRanges() {
+        std::string output;
+        llvm::raw_string_ostream os(output);
+
+        for (std::vector<ValueRange>::iterator it = candidate_ranges.begin(),
+                ie = candidate_ranges.end(); it != ie; ++it) {
+            os << llvm::format("Range 0x%x-0x%x", it->first, it->second) << '\n';
+        }
+
+        s2e_.getMessagesStream(state_) << "Candidate ranges:" << '\n'
+                << os.str();
+    }
+
     bool computeCandidateHLPC() {
         for (MemoryOpSequence::const_iterator mit = mem_ops_.begin(),
                 mie = mem_ops_.end(); mit != mie; ++mit) {
@@ -145,21 +204,42 @@ private:
             return false;
         }
 
-        unsigned max_update_count = 0;
+        return true;
+    }
 
+    bool computeCandidateRanges() {
+        // XXX: There are cases where the ranges are not merged correctly.
         for (ValueSequenceMap::iterator vsit = candidate_hlpcs.begin(),
                 vsie = candidate_hlpcs.end(); vsit != vsie; ++vsit) {
             if (vsit->second->size() < min_opcodes_) {
                 continue;
             }
-            if (vsit->second->size() > max_update_count) {
-                max_update_count = vsit->second->size();
-                bytecode_range = std::make_pair(vsit->second->front(),
-                        vsit->second->back());
+
+            ValueRange current_range = std::make_pair(vsit->second->front(),
+                    vsit->second->back());
+
+            // We assume a bytecode instruction is no larger than 1KB.
+            if (current_range.second - current_range.first > min_opcodes_*1024) {
+                continue;
+            }
+
+            bool merged = false;
+
+            for (std::vector<ValueRange>::iterator rit = candidate_ranges.begin(),
+                    rie = candidate_ranges.end(); rit != rie; ++rit) {
+                if (current_range.first <= rit->second && rit->first <= current_range.second) {
+                    *rit = std::make_pair(std::min(current_range.first, rit->first),
+                            std::max(current_range.second, rit->second));
+                    merged = true;
+                    break;
+                }
+            }
+            if (!merged) {
+                candidate_ranges.push_back(current_range);
             }
         }
 
-        if (max_update_count == 0) {
+        if (candidate_ranges.empty()) {
             s2e_.getWarningsStream(state_)
                     << "Could not detect interpretation structure: "
                     << "Not enough HLPC variable updates." << '\n';
@@ -169,7 +249,10 @@ private:
         return true;
     }
 
-    bool computeInstrumentationPoint() {
+    void computeInstrumentationPoint(ValueRange range, ValueSet &pcs) {
+        ValueSequenceMap candidate_pcs;
+        ValueSet discarded_pcs;
+
         for (MemoryOpSequence::const_iterator mit = mem_ops_.begin(),
                 mie = mem_ops_.end(); mit != mie; ++mit) {
             if (mit->is_write) {
@@ -178,8 +261,7 @@ private:
             if (discarded_pcs.count(mit->pc)) {
                 continue;
             }
-            if (mit->address < bytecode_range.first
-                    || mit->address > bytecode_range.second) {
+            if (mit->address < range.first || mit->address > range.second) {
                 continue;
             }
 
@@ -198,36 +280,15 @@ private:
             vsit->second->push_back(mit->address);
         }
 
-        if (candidate_pcs.empty()) {
-            s2e_.getWarningsStream(state_)
-                    << "Could not detect interpretation structure: "
-                    << "No candidate instrumentation points detected." << '\n';
-            return false;
-        }
-
-        unsigned max_update_count = 0;
+        pcs.clear();
 
         for (ValueSequenceMap::iterator vsit = candidate_pcs.begin(),
                 vsie = candidate_pcs.end(); vsit != vsie; ++vsit) {
             if (vsit->second->size() < min_opcodes_) {
                 continue;
             }
-            if (vsit->second->size() > max_update_count) {
-                max_update_count = vsit->second->size();
-                instrumentation_pc = vsit->first;
-            }
+            pcs.insert(vsit->first);
         }
-
-        if (max_update_count == 0) {
-            s2e_.getWarningsStream(state_)
-                    << "Could not detect interpretation structure: "
-                    << "Not enough updates for instrumentation points." << '\n';
-            return false;
-        }
-
-        s2e_.getMessagesStream(state_) << "Instrumentation point detected: "
-                << llvm::format("0x%x", instrumentation_pc) << '\n';
-        return true;
     }
 
     S2E &s2e_;
@@ -375,7 +436,8 @@ void InterpreterDetector::computeInstrumentation(S2EExecutionState *state) {
     if (!analyzer.analyze())
         return;
 
-    resetInstrumentationPc(analyzer.instrumentation_pc);
+    // FIXME
+    resetInstrumentationPc(0);
 }
 
 
