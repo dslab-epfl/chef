@@ -4,6 +4,8 @@ RUNNAME="$(basename "$0")"
 RUNPATH="$(readlink -f "$(dirname "$0")")"
 SRCPATH_BASE="$RUNPATH"
 SRCDIR_BASE="$(basename "$SRCPATH_BASE")"
+COMPONENTS='lua stp klee libmemtracer libvmi qemu tools guest gmock tests'
+USERNAME="$(id -un)"
 
 # HELPERS ======================================================================
 # Various helper functions for displaying error/warning/normal messages and
@@ -176,7 +178,7 @@ stp_build()
 		--with-fpic \
 		--with-gcc="$LLVM_NATIVE_CC" \
 		--with-g++="$LLVM_NATIVE_CXX" \
-		$(test $ASAN -eq 0 && echo '--with-address-sanitizer')
+		$(test "$MODE" = 'asan' && echo '--with-address-sanitizer')
 
 	# Build:
 	track 'Building STP' make -j$JOBS
@@ -193,11 +195,11 @@ klee_build()
 	cd "$BUILDPATH"
 
 	# Configure:
-	if [ "$MODE" = 'debug' ]; then
+	if [ "$TARGET" = 'debug' ]; then
 		klee_cxxflags='-g -O0'
 		klee_ldflags='-g'
 	fi
-	if [ $ASAN -eq 0 ]; then
+	if [ "$MODE" = 'asan' ]; then
 		klee_cxxflags="$klee_cxxflags -fsanitize=address"
 		klee_ldflags="$klee_ldflags -fsanizite=address"
 	fi
@@ -214,7 +216,7 @@ klee_build()
 		LDFLAGS="$klee_ldflags"
 
 	# Build:
-	if [ "$MODE" = 'debug' ]; then
+	if [ "$TARGET" = 'debug' ]; then
 		klee_buildopts='ENABLE_OPTIMIZED=0'
 	else
 		klee_buildopts='ENABLE_OPTIMIZED=1'
@@ -257,7 +259,7 @@ libvmi_build()
 	track 'Configuring libvmi' "$libvmi_srcpath"/configure \
 		--with-llvm="$LLVM_BUILD/$ASSERTS" \
 		--with-libmemtracer-src="$SRCPATH_BASE/libmemtracer" \
-		$(test "$MODE" = 'debug' && echo '--enable-debug') \
+		$(test "$TARGET" = 'debug' && echo '--enable-debug') \
 		CC=$LLVM_NATIVE_CC \
 		CXX=$LLVM_NATIVE_CXX
 
@@ -276,11 +278,20 @@ qemu_build()
 	cd "$BUILDPATH"
 
 	# Configure:
+	case "$MODE" in
+	asan)
+		qemu_confopt='--enable-address-sanitizer' ;;
+	libmemtracer)
+		qemu_confopt="--enable-memory-tracer"
+		;;
+	*)
+		;;
+	esac
 	track 'Configuring qemu' "$qemu_srcpath"/configure \
 		--with-klee="$BUILDPATH_BASE/klee/$ASSERTS" \
 		--with-llvm="$LLVM_BUILD/$ASSERTS" \
 		--with-libvmi-libdir="$BUILDPATH_BASE/libvmi" \
-		$(test "$MODE" = 'debug' && echo '--enable-debug') \
+		$(test "$TARGET" = 'debug' && echo '--enable-debug') \
 		--prefix="$BUILDPATH_BASE/opt" \
 		--cc="$LLVM_NATIVE_CC" \
 		--cxx="$LLVM_NATIVE_CXX" \
@@ -294,10 +305,9 @@ qemu_build()
 		--with-libvmi-incdir="$SRCPATH_BASE/libvmi/include" \
 		--disable-virtfs \
 		--with-stp="$BUILDPATH_BASE/stp" \
-		$(test $ASAN -eq 0 && printf '--enable-address-sanitizer') \
-		$(test $WITH_LIBMT -eq 0 \
-		 && echo "--extra-ldflags='-L$BUILDPATH_BASE/libmemtracer -lmemtracer'"\
-		 && echo '--enable-memory-tracer') \
+		$qemu_confopt \
+		$(test "$MODE" = 'libmemtracer' && \
+		  echo "--extra-ldflags='-L$BUILDPATH_BASE/libmemtracer -lmemtracer'")\
 		$QEMU_FLAGS
 
 	# Build:
@@ -322,7 +332,7 @@ tools_build()
 		--target=x86_64 \
 		CC="$LLVM_NATIVE_CC" \
 		CXX="$LLVM_NATIVE_CXX" \
-		ENABLE_OPTIMIZED=$(test "$MODE" = 'release' && echo 1 || echo 0) \
+		ENABLE_OPTIMIZED=$(test "$TARGET" = 'release' && echo 1 || echo 0) \
 		REQUIRES_RTTI=1
 
 	# Build:
@@ -428,7 +438,7 @@ tests_build()
 		REQUIRES_EH=1
 
 	# Build:
-	tests_isopt=$(test "$MODE" = 'debug' && echo 0 || echo 1)
+	tests_isopt=$(test "$TARGET" = 'debug' && echo 0 || echo 1)
 	tests_buildopts="REQUIRES_RTTI=1 REQUIRE_EH=1 ENABLE_OPTIMIZED=$tests_isopt"
 	track 'Building test suite' make -j$JOBS $tests_buildopts
 }
@@ -437,8 +447,20 @@ tests_build()
 
 all_build()
 {
-	for BUILDDIR in lua stp klee libmemtracer libvmi qemu tools guest gmock tests
+	for BUILDDIR in $COMPONENTS
 	do
+		# Test whether this component needs to be ignored or not
+		cont=1
+		for i in $IGNORED; do
+			if [ "$BUILDDIR" = "$i" ]; then
+				skip '%s: ignored' "$BUILDDIR"
+				cont=0
+				break
+			fi
+		done
+		test $cont -ne 0 || continue
+
+		# Build:
 		cd "$BUILDPATH_BASE"
 		BUILDPATH="$BUILDPATH_BASE/$BUILDDIR"
 		STAMPFILE="${BUILDPATH}.stamp"
@@ -453,75 +475,153 @@ all_build()
 	success
 }
 
+# DOCKER =======================================================================
+
+docker_image_exists()
+{
+	docker inspect "$1" >/dev/null 2>&1
+}
+
+docker_prepare_image()
+{
+	dockerimg="$USERNAME/s2e-$1"
+	dockerfile="$DOCKERPATH/image/$1/Dockerfile"
+
+	if docker_image_exists "$dockerimg"; then
+		skip '%s: image already exists' "$dockerimg"
+		return
+	fi
+
+	# XXX 'FROM' line correction, temporary, until docker hub is up to date:
+	if [ $1 = 'chef' ]; then
+		# FIXME assuming $USERNAME contains no problematic characters:
+		printf "%%s/stefanbucur/%s/g\nw\nq\n" "$USERNAME" | \
+			ex -s "$dockerfile" || true
+	fi
+	track "Building $1 docker image" docker build \
+		--rm \
+		--tag="$dockerimg" \
+		"$(dirname "$dockerfile")"
+}
+
+docker_prepare()
+{
+	if [ -d "$DOCKERPATH" ]; then
+		cd "$DOCKERPATH"
+		track 'Updating s2e_docker repository' git pull
+		cd -
+	else
+		track 'Cloining s2e_docker repository' \
+			git clone "https://github.com/stefanbucur/s2e_docker" "$DOCKERPATH"
+	fi
+
+	for i in base chef; do
+		docker_prepare_image "$i"
+	done
+}
+
+docker_build()
+{
+	dockerimg="$USERNAME/s2e-chef"
+	dockercont="zopf_${ARCH}_${TARGET}_${MODE}"
+
+	if ! docker_image_exists "$dockerimg"; then
+		die 2 '%s: image does not exist' "$dockerimg"
+	fi
+	note 'Building chef in %s:%s' "$dockerimg" "$dockercont"
+	if docker_image_exists "$dockercont"; then
+		if [ $FORCE -eq 0 ]; then
+			docker rm "$dockercont"
+		else
+			docker start -a -i "$dockercont"
+		fi
+	else
+		docker run \
+			--name="$dockercont" \
+			-t \
+			-i \
+			-v "$SRCPATH_BASE":/host \
+			"$dockerimg" \
+			/host/"$RUNNAME" -z $BUILDARGS
+	fi
+	docker commit "$dockercont" "$dockerimg:$dockercont"
+	docker rm "$dockercont"
+}
+
 # MAIN =========================================================================
 
 usage()
 {
 	cat >&2 <<- EOF
-
 	$RUNNAME: build S²E-chef in a specific configuration.
 
-	Usage: $0 [OPTIONS ...] ARCH MODE
-
-	Options:
-	    -a          Build chef with Address Sanitizer
-	    -b PATH     Build chef in PATH [default=$BUILDDIR_BASE]
-	    -f          Force-rebuild
-	    -h          Display this help
-	    -j N        Compile with N jobs [default=$JOBS]
-	    -l PATH     Path to where the native LLVM-3.2 files are installed [default=$LLVM_BASE]
-	    -m          Build chef with libmemtracer
-	    -q FLAGS    Additional flags passed to qemu's \`configure\` script
-	    -v          Verbose: show compilation messages/warnings/errors on the console
+	Usage: $0 [OPTIONS ...] ARCH TARGET [MODE]
 
 	Architectures:
-	    i386        Build 32 bit x86
-	    x86_64      Build 64 bit x86
+	    i386
+	    x86_64
 
-	Modes:
-	    release     Release mode
-	    debug       Debug mode
+	Targets:
+	    release
+	    debug
 
+	Mode:
+	    normal [default]
+	    asan
+	    libmemtracer
+
+	Options:
+	    -b PATH    Build chef in PATH [default=$BUILDDIR_BASE]
+		-d PATH    Download s2e_docker repository to PATH [default=$DOCKERPATH]
+	    -f         Force-rebuild
+	    -h         Display this help
+	    -i COMPS   Ignore components COMPS (see below for a list) [default='$IGNORED_DEFAULT']
+	    -j N       Compile with N jobs [default=$JOBS]
+	    -l PATH    Path to where the native LLVM-3.2 files are installed [default=$LLVM_BASE]
+	    -q FLAGS   Additional flags passed to qemu's \`configure\` script
+	    -v         Verbose: show compilation messages/warnings/errors on the console
+	    -z         Direct mode (you won't need this)
+
+	Components:
 	EOF
+	echo "    $COMPONENTS"
+	echo
 	exit 1
 }
 
 get_options()
 {
 	# Default values:
-	ASAN=1
 	BUILDDIR_BASE='./build'
+	DIRECT=1
+	DOCKERPATH='./s2e_docker'
 	FORCE=1
+	IGNORED=''
+	IGNORED_DEFAULT='gmock tests'
 	case "$(uname)" in
 		Darwin) JOBS=$(sysctl hw.ncpu | cut -d ':' -f 2); alias cp=gcp ;;
 		Linux) JOBS=$(grep -c '^processor' /proc/cpuinfo) ;;
 		*) JOBS=2 ;;
 	esac
 	LLVM_BASE='/opt/s2e/llvm'
-	WITH_LIBMT=1
-	QEMU_FLAGS=''
 	VERBOSE=1
 
 	# Options:
-	while getopts ab:fhj:l:mq:v opt; do
+	while getopts b:d:fhi:j:l:q:vz opt; do
 		case "$opt" in
-			a) ASAN=0 ;;
 			b) BUILDDIR_BASE="$OPTARG" ;;
+			d) DOCKERPATH="$OPTARG" ;;
 			f) FORCE=0 ;;
 			h) usage ;;
+			i) IGNORED="$IGNORE $OPTARG" ;;
 			j) JOBS="$OPTARG" ;;
 			l) LLVM_BASE="$OPTARG" ;;
-			m) WITH_LIBMT=0 ;;
-			q) QEMU_FLAGS="$OPTARG" ;;
 			v) VERBOSE=0 ;;
+			z) DIRECT=0 ;;
 			'?') die_help ;;
 		esac
 	done
-
-	# Check conflicts:
-	if [ $WITH_LIBMT -eq 0 ] && [ $ASAN -eq 0 ]; then
-		die 1 'Cannot use libmemtracer and Address Sanitizer simultaneously.'
-	fi
+	ARGSHIFT=$(($OPTIND - 1))
 
 	# Dependent values:
 	LLVM_SRC="$LLVM_BASE/llvm-3.2.src"
@@ -530,6 +630,8 @@ get_options()
 	LLVM_NATIVE_CC="$LLVM_NATIVE/bin/clang"
 	LLVM_NATIVE_CXX="$LLVM_NATIVE/bin/clang++"
 	LLVM_NATIVE_LIB="$LLVM_NATIVE/lib"
+
+	test -z "$IGNORED" && IGNORED="$IGNORED_DEFAULT"
 }
 
 get_architecture()
@@ -540,39 +642,62 @@ get_architecture()
 		'') die_help "missing architecture" ;;
 		*) die_help "invalid architecture: '%s'" "$ARCH" ;;
 	esac
+	ARGSHIFT=1
+}
+
+get_target()
+{
+	TARGET="$1"
+	case "$TARGET" in
+		release) ASSERTS='Release+Asserts' ;;
+		debug) ASSERTS='Debug+Asserts' ;;
+		'') die_help "missing target" ;;
+		*) die_help "invalid target: '%s'" "$TARGET" ;;
+	esac
+	ARGSHIFT=1
 }
 
 get_mode()
 {
 	MODE="$1"
 	case "$MODE" in
-		release) ASSERTS='Release+Asserts' ;;
-		debug) ASSERTS='Debug+Asserts' ;;
-		'') die_help "missing mode" ;;
+		asan|libmemtracer|normal) ARGSHIFT=1 ;;
+		'') MODE='normal'; ARGSHIFT=0 ;;
 		*) die_help "invalid mode: '%s'" "$MODE" ;;
 	esac
 }
 
 main()
 {
-	LOGFILE='/dev/null'
+	LOGFILE='./build.log'
+	BUILDARGS="$@"
 
 	# Command line arguments:
 	get_options "$@"
-	shift $(($OPTIND - 1))
+	shift $ARGSHIFT
 	get_architecture "$@"
-	shift
-	get_mode "$@"
-	shift
-	test -z "$1" || die_help "trailing arguments: $@"
+	shift $ARGSHIFT
+	get_target "$@"
+	shift $ARGSHIFT
+	get_mode "$@" || shift
+	shift $ARGSHIFT
+	test $# -eq 0 || die_help "trailing arguments: $@"
 
-	# Build:
-	BUILDPATH_BASE="$(readlink -f "$BUILDDIR_BASE")"
-	mkdir -p "$BUILDPATH_BASE"
-	cd "$BUILDPATH_BASE"
+	LOGFILE="$(readlink -f "$LOGFILE")"
+	printf '' >"$LOGFILE"
 
-	# Build in build directory:
-	all_build
+	if [ $DIRECT -eq 0 ]; then
+		# Build:
+		BUILDPATH_BASE="$(readlink -f "$BUILDDIR_BASE")"
+		mkdir -p "$BUILDPATH_BASE"
+		cd "$BUILDPATH_BASE"
+		all_build
+	else
+		# Wrap build in docker:
+		DOCKERPATH="$(readlink -f "$DOCKERPATH")"
+		docker_prepare
+		docker_build
+	fi
 }
 
 set -e
