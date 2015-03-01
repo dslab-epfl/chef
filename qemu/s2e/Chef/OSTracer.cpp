@@ -162,6 +162,32 @@ void OSTracer::onS2ESyscall(S2EExecutionState *state, uint64_t syscall_id,
             s2e_.getWarningsStream(state) << "Could not read thread descriptor" << '\n';
             return;
         }
+
+        ThreadMap::iterator it = threads_.find(s2e_vmmap.pid);
+        if (it == threads_.end()) {
+            s2e_.getWarningsStream(state) << "VM map for unknown thread " << s2e_vmmap.pid << '\n';
+            return;
+        }
+
+        OSAddressSpace::VMArea vm_area;
+
+        if (!state->mem()->readString(s2e_vmmap.name, vm_area.name, 256)) {
+            s2e_.getWarningsStream(state) << "Could not read VM area name" << '\n';
+        }
+
+        vm_area.start = s2e_vmmap.start;
+        vm_area.end = s2e_vmmap.end;
+
+        vm_area.readable = true;
+        vm_area.writable = s2e_vmmap.writable;
+        vm_area.executable = s2e_vmmap.executable;
+
+        s2e_.getMessagesStream(state) << "VM area: "
+                << llvm::format("0x%x-0x%x", vm_area.start, vm_area.end)
+                << " " << vm_area.name << '\n';
+
+        it->second->address_space_->memory_map_.insert(
+                std::make_pair(vm_area.start, vm_area));
         break;
     }
     }

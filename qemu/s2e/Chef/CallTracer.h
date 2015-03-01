@@ -14,6 +14,8 @@
 #include <boost/shared_ptr.hpp>
 #include <boost/enable_shared_from_this.hpp>
 
+#include <llvm/Support/raw_ostream.h>
+
 #include <vector>
 
 namespace s2e {
@@ -22,46 +24,9 @@ class S2E;
 class OSThread;
 class OSTracer;
 
-struct CallStackFrame;
-
-class CallStack {
-public:
-    CallStack(uint64_t top, uint64_t sp);
-
-    unsigned size() {
-        return frames_.size();
-    }
-
-    const CallStackFrame& frame(unsigned index) {
-        assert(index < frames_.size());
-        return frames_[index];
-    }
-
-    const CallStackFrame& top() {
-        return frames_.back();
-    }
-
-    sigc::signal<void, CallStack*> onStackFramePush;
-    sigc::signal<void, CallStack*> onStackFramePop;
-    sigc::signal<void, CallStack*> onStackFrameResize;
-
-protected:
-    void newFrame(uint64_t call_site, uint64_t function, uint64_t sp);
-    void update(uint64_t sp);
-
-private:
-    uint64_t top_;
-    std::vector<CallStackFrame> frames_;
-
-    // Non-copyable
-    CallStack(const CallStack&);
-    void operator=(const CallStack&);
-
-    friend class CallTracer;
-};
-
-
 struct CallStackFrame {
+    boost::shared_ptr<CallStackFrame> parent;
+
     uint64_t call_site;
     uint64_t function;
 
@@ -76,8 +41,10 @@ struct CallStackFrame {
 
     }
 
-    CallStackFrame(uint64_t cs, uint64_t fn, uint64_t t, uint64_t b)
-        : call_site(cs),
+    CallStackFrame(boost::shared_ptr<CallStackFrame> p,
+            uint64_t cs, uint64_t fn, uint64_t t, uint64_t b)
+        : parent(p),
+          call_site(cs),
           function(fn),
           top(t),
           bottom(b) {
@@ -86,9 +53,48 @@ struct CallStackFrame {
 };
 
 
+class CallStack {
+public:
+    CallStack(uint64_t top, uint64_t sp);
+
+    unsigned size() const {
+        return frames_.size();
+    }
+
+    boost::shared_ptr<CallStackFrame> frame(unsigned index) const {
+        assert(index < frames_.size());
+        return frames_[index];
+    }
+
+    boost::shared_ptr<CallStackFrame> top() const {
+        return frames_.back();
+    }
+
+    sigc::signal<void, CallStack*> onStackFramePush;
+    sigc::signal<void, CallStack*> onStackFramePop;
+    sigc::signal<void, CallStack*> onStackFrameResize;
+
+protected:
+    void newFrame(uint64_t call_site, uint64_t function, uint64_t sp);
+    void update(uint64_t sp);
+
+private:
+    uint64_t top_;
+    std::vector<boost::shared_ptr<CallStackFrame> > frames_;
+
+    // Non-copyable
+    CallStack(const CallStack&);
+    void operator=(const CallStack&);
+
+    friend class CallTracer;
+};
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const CallStack &cs);
+
+
 class CallTracer {
 public:
-    CallTracer(S2E &s2e, ExecutionStream &estream, OSTracer &os_tracer,
+    CallTracer(S2E &s2e, OSTracer &os_tracer,
             boost::shared_ptr<OSThread> thread);
     ~CallTracer();
 

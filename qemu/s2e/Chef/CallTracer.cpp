@@ -18,46 +18,74 @@ extern "C" {
 
 #include <llvm/Support/Format.h>
 
+using boost::shared_ptr;
+
 namespace s2e {
 
 
 CallStack::CallStack(uint64_t top, uint64_t sp) : top_(top) {
-    frames_.push_back(CallStackFrame(0, 0, top, sp));
+    frames_.push_back(shared_ptr<CallStackFrame>(
+            new CallStackFrame(shared_ptr<CallStackFrame>(), 0, 0, top, sp)));
 }
 
 
 void CallStack::newFrame(uint64_t call_site, uint64_t function, uint64_t sp) {
     assert(!frames_.empty());
-    assert(sp < frames_.back().bottom);
+    if (sp >= frames_.back()->bottom) {
+        llvm::errs() << "Invalid stack frame start: "
+                << llvm::format("ESP=0x%08x Caller=0x%08x Callee=0x%08x",
+                        sp, call_site, function)
+                << '\n' << *this;
+    }
+    assert(sp < frames_.back()->bottom);
 
-    frames_.push_back(CallStackFrame(call_site, function, frames_.back().bottom, sp));
+    frames_.push_back(shared_ptr<CallStackFrame>(
+            new CallStackFrame(frames_.back(), call_site, function,
+                    frames_.back()->bottom, sp)));
+
     onStackFramePush.emit(this);
 }
 
 
 void CallStack::update(uint64_t sp) {
     assert(!frames_.empty());
+
     // Unwind
-    while (sp >= frames_.back().top) {
+    while (sp >= frames_.back()->top) {
         frames_.pop_back();
         onStackFramePop.emit(this);
         assert(!frames_.empty());
     }
 
     // Resize
-    if (frames_.back().bottom != sp) {
-        frames_.back().bottom = sp;
+    if (frames_.back()->bottom != sp) {
+        frames_.back()->bottom = sp;
         onStackFrameResize.emit(this);
     }
 }
 
 
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const CallStack &cs) {
+    for (unsigned i = 0; i < cs.size(); ++i) {
+        shared_ptr<CallStackFrame> frame = cs.frame(cs.size() - i - 1);
+        os << llvm::format("#%u 0x%08x in 0x%08x [Frame: 0x%08x-0x%08x]",
+                i,
+                (i == 0) ? 0 : cs.frame(cs.size() - i)->call_site,
+                frame->function,
+                frame->bottom,
+                frame->top);
+        os << '\n';
+    }
+    return os;
+}
+
+
 ////////////////////////////////////////////////////////////////////////////////
 
-CallTracer::CallTracer(S2E &s2e, ExecutionStream &estream, OSTracer &os_tracer,
+CallTracer::CallTracer(S2E &s2e, OSTracer &os_tracer,
         boost::shared_ptr<OSThread> thread)
     : s2e_(s2e),
-      exec_stream_(estream),
+      exec_stream_(os_tracer.stream()),
       tracked_thread_(thread) {
 
     // FIXME: Obtain the upper bound from VMAs

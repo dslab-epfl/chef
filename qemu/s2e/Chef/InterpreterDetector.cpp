@@ -11,6 +11,7 @@
 #include <s2e/S2EExecutionState.h>
 #include <s2e/Chef/OSTracer.h>
 #include <s2e/Chef/S2ESyscallMonitor.h>
+#include <s2e/Chef/CallTracer.h>
 
 #include <llvm/Support/Format.h>
 #include <llvm/Support/raw_ostream.h>
@@ -30,8 +31,9 @@ using boost::shared_ptr;
 enum {
     S2E_CHEF_START = 0x1000,
 
-    S2E_CHEF_CALIBRATE = S2E_CHEF_START,
+    S2E_CHEF_CALIBRATE_START = S2E_CHEF_START,
     S2E_CHEF_CALIBRATE_END,
+    S2E_CHEF_CALIBRATE_CHECKPOINT,
 
     S2E_CHEF_END
 };
@@ -42,19 +44,24 @@ enum {
 
 struct MemoryOp {
     uint64_t seq_no;
+
     uint64_t pc;
+    shared_ptr<CallStackFrame> frame;
+
     uint64_t address;
     uint64_t value;
     uint8_t size;
     bool is_write;
 
-    MemoryOp(uint64_t s, uint64_t p, uint64_t a, uint64_t v, uint8_t sz, bool w)
+    MemoryOp(uint64_t s, uint64_t p, shared_ptr<CallStackFrame> f,
+            uint64_t a, uint64_t v, uint8_t sz, bool w)
         : seq_no(s),
-        pc(p),
-        address(a),
-        value(v),
-        size(sz),
-        is_write(w) {
+          pc(p),
+          frame(f),
+          address(a),
+          value(v),
+          size(sz),
+          is_write(w) {
 
     }
 };
@@ -68,10 +75,10 @@ struct InterpreterDetector::MemoryOpRecorder {
 
     }
 
-    void recordMemoryOp(uint64_t pc, uint64_t address, uint64_t value,
-            uint8_t size, bool is_write) {
-        mem_ops.push_back(MemoryOp(seq_counter++, pc, address, value, size,
-                is_write));
+    void recordMemoryOp(uint64_t pc, shared_ptr<CallStackFrame> frame,
+            uint64_t address, uint64_t value, uint8_t size, bool is_write) {
+        mem_ops.push_back(MemoryOp(seq_counter++, pc, frame, address, value,
+                size, is_write));
     }
 
     uint64_t seq_counter;
@@ -85,11 +92,13 @@ private:
 
 struct MemoryOpAnalyzer {
     MemoryOpAnalyzer(S2E &s2e, S2EExecutionState *state,
-            const MemoryOpSequence &mem_ops, int min_opcodes)
+            const MemoryOpSequence &mem_ops, int min_opcodes,
+            std::pair<uint64_t, uint64_t> memop_range)
         : s2e_(s2e),
           state_(state),
           mem_ops_(mem_ops),
-          min_opcodes_(min_opcodes) {
+          min_opcodes_(min_opcodes),
+          memop_range_(memop_range) {
 
     }
 
@@ -101,8 +110,6 @@ struct MemoryOpAnalyzer {
         if (!computeCandidateRanges())
             return false;
         printCandidateRanges();
-
-        ValueSet instrumentation_pcs;
 
         for (std::vector<ValueRange>::iterator rit = candidate_ranges.begin(),
                 rie = candidate_ranges.end(); rit != rie; ++rit) {
@@ -123,16 +130,24 @@ struct MemoryOpAnalyzer {
             instrumentation_pcs = pcs;
         }
 
-        return false;
+        for (ValueSet::iterator it = instrumentation_pcs.begin(),
+                ie = instrumentation_pcs.end(); it != ie; ++it) {
+            s2e_.getMessagesStream(state_) << "Candidate PC: "
+                    << llvm::format("0x%x", *it) << '\n';
+        }
+
+        return true;
     }
 
-    typedef std::vector<uint64_t> ValueSequence;
+    typedef std::vector<const MemoryOp*> MemSeqVector;
     typedef std::set<uint64_t> ValueSet;
-    typedef std::map<uint64_t, shared_ptr<ValueSequence> > ValueSequenceMap;
+    typedef std::map<uint64_t, shared_ptr<MemSeqVector> > MemSeqVectorMap;
     typedef std::pair<uint64_t, uint64_t> ValueRange;
 
-    ValueSequenceMap candidate_hlpcs;
+    MemSeqVectorMap candidate_hlpcs;
     ValueSet discarded_hlpcs;
+
+    ValueSet instrumentation_pcs;
 
     std::vector<ValueRange> candidate_ranges;
 
@@ -141,12 +156,16 @@ private:
         std::string output;
         llvm::raw_string_ostream os(output);
 
-        for (ValueSequenceMap::iterator vsit = candidate_hlpcs.begin(),
+        for (MemSeqVectorMap::iterator vsit = candidate_hlpcs.begin(),
                 vsie = candidate_hlpcs.end(); vsit != vsie; ++vsit) {
             os << llvm::format("[HLPC]=0x%x", vsit->first) << " | ";
-            for (ValueSequence::iterator it = vsit->second->begin(),
-                    ie = vsit->second->end(); it != ie; ++it) {
-                os << llvm::format("0x%x", *it) << " ";
+            MemSeqVector &vseq = *vsit->second;
+
+            for (unsigned i = 0; i < vseq.size(); ++i) {
+                if (i == 0)
+                    os << llvm::format("0x%x", vseq[i]->value) << " ";
+                else
+                    os << llvm::format("+%d", vseq[i]->value - vseq[i-1]->value) << " ";
             }
             os << '\n';
         }
@@ -173,28 +192,28 @@ private:
     }
 
     bool computeCandidateHLPC() {
-        for (MemoryOpSequence::const_iterator mit = mem_ops_.begin(),
-                mie = mem_ops_.end(); mit != mie; ++mit) {
-            if (!mit->is_write || mit->size != sizeof(target_ulong)) {
+        for (uint64_t mi = memop_range_.first; mi < memop_range_.second; ++mi) {
+            const MemoryOp *memory_op = &mem_ops_[mi];
+            if (!memory_op->is_write || memory_op->size != sizeof(target_ulong)) {
                 continue;
             }
-            if (discarded_hlpcs.count(mit->address) > 0) {
+            if (discarded_hlpcs.count(memory_op->address) > 0) {
                 continue;
             }
 
-            ValueSequenceMap::iterator vsit = candidate_hlpcs.find(mit->address);
+            MemSeqVectorMap::iterator vsit = candidate_hlpcs.find(memory_op->address);
             if (vsit == candidate_hlpcs.end()) {
-                vsit = candidate_hlpcs.insert(std::make_pair(mit->address,
-                        shared_ptr<ValueSequence>(new ValueSequence()))).first;
+                vsit = candidate_hlpcs.insert(std::make_pair(memory_op->address,
+                        shared_ptr<MemSeqVector>(new MemSeqVector()))).first;
             }
 
-            if (!vsit->second->empty() && mit->value <= vsit->second->back()) {
-                discarded_hlpcs.insert(mit->value);
+            if (!vsit->second->empty() && memory_op->value <= vsit->second->back()->value) {
+                discarded_hlpcs.insert(memory_op->address);
                 candidate_hlpcs.erase(vsit);
                 continue;
             }
 
-            vsit->second->push_back(mit->value);
+            vsit->second->push_back(memory_op);
         }
 
         if (candidate_hlpcs.empty()) {
@@ -209,14 +228,14 @@ private:
 
     bool computeCandidateRanges() {
         // XXX: There are cases where the ranges are not merged correctly.
-        for (ValueSequenceMap::iterator vsit = candidate_hlpcs.begin(),
+        for (MemSeqVectorMap::iterator vsit = candidate_hlpcs.begin(),
                 vsie = candidate_hlpcs.end(); vsit != vsie; ++vsit) {
             if (vsit->second->size() < min_opcodes_) {
                 continue;
             }
 
-            ValueRange current_range = std::make_pair(vsit->second->front(),
-                    vsit->second->back());
+            ValueRange current_range = std::make_pair(vsit->second->front()->value,
+                    vsit->second->back()->value);
 
             // We assume a bytecode instruction is no larger than 1KB.
             if (current_range.second - current_range.first > min_opcodes_*1024) {
@@ -250,39 +269,39 @@ private:
     }
 
     void computeInstrumentationPoint(ValueRange range, ValueSet &pcs) {
-        ValueSequenceMap candidate_pcs;
+        MemSeqVectorMap candidate_pcs;
         ValueSet discarded_pcs;
 
-        for (MemoryOpSequence::const_iterator mit = mem_ops_.begin(),
-                mie = mem_ops_.end(); mit != mie; ++mit) {
-            if (mit->is_write) {
+        for (uint64_t mi = memop_range_.first; mi < memop_range_.second; ++mi) {
+            const MemoryOp *memory_op = &mem_ops_[mi];
+            if (memory_op->is_write) {
                 continue;
             }
-            if (discarded_pcs.count(mit->pc)) {
+            if (discarded_pcs.count(memory_op->pc)) {
                 continue;
             }
-            if (mit->address < range.first || mit->address > range.second) {
+            if (memory_op->address < range.first || memory_op->address > range.second) {
                 continue;
             }
 
-            ValueSequenceMap::iterator vsit = candidate_pcs.find(mit->pc);
+            MemSeqVectorMap::iterator vsit = candidate_pcs.find(memory_op->pc);
             if (vsit == candidate_pcs.end()) {
-                vsit = candidate_pcs.insert(std::make_pair(mit->pc,
-                        shared_ptr<ValueSequence>(new ValueSequence()))).first;
+                vsit = candidate_pcs.insert(std::make_pair(memory_op->pc,
+                        shared_ptr<MemSeqVector>(new MemSeqVector()))).first;
             }
 
-            if (!vsit->second->empty() && mit->address <= vsit->second->back()) {
-                discarded_pcs.insert(mit->pc);
+            if (!vsit->second->empty() && memory_op->address <= vsit->second->back()->address) {
+                discarded_pcs.insert(memory_op->pc);
                 candidate_pcs.erase(vsit);
                 continue;
             }
 
-            vsit->second->push_back(mit->address);
+            vsit->second->push_back(memory_op);
         }
 
         pcs.clear();
 
-        for (ValueSequenceMap::iterator vsit = candidate_pcs.begin(),
+        for (MemSeqVectorMap::iterator vsit = candidate_pcs.begin(),
                 vsie = candidate_pcs.end(); vsit != vsie; ++vsit) {
             if (vsit->second->size() < min_opcodes_) {
                 continue;
@@ -296,6 +315,7 @@ private:
 
     const MemoryOpSequence &mem_ops_;
     int min_opcodes_;
+    std::pair<uint64_t, uint64_t> memop_range_;
 
 private:
     MemoryOpAnalyzer(const MemoryOpAnalyzer&);
@@ -309,6 +329,7 @@ InterpreterDetector::InterpreterDetector(S2E &s2e, OSTracer &os_tracer,
         boost::shared_ptr<S2ESyscallMonitor> syscall_monitor)
     : s2e_(s2e),
       os_tracer_(os_tracer),
+      call_tracer_(new CallTracer(s2e, os_tracer, thread)),
       thread_(thread),
       calibrating_(false),
       min_opcode_count_(0),
@@ -335,7 +356,9 @@ void InterpreterDetector::onConcreteDataMemoryAccess(S2EExecutionState *state,
     }
 
     if (calibrating_) {
-        memory_recording_->recordMemoryOp(state->getPc(), address, value, size,
+        memory_recording_->recordMemoryOp(state->getPc(),
+                call_tracer_->call_stack()->top(),
+                address, value, size,
                 flags & S2E_MEM_TRACE_FLAG_WRITE);
     } else {
         // XXX: Could there be any race condition causing the memory access
@@ -362,14 +385,22 @@ void InterpreterDetector::onS2ESyscall(S2EExecutionState *state,
         return;
     }
 
+    assert(data == 0);
+
     switch (syscall_id) {
-    case S2E_CHEF_CALIBRATE:
-        if (!calibrating_) {
-            startCalibration(state);
-        } else {
-            s2e_.getMessagesStream(state) << "Calibration checkpoint." << '\n';
-            min_opcode_count_++;
+    case S2E_CHEF_CALIBRATE_START:
+        assert(!calibrating_);
+        startCalibration(state);
+        break;
+    case S2E_CHEF_CALIBRATE_CHECKPOINT:
+        s2e_.getMessagesStream(state) << "Calibration checkpoint." << '\n';
+
+
+        min_opcode_count_ += size;
+        if (!memop_range_.first) {
+            memop_range_.first = memory_recording_->seq_counter;
         }
+        memop_range_.second = memory_recording_->seq_counter;
         break;
     case S2E_CHEF_CALIBRATE_END:
         endCalibration(state);
@@ -411,15 +442,15 @@ void InterpreterDetector::startCalibration(S2EExecutionState *state) {
     on_concrete_data_memory_access_ = os_tracer_.stream().
             onConcreteDataMemoryAccess.connect(
                     sigc::mem_fun(*this, &InterpreterDetector::onConcreteDataMemoryAccess));
+
     min_opcode_count_ = 0;
+    memop_range_ = std::make_pair(0, 0);
 }
 
 
 void InterpreterDetector::endCalibration(S2EExecutionState *state) {
     assert(calibrating_ && "Calibration end attempted before start");
     s2e_.getMessagesStream(state) << "Calibration ended." << '\n';
-
-    min_opcode_count_++;
 
     computeInstrumentation(state);
 
@@ -431,7 +462,7 @@ void InterpreterDetector::endCalibration(S2EExecutionState *state) {
 
 void InterpreterDetector::computeInstrumentation(S2EExecutionState *state) {
     MemoryOpAnalyzer analyzer(s2e_, state, memory_recording_->mem_ops,
-            min_opcode_count_);
+            min_opcode_count_, memop_range_);
 
     if (!analyzer.analyze())
         return;

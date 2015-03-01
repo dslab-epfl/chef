@@ -23,6 +23,7 @@ class S2EExecutionState;
 class S2E;
 class OSTracer;
 class OSThread;
+class CallTracer;
 class ExecutionStream;
 class S2ESyscallMonitor;
 class S2ESyscallRange;
@@ -63,12 +64,14 @@ private:
 
     S2E &s2e_;
     OSTracer &os_tracer_;
+    boost::scoped_ptr<CallTracer> call_tracer_;
     boost::shared_ptr<OSThread> thread_;
     boost::shared_ptr<S2ESyscallRange> syscall_range_;
 
     // Calibration state
     bool calibrating_;
     unsigned min_opcode_count_;
+    std::pair<uint64_t, uint64_t> memop_range_;
     boost::scoped_ptr<MemoryOpRecorder> memory_recording_;
     uint64_t instrumentation_pc_;
 
