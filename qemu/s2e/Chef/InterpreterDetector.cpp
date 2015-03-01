@@ -91,10 +91,17 @@ private:
 
 
 struct MemoryOpAnalyzer {
+    typedef std::vector<const MemoryOp*> MemSeqVector;
+    typedef std::set<uint64_t> ValueSet;
+    typedef std::map<uint64_t, shared_ptr<MemSeqVector> > MemSeqVectorMap;
+    typedef std::pair<uint64_t, uint64_t> ValueRange;
+
     MemoryOpAnalyzer(S2E &s2e, S2EExecutionState *state,
             const MemoryOpSequence &mem_ops, int min_opcodes,
             std::pair<uint64_t, uint64_t> memop_range)
-        : s2e_(s2e),
+        : instrum_hlpc_update(0),
+          instrum_opcode_read(0),
+          s2e_(s2e),
           state_(state),
           mem_ops_(mem_ops),
           min_opcodes_(min_opcodes),
@@ -103,63 +110,76 @@ struct MemoryOpAnalyzer {
     }
 
     bool analyze() {
-        if (!computeCandidateHLPC())
+        MemSeqVectorMap candidate_hlpcs;
+        if (!computeCandidateHLPCUpdates(candidate_hlpcs))
             return false;
-        printCandidateHLPC();
 
-        if (!computeCandidateRanges())
-            return false;
-        printCandidateRanges();
+        MemSeqVectorMap::iterator hlpc_it;
+        MemSeqVectorMap instrumentation_pcs;
 
-        for (std::vector<ValueRange>::iterator rit = candidate_ranges.begin(),
-                rie = candidate_ranges.end(); rit != rie; ++rit) {
-            ValueSet pcs;
-            computeInstrumentationPoint(*rit, pcs);
-            if (pcs.empty()) {
+        for (MemSeqVectorMap::iterator vsit = candidate_hlpcs.begin(),
+                vsie = candidate_hlpcs.end(); vsit != vsie; ++vsit) {
+            ValueRange range = std::make_pair(
+                    vsit->second->front()->value,
+                    vsit->second->back()->value);
+            MemSeqVectorMap candidate_pcs;
+
+            computeCandidateHLPCReads(range, vsit->second->front()->frame,
+                    candidate_pcs);
+            if (candidate_pcs.empty()) {
                 continue;
             }
-            s2e_.getMessagesStream(state_) << "Valid range found: "
-                    << llvm::format("0x%x-0x%x", rit->first, rit->second)
-                    << '\n';
             if (!instrumentation_pcs.empty()) {
                 s2e_.getWarningsStream(state_)
                         << "Multiple valid bytecode buffers found. "
                         << "Could not differentiate between them." << '\n';
                 return false;
             }
-            instrumentation_pcs = pcs;
+            hlpc_it = vsit;
+            instrumentation_pcs = candidate_pcs;
         }
 
-        for (ValueSet::iterator it = instrumentation_pcs.begin(),
+        for (MemSeqVectorMap::iterator it = instrumentation_pcs.begin(),
                 ie = instrumentation_pcs.end(); it != ie; ++it) {
             s2e_.getMessagesStream(state_) << "Candidate PC: "
-                    << llvm::format("0x%x", *it) << '\n';
+                    << llvm::format("0x%x", it->first) << '\n';
+        }
+
+        for (uint64_t mi = 0; mi < mem_ops_.size(); ++mi) {
+            const MemoryOp *memory_op = &mem_ops_[mi];
+            if (hlpc_it->second->front()->frame != memory_op->frame)
+                continue;
+
+            if (!instrum_hlpc_update && memory_op->is_write && memory_op->address == hlpc_it->first) {
+                instrum_hlpc_update = memory_op->pc;
+                s2e_.getMessagesStream(state_) << "HLPC update address: "
+                        << llvm::format("0x%x", instrum_hlpc_update) << '\n';
+            }
+
+            if (!instrum_opcode_read && !memory_op->is_write && instrumentation_pcs.count(memory_op->pc) > 0) {
+                instrum_opcode_read = memory_op->pc;
+                s2e_.getMessagesStream(state_) << "Opcode read address: "
+                        << llvm::format("0x%x", instrum_opcode_read) << '\n';
+            }
         }
 
         return true;
     }
 
-    typedef std::vector<const MemoryOp*> MemSeqVector;
-    typedef std::set<uint64_t> ValueSet;
-    typedef std::map<uint64_t, shared_ptr<MemSeqVector> > MemSeqVectorMap;
-    typedef std::pair<uint64_t, uint64_t> ValueRange;
-
-    MemSeqVectorMap candidate_hlpcs;
-    ValueSet discarded_hlpcs;
-
-    ValueSet instrumentation_pcs;
-
-    std::vector<ValueRange> candidate_ranges;
+    uint64_t instrum_hlpc_update;
+    uint64_t instrum_opcode_read;
 
 private:
-    void printCandidateHLPC() {
+    void printCandidateHLPC(const MemSeqVectorMap &candidate_hlpcs,
+            const ValueSet &discarded_hlpcs) {
+
         std::string output;
         llvm::raw_string_ostream os(output);
 
-        for (MemSeqVectorMap::iterator vsit = candidate_hlpcs.begin(),
+        for (MemSeqVectorMap::const_iterator vsit = candidate_hlpcs.begin(),
                 vsie = candidate_hlpcs.end(); vsit != vsie; ++vsit) {
             os << llvm::format("[HLPC]=0x%x", vsit->first) << " | ";
-            MemSeqVector &vseq = *vsit->second;
+            const MemSeqVector &vseq = *vsit->second;
 
             for (unsigned i = 0; i < vseq.size(); ++i) {
                 if (i == 0)
@@ -178,20 +198,12 @@ private:
                 << os.str();
     }
 
-    void printCandidateRanges() {
-        std::string output;
-        llvm::raw_string_ostream os(output);
 
-        for (std::vector<ValueRange>::iterator it = candidate_ranges.begin(),
-                ie = candidate_ranges.end(); it != ie; ++it) {
-            os << llvm::format("Range 0x%x-0x%x", it->first, it->second) << '\n';
-        }
+    bool computeCandidateHLPCUpdates(MemSeqVectorMap &candidate_hlpcs) {
+        ValueSet discarded_hlpcs;
 
-        s2e_.getMessagesStream(state_) << "Candidate ranges:" << '\n'
-                << os.str();
-    }
+        // Phase 1: Find all locations with monotonic value updates
 
-    bool computeCandidateHLPC() {
         for (uint64_t mi = memop_range_.first; mi < memop_range_.second; ++mi) {
             const MemoryOp *memory_op = &mem_ops_[mi];
             if (!memory_op->is_write || memory_op->size != sizeof(target_ulong)) {
@@ -207,7 +219,9 @@ private:
                         shared_ptr<MemSeqVector>(new MemSeqVector()))).first;
             }
 
-            if (!vsit->second->empty() && memory_op->value <= vsit->second->back()->value) {
+            if (!vsit->second->empty() &&
+                    (memory_op->value <= vsit->second->back()->value ||
+                            memory_op->frame != vsit->second->back()->frame)) {
                 discarded_hlpcs.insert(memory_op->address);
                 candidate_hlpcs.erase(vsit);
                 continue;
@@ -223,42 +237,32 @@ private:
             return false;
         }
 
-        return true;
-    }
+        printCandidateHLPC(candidate_hlpcs, discarded_hlpcs);
 
-    bool computeCandidateRanges() {
-        // XXX: There are cases where the ranges are not merged correctly.
+        // Phase 2: Filter out non-HLPC access patterns
+
         for (MemSeqVectorMap::iterator vsit = candidate_hlpcs.begin(),
-                vsie = candidate_hlpcs.end(); vsit != vsie; ++vsit) {
+                vsie = candidate_hlpcs.end(); vsit != vsie;) {
             if (vsit->second->size() < min_opcodes_) {
+                discarded_hlpcs.insert(vsit->first);
+                candidate_hlpcs.erase(vsit++);
                 continue;
             }
 
-            ValueRange current_range = std::make_pair(vsit->second->front()->value,
+            ValueRange current_range = std::make_pair(
+                    vsit->second->front()->value,
                     vsit->second->back()->value);
 
             // We assume a bytecode instruction is no larger than 1KB.
             if (current_range.second - current_range.first > min_opcodes_*1024) {
+                discarded_hlpcs.insert(vsit->first);
+                candidate_hlpcs.erase(vsit++);
                 continue;
             }
-
-            bool merged = false;
-
-            for (std::vector<ValueRange>::iterator rit = candidate_ranges.begin(),
-                    rie = candidate_ranges.end(); rit != rie; ++rit) {
-                if (current_range.first <= rit->second && rit->first <= current_range.second) {
-                    *rit = std::make_pair(std::min(current_range.first, rit->first),
-                            std::max(current_range.second, rit->second));
-                    merged = true;
-                    break;
-                }
-            }
-            if (!merged) {
-                candidate_ranges.push_back(current_range);
-            }
+            ++vsit;
         }
 
-        if (candidate_ranges.empty()) {
+        if (candidate_hlpcs.empty()) {
             s2e_.getWarningsStream(state_)
                     << "Could not detect interpretation structure: "
                     << "Not enough HLPC variable updates." << '\n';
@@ -268,8 +272,8 @@ private:
         return true;
     }
 
-    void computeInstrumentationPoint(ValueRange range, ValueSet &pcs) {
-        MemSeqVectorMap candidate_pcs;
+    bool computeCandidateHLPCReads(ValueRange range,
+            shared_ptr<CallStackFrame> csf, MemSeqVectorMap &candidate_pcs) {
         ValueSet discarded_pcs;
 
         for (uint64_t mi = memop_range_.first; mi < memop_range_.second; ++mi) {
@@ -278,6 +282,9 @@ private:
                 continue;
             }
             if (discarded_pcs.count(memory_op->pc)) {
+                continue;
+            }
+            if (memory_op->frame != csf) {
                 continue;
             }
             if (memory_op->address < range.first || memory_op->address > range.second) {
@@ -290,7 +297,9 @@ private:
                         shared_ptr<MemSeqVector>(new MemSeqVector()))).first;
             }
 
-            if (!vsit->second->empty() && memory_op->address <= vsit->second->back()->address) {
+            if (!vsit->second->empty() &&
+                    (memory_op->address <= vsit->second->back()->address ||
+                            memory_op->frame != vsit->second->back()->frame)) {
                 discarded_pcs.insert(memory_op->pc);
                 candidate_pcs.erase(vsit);
                 continue;
@@ -299,15 +308,25 @@ private:
             vsit->second->push_back(memory_op);
         }
 
-        pcs.clear();
+        if (candidate_pcs.empty()) {
+            return false;
+        }
 
         for (MemSeqVectorMap::iterator vsit = candidate_pcs.begin(),
-                vsie = candidate_pcs.end(); vsit != vsie; ++vsit) {
+                vsie = candidate_pcs.end(); vsit != vsie;) {
             if (vsit->second->size() < min_opcodes_) {
+                discarded_pcs.insert(vsit->first);
+                candidate_pcs.erase(vsit++);
                 continue;
             }
-            pcs.insert(vsit->first);
+            ++vsit;
         }
+
+        if (candidate_pcs.empty()) {
+            return false;
+        }
+
+        return true;
     }
 
     S2E &s2e_;
