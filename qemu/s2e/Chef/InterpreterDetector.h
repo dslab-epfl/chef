@@ -102,9 +102,24 @@ public:
     ~InterpreterDetector();
 
     sigc::signal<void,
-            S2EExecutionState *,
-            uint64_t   /* high-level PC */>
-            onHighLevelInstructionStart;
+                 S2EExecutionState*,
+                 HighLevelStack*>
+            onHighLevelFramePush;
+
+    sigc::signal<void,
+                 S2EExecutionState*,
+                 HighLevelStack*>
+            onHighLevelFramePopping;
+
+    sigc::signal<void,
+                 S2EExecutionState*,
+                 HighLevelStack*>
+            onHighLevelInstructionFetch;
+
+    sigc::signal<void,
+                 S2EExecutionState*,
+                 HighLevelStack*>
+            onHighLevelPCUpdate;
 
 private:
     struct MemoryOpRecorder;
@@ -125,11 +140,6 @@ private:
     void onLowLevelStackFramePopping(S2EExecutionState *state,
             CallStack *call_stack, boost::shared_ptr<CallStackFrame> old_top,
             boost::shared_ptr<CallStackFrame> new_top);
-
-    void onTranslateInstructionStart(ExecutionSignal *signal,
-            S2EExecutionState *state, TranslationBlock *tb, uint64_t pc);
-    void onInstrumentationHLPCUpdate(S2EExecutionState *state, uint64_t pc);
-    void onInstrumentationOpcodeRead(S2EExecutionState *state, uint64_t pc);
 
     // Dependencies
     S2E &s2e_;
@@ -156,7 +166,6 @@ private:
     sigc::connection on_stack_frame_push_;
     sigc::connection on_stack_frame_popping_;
     sigc::connection on_concrete_data_memory_access_;
-    sigc::connection on_translate_instruction_start_;
 };
 
 } /* namespace s2e */
