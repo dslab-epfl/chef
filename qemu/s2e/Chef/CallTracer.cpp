@@ -18,7 +18,10 @@ extern "C" {
 
 #include <llvm/Support/Format.h>
 
+#include <boost/make_shared.hpp>
+
 using boost::shared_ptr;
+using boost::make_shared;
 
 namespace s2e {
 
@@ -29,7 +32,8 @@ CallStack::CallStack(uint64_t top, uint64_t sp) : top_(top) {
 }
 
 
-void CallStack::newFrame(uint64_t call_site, uint64_t function, uint64_t sp) {
+void CallStack::newFrame(S2EExecutionState *state, uint64_t call_site,
+        uint64_t function, uint64_t sp) {
     assert(!frames_.empty());
     if (sp >= frames_.back()->bottom) {
         llvm::errs() << "Invalid stack frame start: "
@@ -39,41 +43,42 @@ void CallStack::newFrame(uint64_t call_site, uint64_t function, uint64_t sp) {
     }
     assert(sp < frames_.back()->bottom);
 
-    frames_.push_back(shared_ptr<CallStackFrame>(
-            new CallStackFrame(frames_.back(), call_site, function,
-                    frames_.back()->bottom, sp)));
+    shared_ptr<CallStackFrame> old_frame = frames_.back();
+    shared_ptr<CallStackFrame> new_frame = make_shared<CallStackFrame>(frames_.back(),
+            call_site, function, frames_.back()->bottom, sp);
 
-    onStackFramePush.emit(this);
+    frames_.push_back(new_frame);
+
+    onStackFramePush.emit(state, this, old_frame, new_frame);
 }
 
 
-void CallStack::update(uint64_t sp) {
+void CallStack::update(S2EExecutionState *state, uint64_t sp) {
     assert(!frames_.empty());
 
     // Unwind
     while (sp >= frames_.back()->top) {
+        onStackFramePopping.emit(state, this, frames_.back(), frames_[frames_.size()-2]);
         frames_.pop_back();
-        onStackFramePop.emit(this);
         assert(!frames_.empty());
     }
 
     // Resize
     if (frames_.back()->bottom != sp) {
         frames_.back()->bottom = sp;
-        onStackFrameResize.emit(this);
+        onStackFrameResize.emit(state, this, frames_.back());
     }
 }
 
 
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const CallStack &cs) {
     for (unsigned i = 0; i < cs.size(); ++i) {
-        shared_ptr<CallStackFrame> frame = cs.frame(cs.size() - i - 1);
         os << llvm::format("#%u 0x%08x in 0x%08x [Frame: 0x%08x-0x%08x]",
                 i,
-                (i == 0) ? 0 : cs.frame(cs.size() - i)->call_site,
-                frame->function,
-                frame->bottom,
-                frame->top);
+                (i == 0) ? 0 : cs.frame(i-1)->call_site,
+                cs.frame(i)->function,
+                cs.frame(i)->bottom,
+                cs.frame(i)->top);
         os << '\n';
     }
     return os;
@@ -150,9 +155,9 @@ void CallTracer::onStackPointerModification(S2EExecutionState *state, uint64_t p
 #endif
 
     if (isCall) {
-        call_stack_->newFrame(pc, state->getPc(), sp);
+        call_stack_->newFrame(state, pc, state->getPc(), sp);
     } else {
-        call_stack_->update(sp);
+        call_stack_->update(state, sp);
     }
 }
 

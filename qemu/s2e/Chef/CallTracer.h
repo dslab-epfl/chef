@@ -50,6 +50,10 @@ struct CallStackFrame {
           bottom(b) {
 
     }
+
+private:
+    CallStackFrame(const CallStackFrame&);
+    void operator=(const CallStackFrame&);
 };
 
 
@@ -63,20 +67,37 @@ public:
 
     boost::shared_ptr<CallStackFrame> frame(unsigned index) const {
         assert(index < frames_.size());
-        return frames_[index];
+        return frames_[frames_.size() - index - 1];
     }
 
     boost::shared_ptr<CallStackFrame> top() const {
         return frames_.back();
     }
 
-    sigc::signal<void, CallStack*> onStackFramePush;
-    sigc::signal<void, CallStack*> onStackFramePop;
-    sigc::signal<void, CallStack*> onStackFrameResize;
+    sigc::signal<void,
+                 S2EExecutionState*,
+                 CallStack*,
+                 boost::shared_ptr<CallStackFrame>,
+                 boost::shared_ptr<CallStackFrame> >
+            onStackFramePush;
+
+    sigc::signal<void,
+                 S2EExecutionState*,
+                 CallStack*,
+                 boost::shared_ptr<CallStackFrame>,
+                 boost::shared_ptr<CallStackFrame> >
+            onStackFramePopping;
+
+    sigc::signal<void,
+                 S2EExecutionState*,
+                 CallStack*,
+                 boost::shared_ptr<CallStackFrame> >
+            onStackFrameResize;
 
 protected:
-    void newFrame(uint64_t call_site, uint64_t function, uint64_t sp);
-    void update(uint64_t sp);
+    void newFrame(S2EExecutionState *state, uint64_t call_site,
+            uint64_t function, uint64_t sp);
+    void update(S2EExecutionState *state, uint64_t sp);
 
 private:
     uint64_t top_;

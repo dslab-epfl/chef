@@ -17,6 +17,7 @@
 #include <llvm/Support/raw_ostream.h>
 
 #include <boost/shared_ptr.hpp>
+#include <boost/make_shared.hpp>
 
 #include <map>
 #include <vector>
@@ -26,6 +27,7 @@ namespace s2e {
 
 
 using boost::shared_ptr;
+using boost::make_shared;
 
 
 enum {
@@ -99,7 +101,8 @@ struct MemoryOpAnalyzer {
     MemoryOpAnalyzer(S2E &s2e, S2EExecutionState *state,
             const MemoryOpSequence &mem_ops, int min_opcodes,
             std::pair<uint64_t, uint64_t> memop_range)
-        : instrum_hlpc_update(0),
+        : instrum_function(0),
+          instrum_hlpc_update(0),
           instrum_opcode_read(0),
           s2e_(s2e),
           state_(state),
@@ -145,6 +148,8 @@ struct MemoryOpAnalyzer {
                     << llvm::format("0x%x", it->first) << '\n';
         }
 
+        instrum_function = hlpc_it->second->front()->frame->function;
+
         for (uint64_t mi = 0; mi < mem_ops_.size(); ++mi) {
             const MemoryOp *memory_op = &mem_ops_[mi];
             if (hlpc_it->second->front()->frame != memory_op->frame)
@@ -163,9 +168,22 @@ struct MemoryOpAnalyzer {
             }
         }
 
+        if (!instrum_hlpc_update) {
+            s2e_.getWarningsStream(state_)
+                    << "Could not detect the HLPC update point." << '\n';
+            return false;
+        }
+
+        if (!instrum_opcode_read) {
+            s2e_.getWarningsStream(state_)
+                    << "Could not detect the opcode update point." << '\n';
+            return false;
+        }
+
         return true;
     }
 
+    uint64_t instrum_function;
     uint64_t instrum_hlpc_update;
     uint64_t instrum_opcode_read;
 
@@ -352,7 +370,9 @@ InterpreterDetector::InterpreterDetector(S2E &s2e, OSTracer &os_tracer,
       thread_(thread),
       calibrating_(false),
       min_opcode_count_(0),
-      instrumentation_pc_(0) {
+      instrum_function_(0),
+      instrum_hlpc_update_(0),
+      instrum_opcode_read_(0) {
 
     syscall_range_ = syscall_monitor->registerForRange(
             S2E_CHEF_START, S2E_CHEF_END);
@@ -362,9 +382,11 @@ InterpreterDetector::InterpreterDetector(S2E &s2e, OSTracer &os_tracer,
 
 
 InterpreterDetector::~InterpreterDetector() {
-    resetInstrumentationPc(0);
     syscall_range_->deregister();
     on_concrete_data_memory_access_.disconnect();
+    on_translate_instruction_start_.disconnect();
+    on_stack_frame_push_.disconnect();
+    on_stack_frame_popping_.disconnect();
 }
 
 
@@ -379,22 +401,21 @@ void InterpreterDetector::onConcreteDataMemoryAccess(S2EExecutionState *state,
                 call_tracer_->call_stack()->top(),
                 address, value, size,
                 flags & S2E_MEM_TRACE_FLAG_WRITE);
-    } else {
-        // XXX: Could there be any race condition causing the memory access
-        // to be deferred (e.g., hw interrupt)?
-        assert(state->getPc() == instrumentation_pc_);
+        return;
+    }
 
-        assert(!(flags & S2E_MEM_TRACE_FLAG_WRITE));
+    // FIXME
+
+    assert(!(flags & S2E_MEM_TRACE_FLAG_WRITE));
 
 #if 0
-        s2e_.getMessagesStream(state) << "HLPC: "
-                << llvm::format("0x%x", address) << '\n';
+    s2e_.getMessagesStream(state) << "HLPC: "
+            << llvm::format("0x%x", address) << '\n';
 #endif
 
-        onHighLevelInstructionStart.emit(state, address);
+    onHighLevelInstructionStart.emit(state, address);
 
-        on_concrete_data_memory_access_.disconnect();
-    }
+    on_concrete_data_memory_access_.disconnect();
 }
 
 
@@ -408,18 +429,10 @@ void InterpreterDetector::onS2ESyscall(S2EExecutionState *state,
 
     switch (syscall_id) {
     case S2E_CHEF_CALIBRATE_START:
-        assert(!calibrating_);
         startCalibration(state);
         break;
     case S2E_CHEF_CALIBRATE_CHECKPOINT:
-        s2e_.getMessagesStream(state) << "Calibration checkpoint." << '\n';
-
-
-        min_opcode_count_ += size;
-        if (!memop_range_.first) {
-            memop_range_.first = memory_recording_->seq_counter;
-        }
-        memop_range_.second = memory_recording_->seq_counter;
+        checkpointCalibration(state, size);
         break;
     case S2E_CHEF_CALIBRATE_END:
         endCalibration(state);
@@ -430,29 +443,11 @@ void InterpreterDetector::onS2ESyscall(S2EExecutionState *state,
 }
 
 
-void InterpreterDetector::resetInstrumentationPc(uint64_t value) {
-    instrumentation_pc_ = value;
-
-    if (!instrumentation_pc_) {
-        on_translate_instruction_start_.disconnect();
-    } else {
-        if (!on_translate_instruction_start_.connected()) {
-            on_translate_instruction_start_ = os_tracer_.stream().
-                    onTranslateInstructionStart.connect(
-                            sigc::mem_fun(*this, &InterpreterDetector::onTranslateInstructionStart));
-        }
-    }
-
-    s2e_tb_safe_flush();
-}
-
-
 void InterpreterDetector::startCalibration(S2EExecutionState *state) {
     assert(!calibrating_ && "Calibration start attempted while running");
+    assert(!instrum_function_ && "Calibration attempted twice on the same interpreter");
 
     calibrating_ = true;
-
-    resetInstrumentationPc(0);
 
     s2e_.getMessagesStream(state)
             << "Starting interpreter detector calibration." << '\n';
@@ -467,27 +462,113 @@ void InterpreterDetector::startCalibration(S2EExecutionState *state) {
 }
 
 
+void InterpreterDetector::checkpointCalibration(S2EExecutionState *state,
+        unsigned count) {
+    assert(calibrating_ && "Cannot checkpoint before calibration starts");
+    s2e_.getMessagesStream(state) << "Calibration checkpoint." << '\n';
+
+
+    min_opcode_count_ += count;
+    if (!memop_range_.first) {
+        memop_range_.first = memory_recording_->seq_counter;
+    }
+    memop_range_.second = memory_recording_->seq_counter;
+}
+
+
 void InterpreterDetector::endCalibration(S2EExecutionState *state) {
     assert(calibrating_ && "Calibration end attempted before start");
     s2e_.getMessagesStream(state) << "Calibration ended." << '\n';
 
-    computeInstrumentation(state);
-
-    memory_recording_.reset();
     on_concrete_data_memory_access_.disconnect();
     calibrating_ = false;
+
+    MemoryOpAnalyzer analyzer(s2e_, state, memory_recording_->mem_ops,
+                min_opcode_count_, memop_range_);
+
+    bool result = analyzer.analyze();
+
+    memory_recording_.reset();
+
+    if (!result) {
+        return;
+    }
+
+    instrum_function_ = analyzer.instrum_function;
+    instrum_hlpc_update_ = analyzer.instrum_hlpc_update;
+    instrum_opcode_read_ = analyzer.instrum_opcode_read;
+
+    startMonitoring(state);
 }
 
 
-void InterpreterDetector::computeInstrumentation(S2EExecutionState *state) {
-    MemoryOpAnalyzer analyzer(s2e_, state, memory_recording_->mem_ops,
-            min_opcode_count_, memop_range_);
+void InterpreterDetector::startMonitoring(S2EExecutionState *state) {
+    stack_.reset(new HighLevelStack());
 
-    if (!analyzer.analyze())
-        return;
+    CallStack *ll_stack = call_tracer_->call_stack().get();
 
-    // FIXME
-    resetInstrumentationPc(0);
+    for (unsigned i = 0; i < ll_stack->size(); ++i) {
+        shared_ptr<CallStackFrame> ll_frame = ll_stack->frame(
+                ll_stack->size() - i - 1);
+        if (ll_frame->function == instrum_function_) {
+            if (stack_->frames_.empty()) {
+                stack_->frames_.push_back(make_shared<HighLevelFrame>(ll_frame));
+            } else {
+                stack_->frames_.push_back(make_shared<HighLevelFrame>(
+                        stack_->frames_.back(), ll_frame));
+            }
+        }
+    }
+
+    on_stack_frame_push_ = call_tracer_->call_stack()->onStackFramePush.connect(
+            sigc::mem_fun(*this, &InterpreterDetector::onLowLevelStackFramePush));
+    on_stack_frame_popping_ = call_tracer_->call_stack()->onStackFramePopping.connect(
+            sigc::mem_fun(*this, &InterpreterDetector::onLowLevelStackFramePopping));
+
+    on_translate_instruction_start_ = os_tracer_.stream().
+            onTranslateInstructionStart.connect(sigc::mem_fun(
+                    *this, &InterpreterDetector::onTranslateInstructionStart));
+    s2e_tb_safe_flush();
+}
+
+
+void InterpreterDetector::onLowLevelStackFramePush(S2EExecutionState *state,
+        CallStack *call_stack, shared_ptr<CallStackFrame> old_top,
+        shared_ptr<CallStackFrame> new_top) {
+    if (old_top->function == instrum_function_) {
+        // Leave the current interpretation loop
+    }
+
+    if (new_top->function == instrum_function_) {
+        // Enter a new interpretation frame
+        if (stack_->frames_.empty()) {
+            stack_->frames_.push_back(make_shared<HighLevelFrame>(new_top));
+        } else {
+            stack_->frames_.push_back(make_shared<HighLevelFrame>(
+                    stack_->frames_.back(), new_top));
+        }
+
+        s2e_.getMessagesStream(state) << "Enter high-level frame. Stack size: "
+                << stack_->frames_.size() << '\n';
+    }
+}
+
+
+void InterpreterDetector::onLowLevelStackFramePopping(S2EExecutionState *state,
+        CallStack *call_stack, shared_ptr<CallStackFrame> old_top,
+        shared_ptr<CallStackFrame> new_top) {
+    if (old_top->function == instrum_function_) {
+        // Return from the interpretation frame
+        assert(!stack_->frames_.empty());
+        stack_->frames_.pop_back();
+
+        s2e_.getMessagesStream(state) << "Leaving high-level frame. Stack size: "
+                << stack_->frames_.size() << '\n';
+    }
+
+    if (new_top->function == instrum_function_) {
+        // Get back to the interpretation loop
+    }
 }
 
 
@@ -497,27 +578,36 @@ void InterpreterDetector::onTranslateInstructionStart(ExecutionSignal *signal,
         return;
     }
 
-    assert(instrumentation_pc_ && "Callback should have not been enabled");
     assert(!calibrating_);
+    assert(instrum_function_ && "Callback should have not been enabled");
 
-    if (pc != instrumentation_pc_) {
-        return;
+    if (pc == instrum_hlpc_update_) {
+        signal->connect(sigc::mem_fun(
+                *this, &InterpreterDetector::onInstrumentationHLPCUpdate));
     }
 
-    s2e_.getMessagesStream(state)
-            << "Instrumentation point encountered.  Instrumenting..." << '\n';
-
-    signal->connect(
-            sigc::mem_fun(*this, &InterpreterDetector::onInstrumentationHit));
+    if (pc == instrum_opcode_read_) {
+        signal->connect(sigc::mem_fun(
+                *this, &InterpreterDetector::onInstrumentationOpcodeRead));
+    }
 }
 
-void InterpreterDetector::onInstrumentationHit(S2EExecutionState *state, uint64_t pc) {
-    assert(pc == instrumentation_pc_);
+void InterpreterDetector::onInstrumentationHLPCUpdate(S2EExecutionState *state,
+        uint64_t pc) {
+    assert(pc == instrum_hlpc_update_);
+#if 0
     assert(!on_concrete_data_memory_access_.connected());
 
     on_concrete_data_memory_access_ = os_tracer_.stream().
             onConcreteDataMemoryAccess.connect(
                     sigc::mem_fun(*this, &InterpreterDetector::onConcreteDataMemoryAccess));
+#endif
+}
+
+
+void InterpreterDetector::onInstrumentationOpcodeRead(S2EExecutionState *state,
+        uint64_t pc) {
+    assert(pc == instrum_opcode_read_);
 }
 
 
