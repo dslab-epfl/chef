@@ -6,6 +6,7 @@ SRCPATH_BASE="$RUNPATH"
 SRCDIR_BASE="$(basename "$SRCPATH_BASE")"
 COMPONENTS='lua stp klee libmemtracer libvmi qemu tools guest gmock tests'
 USERNAME="$(id -un)"
+HOSTPATH='/host'
 
 # HELPERS ======================================================================
 # Various helper functions for displaying error/warning/normal messages and
@@ -519,29 +520,32 @@ docker_prepare()
 docker_build()
 {
 	dockerimg="$USERNAME/s2e-chef"
-	dockercont="zopf_${ARCH}_${TARGET}_${MODE}"
 
 	if ! docker_image_exists "$dockerimg"; then
 		die 2 '%s: image does not exist' "$dockerimg"
 	fi
-	note 'Building chef in %s:%s' "$dockerimg" "$dockercont"
-	if docker_image_exists "$dockercont"; then
-		if [ $FORCE -eq 0 ]; then
-			docker rm "$dockercont"
-		else
-			docker start -a -i "$dockercont"
-		fi
-	else
-		docker run \
-			--name="$dockercont" \
-			-t \
-			-i \
-			-v "$SRCPATH_BASE":/host \
-			"$dockerimg" \
-			/host/"$RUNNAME" -z $BUILDARGS
-	fi
-	docker commit "$dockercont" "$dockerimg:$dockercont"
-	docker rm "$dockercont"
+
+	# Prepare build directory:
+	mkdir -p  "$BUILDPATH_BASE"
+	chmod 777 "$BUILDPATH_BASE"
+	chmod g+s "$BUILDPATH_BASE"
+
+	docker run \
+		--rm \
+		-t \
+		-i \
+		-v "$SRCPATH_BASE":"$HOSTPATH" \
+		"$dockerimg" \
+		"$HOSTPATH/$RUNNAME" \
+			-b "$HOSTPATH/build/$ARCH-$TARGET-$MODE" \
+			$(test $FORCE -eq 0 && printf '-f') \
+			-i "$IGNORED" \
+			-j "$JOBS" \
+			-l "$LLVM_BASE" \
+			-q "$QEMU_FLAGS" \
+			$(test $VERBOSE -eq 0 && printf '-v') \
+			-z \
+			"$ARCH" "$TARGET" "$MODE"
 }
 
 # MAIN =========================================================================
@@ -552,6 +556,7 @@ usage()
 	$RUNNAME: build S²E-chef in a specific configuration.
 
 	Usage: $0 [OPTIONS ...] ARCH TARGET [MODE]
+	       $0 -p
 
 	Architectures:
 	    i386
@@ -561,27 +566,27 @@ usage()
 	    release
 	    debug
 
-	Mode:
+	Modes:
 	    normal [default]
 	    asan
 	    libmemtracer
 
 	Options:
 	    -b PATH    Build chef in PATH [default=$BUILDDIR_BASE]
-		-d PATH    Download s2e_docker repository to PATH [default=$DOCKERPATH]
+	    -d PATH    Download s2e_docker repository to PATH [default=$DOCKERPATH]
 	    -f         Force-rebuild
 	    -h         Display this help
 	    -i COMPS   Ignore components COMPS (see below for a list) [default='$IGNORED_DEFAULT']
 	    -j N       Compile with N jobs [default=$JOBS]
 	    -l PATH    Path to where the native LLVM-3.2 files are installed [default=$LLVM_BASE]
+	    -p         Prepare (make sure the docker images exist)
 	    -q FLAGS   Additional flags passed to qemu's \`configure\` script
 	    -v         Verbose: show compilation messages/warnings/errors on the console
-	    -z         Direct mode (you won't need this)
+	    -z         Direct mode (build directly on machine, instead inside docker)
 
 	Components:
 	EOF
 	echo "    $COMPONENTS"
-	echo
 	exit 1
 }
 
@@ -592,7 +597,7 @@ get_options()
 	DIRECT=1
 	DOCKERPATH='./s2e_docker'
 	FORCE=1
-	IGNORED=''
+	IGNORED='_invalid_'
 	IGNORED_DEFAULT='gmock tests'
 	case "$(uname)" in
 		Darwin) JOBS=$(sysctl hw.ncpu | cut -d ':' -f 2); alias cp=gcp ;;
@@ -600,10 +605,12 @@ get_options()
 		*) JOBS=2 ;;
 	esac
 	LLVM_BASE='/opt/s2e/llvm'
+	PREPARE=1
+	QEMU_FLAGS=''
 	VERBOSE=1
 
 	# Options:
-	while getopts b:d:fhi:j:l:q:vz opt; do
+	while getopts b:d:fhi:j:l:pq:vz opt; do
 		case "$opt" in
 			b) BUILDDIR_BASE="$OPTARG" ;;
 			d) DOCKERPATH="$OPTARG" ;;
@@ -612,6 +619,8 @@ get_options()
 			i) IGNORED="$IGNORE $OPTARG" ;;
 			j) JOBS="$OPTARG" ;;
 			l) LLVM_BASE="$OPTARG" ;;
+			p) PREPARE=0 ;;
+			q) QEMU_FLAGS="$OPTARG" ;;
 			v) VERBOSE=0 ;;
 			z) DIRECT=0 ;;
 			'?') die_help ;;
@@ -627,7 +636,7 @@ get_options()
 	LLVM_NATIVE_CXX="$LLVM_NATIVE/bin/clang++"
 	LLVM_NATIVE_LIB="$LLVM_NATIVE/lib"
 
-	test -z "$IGNORED" && IGNORED="$IGNORED_DEFAULT"
+	test "$IGNORED" != '_invalid_' || IGNORED="$IGNORED_DEFAULT"
 }
 
 get_architecture()
@@ -635,7 +644,7 @@ get_architecture()
 	ARCH="$1"
 	case "$ARCH" in
 		i386|x86_64) ;;
-		'') die_help "missing architecture" ;;
+		'') die_help 'missing architecture' ;;
 		*) die_help "invalid architecture: '%s'" "$ARCH" ;;
 	esac
 	ARGSHIFT=1
@@ -666,11 +675,14 @@ get_mode()
 main()
 {
 	LOGFILE='./build.log'
-	BUILDARGS="$@"
 
 	# Command line arguments:
 	get_options "$@"
 	shift $ARGSHIFT
+	if [ $PREPARE -eq 0 ]; then
+		docker_prepare
+		exit
+	fi
 	get_architecture "$@"
 	shift $ARGSHIFT
 	get_target "$@"
@@ -691,7 +703,7 @@ main()
 	else
 		# Wrap build in docker:
 		DOCKERPATH="$(readlink -f "$DOCKERPATH")"
-		docker_prepare
+		BUILDPATH_BASE="$SRCPATH_BASE/build"
 		docker_build
 	fi
 }
