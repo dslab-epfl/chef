@@ -529,8 +529,8 @@ s2eobj-y += s2e/S2EExecutionState.o
 s2eobj-y += s2e/S2EDeviceState.o
 s2eobj-y += s2e/S2EStatsTracker.o
 s2eobj-y += s2e/ExprInterface.o
-s2eobj-y += s2e/ExecutionStream.o
 
+s2eobj-y += s2e/Chef/ExecutionStream.o
 s2eobj-y += s2e/Chef/OSTracer.o
 s2eobj-y += s2e/Chef/CallTracer.o
 s2eobj-y += s2e/Chef/S2ESyscallMonitor.o

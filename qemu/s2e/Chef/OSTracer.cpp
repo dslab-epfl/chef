@@ -7,11 +7,11 @@
 
 #include "OSTracer.h"
 
-#include <s2e/ExecutionStream.h>
 #include <s2e/S2EExecutionState.h>
 #include <s2e/S2E.h>
 #include <s2e/Plugins/Opcodes.h>
 #include <s2e/Chef/S2ESyscallMonitor.h>
+#include <s2e/Chef/ExecutionStream.h>
 
 #include <llvm/Support/Format.h>
 

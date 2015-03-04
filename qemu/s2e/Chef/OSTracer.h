@@ -9,7 +9,7 @@
 #define QEMU_S2E_PLUGINS_CHEF_OSTRACER_H_
 
 #include <s2e/Signals/Signals.h>
-#include <s2e/ExecutionStream.h>
+#include <s2e/Chef/StreamAnalyzer.h>
 
 #include <boost/shared_ptr.hpp>
 #include <boost/scoped_ptr.hpp>

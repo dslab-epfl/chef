@@ -138,6 +138,22 @@ public:
                  unsigned /* flags */>
             onConcreteDataMemoryAccess;
 
+    /** Signal emitted when the state is forked */
+    sigc::signal<void, S2EExecutionState* /* originalState */,
+                 const std::vector<S2EExecutionState*>& /* newStates */,
+                 const std::vector<klee::ref<klee::Expr> >& /* newConditions */>
+            onStateFork;
+
+    /** Signal that is emitted when two states are merged */
+    sigc::signal<void, S2EExecutionState* /* destination */,
+                 S2EExecutionState* /* source */>
+            onStateMerge;
+
+    sigc::signal<void,
+                 S2EExecutionState*, /* currentState */
+                 S2EExecutionState*> /* nextState */
+            onStateSwitch;
+
 private:
     ExecutionStream(const ExecutionStream&);
     void operator=(const ExecutionStream&);

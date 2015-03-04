@@ -9,7 +9,7 @@
 #define QEMU_S2E_CHEF_CALLTRACER_H_
 
 #include <s2e/Signals/Signals.h>
-#include <s2e/ExecutionStream.h>
+#include <s2e/Chef/ExecutionStream.h>
 
 #include <boost/shared_ptr.hpp>
 #include <boost/enable_shared_from_this.hpp>

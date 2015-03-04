@@ -44,7 +44,7 @@
 #include <inttypes.h>
 #include <cpu.h>
 #include <s2e/s2e_qemu.h>
-#include <s2e/ExecutionStream.h>
+#include <s2e/Chef/ExecutionStream.h>
 
 #include <llvm/Support/TimeValue.h>
 
@@ -152,17 +152,6 @@ public:
             onPortAccess;
 
     sigc::signal<void> onTimer;
-
-    /** Signal emitted when the state is forked */
-    sigc::signal<void, S2EExecutionState* /* originalState */,
-                 const std::vector<S2EExecutionState*>& /* newStates */,
-                 const std::vector<klee::ref<klee::Expr> >& /* newConditions */>
-            onStateFork;
-
-    sigc::signal<void,
-                 S2EExecutionState*, /* currentState */
-                 S2EExecutionState*> /* nextState */
-            onStateSwitch;
 
     /**
      * Triggered when S2E wants to generate a test case
