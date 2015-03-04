@@ -15,6 +15,7 @@ extern "C" {
 #include <s2e/S2E.h>
 #include <s2e/Chef/OSTracer.h>
 #include <s2e/S2EExecutionState.h>
+#include <s2e/Plugins/Opcodes.h>
 
 #include <llvm/Support/Format.h>
 
@@ -53,7 +54,7 @@ void CallStack::newFrame(S2EExecutionState *state, uint64_t call_site,
 }
 
 
-void CallStack::update(S2EExecutionState *state, uint64_t sp) {
+void CallStack::updateFrame(S2EExecutionState *state, uint64_t sp) {
     assert(!frames_.empty());
 
     // Unwind
@@ -68,6 +69,14 @@ void CallStack::update(S2EExecutionState *state, uint64_t sp) {
         frames_.back()->bottom = sp;
         onStackFrameResize.emit(state, this, frames_.back());
     }
+}
+
+
+void CallStack::updateBasicBlock(S2EExecutionState *state, uint32_t bb_index) {
+    assert(!frames_.empty());
+
+    frames_.back()->bb_index = bb_index;
+    onBasicBlockEnter.emit(state, this, frames_.back());
 }
 
 
@@ -104,6 +113,7 @@ CallTracer::CallTracer(S2E &s2e, OSTracer &os_tracer,
 CallTracer::~CallTracer() {
     on_thread_switch_.disconnect();
     on_translate_register_access_.disconnect();
+    on_custom_instruction_.disconnect();
 
     s2e_tb_safe_flush();
 }
@@ -131,6 +141,8 @@ void CallTracer::onTranslateRegisterAccess(ExecutionSignal *signal,
 void CallTracer::onThreadSwitch(S2EExecutionState *state,
             boost::shared_ptr<OSThread> prev, boost::shared_ptr<OSThread> next) {
     if (next == tracked_thread_) {
+        on_custom_instruction_ = exec_stream_.onCustomInstruction.connect(
+                sigc::mem_fun(*this, &CallTracer::onCustomInstruction));
         on_translate_register_access_ = exec_stream_.onTranslateRegisterAccessEnd.connect(
                 sigc::mem_fun(*this, &CallTracer::onTranslateRegisterAccess));
 
@@ -139,6 +151,7 @@ void CallTracer::onThreadSwitch(S2EExecutionState *state,
         s2e_tb_safe_flush();
     } else if (prev == tracked_thread_) {
         on_translate_register_access_.disconnect();
+        on_custom_instruction_.disconnect();
     }
 }
 
@@ -157,8 +170,20 @@ void CallTracer::onStackPointerModification(S2EExecutionState *state, uint64_t p
     if (isCall) {
         call_stack_->newFrame(state, pc, state->getPc(), sp);
     } else {
-        call_stack_->update(state, sp);
+        call_stack_->updateFrame(state, sp);
     }
+}
+
+
+void CallTracer::onCustomInstruction(S2EExecutionState *state, uint64_t opcode) {
+    if (!OPCODE_CHECK(opcode, BASIC_BLOCK_OPCODE))
+        return;
+
+    if (tracked_thread_->kernel_mode())
+        return;
+
+    uint32_t bb_index = (uint32_t)((opcode >> 16) & 0xFFFF);
+    call_stack_->updateBasicBlock(state, bb_index);
 }
 
 } /* namespace s2e */

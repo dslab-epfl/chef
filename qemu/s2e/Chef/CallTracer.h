@@ -30,12 +30,16 @@ struct CallStackFrame {
     uint64_t call_site;
     uint64_t function;
 
+    // TODO: Maybe this should be stored separately?
+    uint32_t bb_index;
+
     uint64_t top;
     uint64_t bottom;
 
     CallStackFrame()
         : call_site(0),
           function(0),
+          bb_index(0),
           top(0),
           bottom(0) {
 
@@ -46,6 +50,7 @@ struct CallStackFrame {
         : parent(p),
           call_site(cs),
           function(fn),
+          bb_index(0),
           top(t),
           bottom(b) {
 
@@ -94,10 +99,17 @@ public:
                  boost::shared_ptr<CallStackFrame> >
             onStackFrameResize;
 
+    sigc::signal<void,
+                 S2EExecutionState*,
+                 CallStack*,
+                 boost::shared_ptr<CallStackFrame> >
+            onBasicBlockEnter;
+
 protected:
     void newFrame(S2EExecutionState *state, uint64_t call_site,
             uint64_t function, uint64_t sp);
-    void update(S2EExecutionState *state, uint64_t sp);
+    void updateFrame(S2EExecutionState *state, uint64_t sp);
+    void updateBasicBlock(S2EExecutionState *state, uint32_t bb_index);
 
 private:
     uint64_t top_;
@@ -131,6 +143,7 @@ private:
             boost::shared_ptr<OSThread> prev, boost::shared_ptr<OSThread> next);
     void onStackPointerModification(S2EExecutionState *state, uint64_t pc,
             bool isCall);
+    void onCustomInstruction(S2EExecutionState *state, uint64_t opcode);
 
     S2E &s2e_;
     ExecutionStream &exec_stream_;
@@ -140,6 +153,7 @@ private:
 
     sigc::connection on_thread_switch_;
     sigc::connection on_translate_register_access_;
+    sigc::connection on_custom_instruction_;
 
     CallTracer(const CallTracer&);
     void operator=(const CallTracer&);
