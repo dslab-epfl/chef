@@ -1,4 +1,9 @@
 #!/usr/bin/env sh
+#
+# This script builds a user-defined configuration of S²E-chef inside a prepared
+# docker container.
+#
+# Maintainer: Tinu Weber <martin.weber@epfl.ch>
 
 DOCKER_VERSION='v0.2'
 export C_INCLUDE_PATH='/usr/include:/usr/include/x86_64-linux-gnu'
@@ -657,7 +662,7 @@ main()
 	test $# -eq 0 || die_help "trailing arguments: $@"
 
 	LOGFILE="$(readlink -f "$LOGFILE")"
-	printf '' >"$LOGFILE"
+	rm -f "$LOGFILE"
 
 	if [ $DIRECT -eq 0 ]; then
 		# Build:
