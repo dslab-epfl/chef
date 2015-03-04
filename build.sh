@@ -1,6 +1,8 @@
 #!/usr/bin/env sh
 
-DOCKER_VERSION='v0.1'
+DOCKER_VERSION='v0.2'
+export C_INCLUDE_PATH='/usr/include:/usr/include/x86_64-linux-gnu'
+export CPLUS_INCLUDE_PATH="$C_INCLUDE_PATH:/usr/include/x86_64-linux-gnu/c++/4.8"
 
 RUNNAME="$(basename "$0")"
 RUNPATH="$(readlink -f "$(dirname "$0")")"
