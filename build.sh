@@ -1,11 +1,12 @@
 #!/usr/bin/env sh
 
+DOCKER_VERSION='v0.1'
+
 RUNNAME="$(basename "$0")"
 RUNPATH="$(readlink -f "$(dirname "$0")")"
 SRCPATH_BASE="$RUNPATH"
 SRCDIR_BASE="$(basename "$SRCPATH_BASE")"
 COMPONENTS='lua stp klee libmemtracer libvmi qemu tools guest gmock tests'
-USERNAME="$(id -un)"
 HOSTPATH='/host'
 
 # HELPERS ======================================================================
@@ -479,68 +480,33 @@ docker_image_exists()
 	docker inspect "$1" >/dev/null 2>&1
 }
 
-docker_prepare_image()
-{
-	dockerimg="$USERNAME/s2e-$1"
-	dockerfile="$DOCKERPATH/image/$1/Dockerfile"
-
-	if docker_image_exists "$dockerimg"; then
-		skip '%s: image already exists' "$dockerimg"
-		return
-	fi
-
-	# XXX 'FROM' line correction, temporary, until docker hub is up to date:
-	if [ $1 = 'chef' ]; then
-		# FIXME assuming $USERNAME contains no problematic characters:
-		printf "%%s/stefanbucur/%s/g\nw\nq\n" "$USERNAME" | \
-			ex -s "$dockerfile" || true
-	fi
-	track "Building $1 docker image" docker build \
-		--rm \
-		--tag="$dockerimg" \
-		"$(dirname "$dockerfile")"
-}
-
 docker_prepare()
 {
-	if [ -d "$DOCKERPATH" ]; then
-		cd "$DOCKERPATH"
-		track 'Updating s2e_docker repository' git pull
-		cd -
+	if docker_image_exists "$DOCKERIMG"; then
+		skip '%s: image already exists' "$DOCKERIMG"
 	else
-		track 'Cloining s2e_docker repository' \
-			git clone "https://github.com/stefanbucur/s2e_docker" "$DOCKERPATH"
+		docker pull "$DOCKERIMG"
 	fi
-
-	for i in base chef; do
-		docker_prepare_image "$i"
-	done
 }
 
 docker_build()
 {
-	dockerimg="$USERNAME/s2e-chef"
+	docker_image_exists "$DOCKERIMG" || \
+		die 2 "%s: image not found, please run with \`-p\` first" "$DOCKERIMG"
 
-	if ! docker_image_exists "$dockerimg"; then
-		die 2 '%s: image does not exist' "$dockerimg"
-	fi
-
-	# Prepare build directory:
-	mkdir -p  "$BUILDPATH_BASE"
-	chmod 777 "$BUILDPATH_BASE"
-	chmod g+s "$BUILDPATH_BASE"
+	mkdir -m a=rwx,g+s -p "$BUILDPATH_BASE"
 
 	docker run \
 		--rm \
 		-t \
 		-i \
 		-v "$SRCPATH_BASE":"$HOSTPATH" \
-		"$dockerimg" \
+		"$DOCKERIMG" \
 		"$HOSTPATH/$RUNNAME" \
 			-b "$HOSTPATH/build/$ARCH-$TARGET-$MODE" \
 			$(test $FORCE -eq 0 && printf '-f') \
 			-i "$IGNORED" \
-			-j "$JOBS" \
+			-j$JOBS \
 			-l "$LLVM_BASE" \
 			-q "$QEMU_FLAGS" \
 			$(test $VERBOSE -eq 0 && printf '-v') \
@@ -573,13 +539,13 @@ usage()
 
 	Options:
 	    -b PATH    Build chef in PATH [default=$BUILDDIR_BASE]
-	    -d PATH    Download s2e_docker repository to PATH [default=$DOCKERPATH]
+	    -d IMAGE   Docker image to use [default=$DOCKERIMG]
 	    -f         Force-rebuild
 	    -h         Display this help
-	    -i COMPS   Ignore components COMPS (see below for a list) [default='$IGNORED_DEFAULT']
+	    -i COMPS   Ignore components COMPS (see below for a list) [default='$IGNORED']
 	    -j N       Compile with N jobs [default=$JOBS]
 	    -l PATH    Path to where the native LLVM-3.2 files are installed [default=$LLVM_BASE]
-	    -p         Prepare (make sure the docker images exist)
+	    -p         Pull docker image
 	    -q FLAGS   Additional flags passed to qemu's \`configure\` script
 	    -v         Verbose: show compilation messages/warnings/errors on the console
 	    -z         Direct mode (build directly on machine, instead inside docker)
@@ -595,10 +561,9 @@ get_options()
 	# Default values:
 	BUILDDIR_BASE='./build'
 	DIRECT=1
-	DOCKERPATH='./s2e_docker'
+	DOCKERIMG="dslab/s2e-chef:$DOCKER_VERSION"
 	FORCE=1
-	IGNORED='_invalid_'
-	IGNORED_DEFAULT='gmock tests'
+	IGNORED='gmock tests'
 	case "$(uname)" in
 		Darwin) JOBS=$(sysctl hw.ncpu | cut -d ':' -f 2); alias cp=gcp ;;
 		Linux) JOBS=$(grep -c '^processor' /proc/cpuinfo) ;;
@@ -613,10 +578,10 @@ get_options()
 	while getopts b:d:fhi:j:l:pq:vz opt; do
 		case "$opt" in
 			b) BUILDDIR_BASE="$OPTARG" ;;
-			d) DOCKERPATH="$OPTARG" ;;
+			d) DOCKERIMG="$OPTARG" ;;
 			f) FORCE=0 ;;
 			h) usage ;;
-			i) IGNORED="$IGNORE $OPTARG" ;;
+			i) IGNORED="$OPTARG" ;;
 			j) JOBS="$OPTARG" ;;
 			l) LLVM_BASE="$OPTARG" ;;
 			p) PREPARE=0 ;;
@@ -635,8 +600,6 @@ get_options()
 	LLVM_NATIVE_CC="$LLVM_NATIVE/bin/clang"
 	LLVM_NATIVE_CXX="$LLVM_NATIVE/bin/clang++"
 	LLVM_NATIVE_LIB="$LLVM_NATIVE/lib"
-
-	test "$IGNORED" != '_invalid_' || IGNORED="$IGNORED_DEFAULT"
 }
 
 get_architecture()
@@ -687,7 +650,7 @@ main()
 	shift $ARGSHIFT
 	get_target "$@"
 	shift $ARGSHIFT
-	get_mode "$@" || shift
+	get_mode "$@"
 	shift $ARGSHIFT
 	test $# -eq 0 || die_help "trailing arguments: $@"
 
@@ -702,7 +665,6 @@ main()
 		all_build
 	else
 		# Wrap build in docker:
-		DOCKERPATH="$(readlink -f "$DOCKERPATH")"
 		BUILDPATH_BASE="$SRCPATH_BASE/build"
 		docker_build
 	fi
