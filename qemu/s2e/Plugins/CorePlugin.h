@@ -161,11 +161,6 @@ public:
                  const std::string& /* message */>
             onTestCaseGeneration;
 
-    /**
-     * Triggered whenever a state is killed
-     */
-    sigc::signal<void, S2EExecutionState*> onStateKill;
-
 
     /** Signal emitted when spawning a new S2E process */
     sigc::signal<void, bool /* prefork */,

@@ -33,7 +33,9 @@ S2E_DEFINE_PLUGIN(InterpreterAnalyzer,
         "");
 
 
-InterpreterAnalyzer::InterpreterAnalyzer(S2E *s2e) : Plugin(s2e) {
+InterpreterAnalyzer::InterpreterAnalyzer(S2E *s2e)
+    : Plugin(s2e),
+      tracked_tid_(0) {
 
 }
 
@@ -55,31 +57,33 @@ void InterpreterAnalyzer::initialize() {
 
 
 void InterpreterAnalyzer::onThreadCreate(S2EExecutionState *state,
-            boost::shared_ptr<OSThread> thread) {
+            OSThread *thread) {
     // FIXME: We both agree this is horrible...
-    if (thread->name() != "python" && thread->name() != "phantomjs" && thread->name() != "js24" && thread->name() != "lua") {
+    if (thread->name() != "python" &&
+        thread->name() != "phantomjs" &&
+        thread->name() != "js24" &&
+        thread->name() != "lua") {
         return;
     }
 
     s2e()->getMessagesStream(state) << "Interpreter thread created ("
             << thread->name() << ").  Started tracking..." << '\n';
 
-    tracked_thread_ = thread;
-    interp_detector_.reset(new InterpreterDetector(*s2e(), *os_tracer_,
-            tracked_thread_, smonitor_));
+    tracked_tid_ = thread->tid();
+    interp_detector_.reset(new InterpreterDetector(*os_tracer_, tracked_tid_, smonitor_));
 }
 
 
 void InterpreterAnalyzer::onThreadExit(S2EExecutionState *state,
-        boost::shared_ptr<OSThread> thread) {
-    if (thread != tracked_thread_) {
+        OSThread *thread) {
+    if (thread->tid() != tracked_tid_) {
         return;
     }
 
     s2e()->getMessagesStream(state) << "Interpreter thread exited ("
-            << tracked_thread_->name() << ")." << '\n';
+            << thread->name() << ")." << '\n';
 
-    tracked_thread_.reset();
+    tracked_tid_ = 0;
     interp_detector_.reset();
 }
 

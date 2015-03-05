@@ -359,15 +359,29 @@ private:
     void operator=(const MemoryOpAnalyzer&);
 };
 
+// HighLevelStack //////////////////////////////////////////////////////////////
+
+HighLevelStack::HighLevelStack(InterpreterDetector &detector,
+        S2EExecutionState *s2e_state)
+    : StreamAnalyzerState<InterpreterDetector>(detector, s2e_state) {
+
+}
+
+HighLevelStack::HighLevelStack(const HighLevelStack &other,
+        S2EExecutionState *s2e_state)
+    : StreamAnalyzerState<InterpreterDetector>(other, s2e_state) {
+
+}
+
 // InterpreterDetector /////////////////////////////////////////////////////////
 
-InterpreterDetector::InterpreterDetector(S2E &s2e, OSTracer &os_tracer,
-        boost::shared_ptr<OSThread> thread,
-        boost::shared_ptr<S2ESyscallMonitor> syscall_monitor)
-    : s2e_(s2e),
+InterpreterDetector::InterpreterDetector(OSTracer &os_tracer,
+        int tid, boost::shared_ptr<S2ESyscallMonitor> syscall_monitor)
+    : StreamAnalyzer<HighLevelStack, InterpreterDetector>(
+            os_tracer.s2e(), os_tracer.stream()),
       os_tracer_(os_tracer),
-      call_tracer_(new CallTracer(s2e, os_tracer, thread)),
-      thread_(thread),
+      call_tracer_(new CallTracer(os_tracer, tid)),
+      tracked_tid_(tid),
       calibrating_(false),
       min_opcode_count_(0),
       instrum_function_(0),
@@ -391,24 +405,27 @@ InterpreterDetector::~InterpreterDetector() {
 
 void InterpreterDetector::onConcreteDataMemoryAccess(S2EExecutionState *state,
         uint64_t address, uint64_t value, uint8_t size, unsigned flags) {
-    if (!thread_->running() || thread_->kernel_mode()) {
+    OSThread *thread = os_tracer_.getState(state)->getThread(tracked_tid_);
+
+    if (!thread->running() || thread->kernel_mode()) {
         return;
     }
 
     bool is_write = flags & S2E_MEM_TRACE_FLAG_WRITE;
 
+    shared_ptr<CallStack> ll_stack = call_tracer_->getState(state);
+
     if (calibrating_) {
-        memory_recording_->recordMemoryOp(state->getPc(),
-                call_tracer_->call_stack()->top(),
+        memory_recording_->recordMemoryOp(state->getPc(), ll_stack->top(),
                 address, value, size, is_write);
         return;
     }
 
-    assert(stack_->size() > 0);
+    shared_ptr<HighLevelStack> hl_stack = getState(state);
+    assert(hl_stack->size() > 0);
+    HighLevelFrame *hl_frame = hl_stack->top().get();
 
-    HighLevelFrame *hl_frame = stack_->top().get();
-
-    assert(call_tracer_->call_stack()->top() == hl_frame->low_level_frame);
+    assert(ll_stack->top()->id == hl_frame->low_level_frame_id);
 
     if (state->getPc() == instrum_hlpc_update_) {
         assert(is_write);
@@ -422,9 +439,9 @@ void InterpreterDetector::onConcreteDataMemoryAccess(S2EExecutionState *state,
 
     if (address == hl_frame->hlpc_ptr && is_write) {
         hl_frame->hlpc = value;
-        onHighLevelPCUpdate.emit(state, stack_.get());
-#if 0
-        s2e_.getMessagesStream(state)
+        onHighLevelPCUpdate.emit(state, hl_stack.get());
+#if 1
+        s2e().getMessagesStream(state)
                 << llvm::format("HLPC=0x%x", hl_frame->hlpc) << '\n';
 #endif
     }
@@ -433,9 +450,9 @@ void InterpreterDetector::onConcreteDataMemoryAccess(S2EExecutionState *state,
         assert(!is_write);
         //assert(!hl_frame->hlpc || address == hl_frame->hlpc);
         hl_frame->hlinst = address;
-        onHighLevelInstructionFetch.emit(state, stack_.get());
-#if 0
-        s2e_.getMessagesStream(state)
+        onHighLevelInstructionFetch.emit(state, hl_stack.get());
+#if 1
+        s2e().getMessagesStream(state)
                 << llvm::format("Instruction=0x%x", hl_frame->hlinst) << '\n';
 #endif
     }
@@ -444,7 +461,8 @@ void InterpreterDetector::onConcreteDataMemoryAccess(S2EExecutionState *state,
 
 void InterpreterDetector::onS2ESyscall(S2EExecutionState *state,
         uint64_t syscall_id, uint64_t data, uint64_t size) {
-    if (!thread_->running()) {
+    OSThread *thread = os_tracer_.getState(state)->getThread(tracked_tid_);
+    if (!thread->running()) {
         return;
     }
 
@@ -472,7 +490,7 @@ void InterpreterDetector::startCalibration(S2EExecutionState *state) {
 
     calibrating_ = true;
 
-    s2e_.getMessagesStream(state)
+    s2e().getMessagesStream(state)
             << "Starting interpreter detector calibration." << '\n';
 
     memory_recording_.reset(new MemoryOpRecorder());
@@ -488,7 +506,7 @@ void InterpreterDetector::startCalibration(S2EExecutionState *state) {
 void InterpreterDetector::checkpointCalibration(S2EExecutionState *state,
         unsigned count) {
     assert(calibrating_ && "Cannot checkpoint before calibration starts");
-    s2e_.getMessagesStream(state) << "Calibration checkpoint." << '\n';
+    s2e().getMessagesStream(state) << "Calibration checkpoint." << '\n';
 
 
     min_opcode_count_ += count;
@@ -501,12 +519,12 @@ void InterpreterDetector::checkpointCalibration(S2EExecutionState *state,
 
 void InterpreterDetector::endCalibration(S2EExecutionState *state) {
     assert(calibrating_ && "Calibration end attempted before start");
-    s2e_.getMessagesStream(state) << "Calibration ended." << '\n';
+    s2e().getMessagesStream(state) << "Calibration ended." << '\n';
 
     on_concrete_data_memory_access_.disconnect();
     calibrating_ = false;
 
-    MemoryOpAnalyzer analyzer(s2e_, state, memory_recording_->mem_ops,
+    MemoryOpAnalyzer analyzer(s2e(), state, memory_recording_->mem_ops,
                 min_opcode_count_, memop_range_);
 
     bool result = analyzer.analyze();
@@ -526,26 +544,28 @@ void InterpreterDetector::endCalibration(S2EExecutionState *state) {
 
 
 void InterpreterDetector::startMonitoring(S2EExecutionState *state) {
-    stack_.reset(new HighLevelStack());
+    HighLevelStack *hl_stack = getState(state).get();
+    CallStack *ll_stack = call_tracer_->getState(state).get();
 
-    CallStack *ll_stack = call_tracer_->call_stack().get();
+    hl_stack->frames_.clear();
 
     for (unsigned i = 0; i < ll_stack->size(); ++i) {
         shared_ptr<CallStackFrame> ll_frame = ll_stack->frame(
                 ll_stack->size() - i - 1);
         if (ll_frame->function == instrum_function_) {
-            if (stack_->frames_.empty()) {
-                stack_->frames_.push_back(make_shared<HighLevelFrame>(ll_frame));
+            if (hl_stack->frames_.empty()) {
+                hl_stack->frames_.push_back(make_shared<HighLevelFrame>(
+                        ll_frame->id));
             } else {
-                stack_->frames_.push_back(make_shared<HighLevelFrame>(
-                        stack_->frames_.back(), ll_frame));
+                hl_stack->frames_.push_back(make_shared<HighLevelFrame>(
+                        hl_stack->frames_.back(), ll_frame->id));
             }
         }
     }
 
-    on_stack_frame_push_ = call_tracer_->call_stack()->onStackFramePush.connect(
+    on_stack_frame_push_ = call_tracer_->onStackFramePush.connect(
             sigc::mem_fun(*this, &InterpreterDetector::onLowLevelStackFramePush));
-    on_stack_frame_popping_ = call_tracer_->call_stack()->onStackFramePopping.connect(
+    on_stack_frame_popping_ = call_tracer_->onStackFramePopping.connect(
             sigc::mem_fun(*this, &InterpreterDetector::onLowLevelStackFramePopping));
 }
 
@@ -559,18 +579,20 @@ void InterpreterDetector::onLowLevelStackFramePush(S2EExecutionState *state,
         return;
     }
 
+    HighLevelStack *hl_stack = getState(state).get();
+
     // Enter a new interpretation frame
-    if (stack_->frames_.empty()) {
-        stack_->frames_.push_back(make_shared<HighLevelFrame>(new_top));
+    if (hl_stack->frames_.empty()) {
+        hl_stack->frames_.push_back(make_shared<HighLevelFrame>(new_top->id));
     } else {
-        stack_->frames_.push_back(make_shared<HighLevelFrame>(
-                stack_->frames_.back(), new_top));
+        hl_stack->frames_.push_back(make_shared<HighLevelFrame>(
+                hl_stack->frames_.back(), new_top->id));
     }
 
-    onHighLevelFramePush.emit(state, stack_.get());
+    onHighLevelFramePush.emit(state, hl_stack);
 
 #if 0
-    s2e_.getMessagesStream(state) << "Enter high-level frame. Stack size: "
+    s2e().getMessagesStream(state) << "Enter high-level frame. Stack size: "
             << stack_->frames_.size() << '\n';
 #endif
 }
@@ -589,16 +611,18 @@ void InterpreterDetector::onLowLevelStackFramePopping(S2EExecutionState *state,
         }
     }
 
+    HighLevelStack *hl_stack = getState(state).get();
+
     if (old_top->function == instrum_function_) {
         // Return from the interpretation frame
-        assert(!stack_->frames_.empty());
+        assert(!hl_stack->frames_.empty());
 
-        onHighLevelFramePopping.emit(state, stack_.get());
+        onHighLevelFramePopping.emit(state, hl_stack);
 
-        stack_->frames_.pop_back();
+        hl_stack->frames_.pop_back();
 
 #if 0
-        s2e_.getMessagesStream(state) << "Leaving high-level frame. Stack size: "
+        s2e().getMessagesStream(state) << "Leaving high-level frame. Stack size: "
                 << stack_->frames_.size() << '\n';
 #endif
     }

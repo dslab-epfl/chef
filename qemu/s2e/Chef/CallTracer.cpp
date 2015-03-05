@@ -27,14 +27,33 @@ using boost::make_shared;
 namespace s2e {
 
 
-CallStack::CallStack(uint64_t top, uint64_t sp) : top_(top) {
-    frames_.push_back(shared_ptr<CallStackFrame>(
-            new CallStackFrame(shared_ptr<CallStackFrame>(), 0, 0, top, sp)));
+CallStack::CallStack(CallTracer &call_tracer, S2EExecutionState *s2e_state)
+        : StreamAnalyzerState<CallTracer>(call_tracer, s2e_state),
+          next_id_(1) {
+    OSThread *thread = call_tracer.os_tracer().getState(s2e_state)->getThread(
+            call_tracer.tracked_tid());
+
+    // FIXME: Obtain the upper bound from VMAs
+    frames_.push_back(make_shared<CallStackFrame>(shared_ptr<CallStackFrame>(),
+            next_id_++, 0, 0, thread->stack_top() + 8, thread->stack_top()));
 }
 
 
-void CallStack::newFrame(S2EExecutionState *state, uint64_t call_site,
-        uint64_t function, uint64_t sp) {
+CallStack::CallStack(const CallStack &other, S2EExecutionState *s2e_state)
+        : StreamAnalyzerState<CallTracer>(other, s2e_state),
+          next_id_(other.next_id_) {
+    for (FrameVector::const_iterator it = other.frames_.begin(),
+            ie = other.frames_.end(); it != ie; ++it) {
+        shared_ptr<CallStackFrame> frame = make_shared<CallStackFrame>(*(*it));
+        if (!frames_.empty()) {
+            frame->parent = frames_.back();
+        }
+        frames_.push_back(frame);
+    }
+}
+
+
+void CallStack::newFrame(uint64_t call_site, uint64_t function, uint64_t sp) {
     assert(!frames_.empty());
     if (sp >= frames_.back()->bottom) {
         llvm::errs() << "Invalid stack frame start: "
@@ -45,21 +64,22 @@ void CallStack::newFrame(S2EExecutionState *state, uint64_t call_site,
     assert(sp < frames_.back()->bottom);
 
     shared_ptr<CallStackFrame> old_frame = frames_.back();
-    shared_ptr<CallStackFrame> new_frame = make_shared<CallStackFrame>(frames_.back(),
-            call_site, function, frames_.back()->bottom, sp);
+    shared_ptr<CallStackFrame> new_frame = make_shared<CallStackFrame>(old_frame,
+            next_id_++, call_site, function, frames_.back()->bottom, sp);
 
     frames_.push_back(new_frame);
 
-    onStackFramePush.emit(state, this, old_frame, new_frame);
+    analyzer().onStackFramePush.emit(s2e_state(), this, old_frame, new_frame);
 }
 
 
-void CallStack::updateFrame(S2EExecutionState *state, uint64_t sp) {
+void CallStack::updateFrame(uint64_t sp) {
     assert(!frames_.empty());
 
     // Unwind
     while (sp >= frames_.back()->top) {
-        onStackFramePopping.emit(state, this, frames_.back(), frames_[frames_.size()-2]);
+        analyzer().onStackFramePopping.emit(s2e_state(), this, frames_.back(),
+                frames_[frames_.size()-2]);
         frames_.pop_back();
         assert(!frames_.empty());
     }
@@ -67,16 +87,16 @@ void CallStack::updateFrame(S2EExecutionState *state, uint64_t sp) {
     // Resize
     if (frames_.back()->bottom != sp) {
         frames_.back()->bottom = sp;
-        onStackFrameResize.emit(state, this, frames_.back());
+        analyzer().onStackFrameResize.emit(s2e_state(), this, frames_.back());
     }
 }
 
 
-void CallStack::updateBasicBlock(S2EExecutionState *state, uint32_t bb_index) {
+void CallStack::updateBasicBlock(uint32_t bb_index) {
     assert(!frames_.empty());
 
     frames_.back()->bb_index = bb_index;
-    onBasicBlockEnter.emit(state, this, frames_.back());
+    analyzer().onBasicBlockEnter.emit(s2e_state(), this, frames_.back());
 }
 
 
@@ -96,15 +116,10 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const CallStack &cs) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-CallTracer::CallTracer(S2E &s2e, OSTracer &os_tracer,
-        boost::shared_ptr<OSThread> thread)
-    : s2e_(s2e),
-      exec_stream_(os_tracer.stream()),
-      tracked_thread_(thread) {
-
-    // FIXME: Obtain the upper bound from VMAs
-    call_stack_ = boost::shared_ptr<CallStack>(
-            new CallStack(thread->stack_top() + 8, thread->stack_top()));
+CallTracer::CallTracer(OSTracer &os_tracer, int tid)
+    : StreamAnalyzer<CallStack, CallTracer>(os_tracer.s2e(), os_tracer.stream()),
+      os_tracer_(os_tracer),
+      tracked_tid_(tid) {
 
     on_thread_switch_ = os_tracer.onThreadSwitch.connect(
             sigc::mem_fun(*this, &CallTracer::onThreadSwitch));
@@ -122,7 +137,8 @@ CallTracer::~CallTracer() {
 void CallTracer::onTranslateRegisterAccess(ExecutionSignal *signal,
         S2EExecutionState *state, TranslationBlock *tb, uint64_t pc,
         uint64_t rmask, uint64_t wmask, bool accessesMemory) {
-    if (tracked_thread_->kernel_mode())
+    OSThread *thread = os_tracer_.getState(state)->getThread(tracked_tid_);
+    if (thread->kernel_mode())
         return;
 
     // s2e_.getMessagesStream(state) << "Register access: " << llvm::format("pc=0x%x wmask=0x%016llx", pc, wmask) << '\n';
@@ -139,17 +155,17 @@ void CallTracer::onTranslateRegisterAccess(ExecutionSignal *signal,
 
 
 void CallTracer::onThreadSwitch(S2EExecutionState *state,
-            boost::shared_ptr<OSThread> prev, boost::shared_ptr<OSThread> next) {
-    if (next == tracked_thread_) {
-        on_custom_instruction_ = exec_stream_.onCustomInstruction.connect(
+            OSThread* prev, OSThread* next) {
+    if (next->tid() == tracked_tid_) {
+        on_custom_instruction_ = stream().onCustomInstruction.connect(
                 sigc::mem_fun(*this, &CallTracer::onCustomInstruction));
-        on_translate_register_access_ = exec_stream_.onTranslateRegisterAccessEnd.connect(
+        on_translate_register_access_ = stream().onTranslateRegisterAccessEnd.connect(
                 sigc::mem_fun(*this, &CallTracer::onTranslateRegisterAccess));
 
         // TODO: Ideally, this should happen whenever onTranslate* callbacks are
         // modified.
         s2e_tb_safe_flush();
-    } else if (prev == tracked_thread_) {
+    } else if (prev->tid() == tracked_tid_) {
         on_translate_register_access_.disconnect();
         on_custom_instruction_.disconnect();
     }
@@ -163,14 +179,14 @@ void CallTracer::onStackPointerModification(S2EExecutionState *state, uint64_t p
 #if 0
     s2e_.getMessagesStream(state)
             << llvm::format("ESP=0x%x@pc=0x%x EIP=0x%x Top=0x%x/Size=%d",
-                    sp, pc, state->getPc(), tracked_thread_->stack_top(), call_stack_.size())
+                    sp, pc, state->getPc(), tracked_tid_->stack_top(), call_stack_.size())
             << '\n';
 #endif
 
     if (isCall) {
-        call_stack_->newFrame(state, pc, state->getPc(), sp);
+        getState(state)->newFrame(pc, state->getPc(), sp);
     } else {
-        call_stack_->updateFrame(state, sp);
+        getState(state)->updateFrame(sp);
     }
 }
 
@@ -179,11 +195,13 @@ void CallTracer::onCustomInstruction(S2EExecutionState *state, uint64_t opcode) 
     if (!OPCODE_CHECK(opcode, BASIC_BLOCK_OPCODE))
         return;
 
-    if (tracked_thread_->kernel_mode())
+    OSThread *thread = os_tracer_.getState(state)->getThread(tracked_tid_);
+
+    if (thread->kernel_mode())
         return;
 
     uint32_t bb_index = (uint32_t)((opcode >> 16) & 0xFFFF);
-    call_stack_->updateBasicBlock(state, bb_index);
+    getState(state)->updateBasicBlock(bb_index);
 }
 
 } /* namespace s2e */

@@ -30,16 +30,14 @@ public:
 
     void initialize();
 private:
-    void onThreadCreate(S2EExecutionState *state,
-            boost::shared_ptr<OSThread> thread);
-    void onThreadExit(S2EExecutionState *state,
-            boost::shared_ptr<OSThread> thread);
+    void onThreadCreate(S2EExecutionState *state, OSThread* thread);
+    void onThreadExit(S2EExecutionState *state, OSThread* thread);
 
 
     boost::shared_ptr<S2ESyscallMonitor> smonitor_;
     boost::scoped_ptr<OSTracer> os_tracer_;
 
-    boost::shared_ptr<OSThread> tracked_thread_;
+    int tracked_tid_;
     boost::scoped_ptr<InterpreterDetector> interp_detector_;
 };
 

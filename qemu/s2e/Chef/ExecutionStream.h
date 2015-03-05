@@ -154,6 +154,11 @@ public:
                  S2EExecutionState*> /* nextState */
             onStateSwitch;
 
+    /**
+     * Triggered whenever a state is killed
+     */
+    sigc::signal<void, S2EExecutionState*> onStateKill;
+
 private:
     ExecutionStream(const ExecutionStream&);
     void operator=(const ExecutionStream&);

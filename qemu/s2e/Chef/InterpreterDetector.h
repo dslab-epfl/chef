@@ -9,7 +9,7 @@
 #define QEMU_S2E_CHEF_INTERPRETERDETECTOR_H_
 
 #include <s2e/Signals/Signals.h>
-#include <s2e/Chef/ExecutionStream.h>
+#include <s2e/Chef/StreamAnalyzer.h>
 
 #include <boost/shared_ptr.hpp>
 #include <boost/scoped_ptr.hpp>
@@ -19,8 +19,6 @@
 namespace s2e {
 
 
-class S2EExecutionState;
-class S2E;
 class OSTracer;
 class OSThread;
 
@@ -34,7 +32,7 @@ class S2ESyscallRange;
 
 struct HighLevelFrame {
     boost::shared_ptr<HighLevelFrame> parent;
-    boost::shared_ptr<CallStackFrame> low_level_frame;
+    uint64_t low_level_frame_id;
 
     // The frame-specific address of the HLPC pointer
     uint64_t hlpc_ptr;
@@ -43,18 +41,17 @@ struct HighLevelFrame {
     // Latest HLPC value of an opcode fetch
     uint64_t hlinst;
 
-    HighLevelFrame(boost::shared_ptr<HighLevelFrame> p,
-            boost::shared_ptr<CallStackFrame> l)
+    HighLevelFrame(boost::shared_ptr<HighLevelFrame> p, uint64_t l)
         : parent(p),
-          low_level_frame(l),
+          low_level_frame_id(l),
           hlpc_ptr(0),
           hlpc(0),
           hlinst(0) {
 
     }
 
-    HighLevelFrame(boost::shared_ptr<CallStackFrame> l)
-        : low_level_frame(l),
+    HighLevelFrame(uint64_t l)
+        : low_level_frame_id(l),
           hlpc_ptr(0),
           hlpc(0),
           hlinst(0) {
@@ -66,11 +63,14 @@ private:
     void operator=(const HighLevelFrame&);
 };
 
-class HighLevelStack {
-public:
-    HighLevelStack() {
 
-    }
+class InterpreterDetector;
+
+
+class HighLevelStack : public StreamAnalyzerState<InterpreterDetector> {
+public:
+    HighLevelStack(InterpreterDetector &detector, S2EExecutionState *s2e_state);
+    HighLevelStack(const HighLevelStack &other, S2EExecutionState *s2e_state);
 
     unsigned size() const {
         return frames_.size();
@@ -87,17 +87,15 @@ public:
 private:
     std::vector<boost::shared_ptr<HighLevelFrame> > frames_;
 
-    // Non-copyable
-    HighLevelStack(const HighLevelStack&);
     void operator=(const HighLevelStack&);
 
     friend class InterpreterDetector;
 };
 
-class InterpreterDetector {
+
+class InterpreterDetector : public StreamAnalyzer<HighLevelStack, InterpreterDetector> {
 public:
-    InterpreterDetector(S2E &s2e, OSTracer &os_tracer,
-            boost::shared_ptr<OSThread> thread,
+    InterpreterDetector(OSTracer &os_tracer, int tid,
             boost::shared_ptr<S2ESyscallMonitor> syscall_monitor);
     ~InterpreterDetector();
 
@@ -142,11 +140,12 @@ private:
             boost::shared_ptr<CallStackFrame> new_top);
 
     // Dependencies
-    S2E &s2e_;
     OSTracer &os_tracer_;
     boost::scoped_ptr<CallTracer> call_tracer_;
-    boost::shared_ptr<OSThread> thread_;
     boost::shared_ptr<S2ESyscallRange> syscall_range_;
+
+    // Tracked thread
+    int tracked_tid_;
 
     // Calibration state
     bool calibrating_;
@@ -158,9 +157,6 @@ private:
     uint64_t instrum_function_;
     uint64_t instrum_hlpc_update_;
     uint64_t instrum_opcode_read_;
-
-    // High-level stack
-    boost::scoped_ptr<HighLevelStack> stack_;
 
     // Signals
     sigc::connection on_stack_frame_push_;
