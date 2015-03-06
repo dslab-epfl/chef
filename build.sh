@@ -97,7 +97,7 @@ check_stamp()
 	elif [ -e "$BUILDPATH" ]; then
 		# Build from last state (if previously failed):
 		if [ -e "$STAMPFILE" ]; then
-			skip '%s' "$BUILDPATH"
+			test $CHECK -ne 0 && skip '%s' "$BUILDPATH"
 			return 0
 		else
 			note '%s previously failed, rebuilding' "$BUILDPATH"
@@ -133,14 +133,14 @@ track()
 	track_msg="$1"
 	shift
 
-	test $SILENT -eq 0 && printf "[    ] %s ..." "$track_msg"
+	test $SILENT -ne 0 || printf "[    ] %s ..." "$track_msg"
 	track_status=0
 	if [ $SILENT -eq 0 ]; then
 		{ "$@" || track_status=1; } >>"$LOGFILE" 2>>"$LOGFILE"
 	else
 		"$@" || track_status=1
 	fi
-	test $SILENT -eq 0 && printf "\r[\033[%s\033[0m] %s    \n" \
+	test $SILENT -ne 0 || printf "\r[\033[%s\033[0m] %s    \n" \
 		"$(test $track_status -eq 0 && printf "32m OK " || printf "31mFAIL")" \
 		"$track_msg"
 	test $track_status -eq 0 || fail
@@ -186,12 +186,14 @@ stp_build()
 	cd "$BUILDPATH"
 
 	# Configure:
-	track 'Configuring STP' scripts/configure \
-		--with-prefix="$BUILDPATH" \
-		--with-fpic \
-		--with-gcc="$LLVM_NATIVE_CC" \
-		--with-g++="$LLVM_NATIVE_CXX" \
-		$(test "$MODE" = 'asan' && echo '--with-address-sanitizer')
+	if [ $STAMPED -ne 0 ]; then
+		track 'Configuring STP' scripts/configure \
+			--with-prefix="$BUILDPATH" \
+			--with-fpic \
+			--with-gcc="$LLVM_NATIVE_CC" \
+			--with-g++="$LLVM_NATIVE_CXX" \
+			$(test "$MODE" = 'asan' && echo '--with-address-sanitizer')
+	fi
 
 	# Build:
 	track 'Building STP' make -j$JOBS
@@ -208,25 +210,27 @@ klee_build()
 	cd "$BUILDPATH"
 
 	# Configure:
-	if [ "$TARGET" = 'debug' ]; then
-		klee_cxxflags='-g -O0'
-		klee_ldflags='-g'
+	if [ $STAMPED -ne 0 ]; then
+		if [ "$TARGET" = 'debug' ]; then
+			klee_cxxflags='-g -O0'
+			klee_ldflags='-g'
+		fi
+		if [ "$MODE" = 'asan' ]; then
+			klee_cxxflags="$klee_cxxflags -fsanitize=address"
+			klee_ldflags="$klee_ldflags -fsanizite=address"
+		fi
+		track 'Configuring KLEE' "$klee_srcpath"/configure \
+			--prefix="$BUILDPATH_BASE/opt" \
+			--with-llvmsrc="$LLVM_SRC" \
+			--with-llvmobj="$LLVM_BUILD" \
+			--target=x86_64 \
+			--enable-exceptions \
+			--with-stp="$BUILDPATH_BASE/stp" \
+			CC="$LLVM_NATIVE_CC" \
+			CXX="$LLVM_NATIVE_CXX" \
+			CXXFLAGS="$klee_cxxflags" \
+			LDFLAGS="$klee_ldflags"
 	fi
-	if [ "$MODE" = 'asan' ]; then
-		klee_cxxflags="$klee_cxxflags -fsanitize=address"
-		klee_ldflags="$klee_ldflags -fsanizite=address"
-	fi
-	track 'Configuring KLEE' "$klee_srcpath"/configure \
-		--prefix="$BUILDPATH_BASE/opt" \
-		--with-llvmsrc="$LLVM_SRC" \
-		--with-llvmobj="$LLVM_BUILD" \
-		--target=x86_64 \
-		--enable-exceptions \
-		--with-stp="$BUILDPATH_BASE/stp" \
-		CC="$LLVM_NATIVE_CC" \
-		CXX="$LLVM_NATIVE_CXX" \
-		CXXFLAGS="$klee_cxxflags" \
-		LDFLAGS="$klee_ldflags"
 
 	# Build:
 	if [ "$TARGET" = 'debug' ]; then
@@ -248,10 +252,12 @@ libmemtracer_build()
 	cd "$BUILDPATH"
 
 	# Configure:
-	track 'Configuring libmemtracer' "$libmemtracer_srcpath"/configure \
-		--enable-debug \
-		CC="$LLVM_NATIVE_CC" \
-		CXX="$LLVM_NATIVE_CXX"
+	if [ $STAMPED -ne 0 ]; then
+		track 'Configuring libmemtracer' "$libmemtracer_srcpath"/configure \
+			--enable-debug \
+			CC="$LLVM_NATIVE_CC" \
+			CXX="$LLVM_NATIVE_CXX"
+	fi
 
 	# Build:
 	libmemtracer_buildopts="CLANG_CC=$LLVM_NATIVE_CC CLANG_CXX=$LLVM_NATIVE_CXX"
@@ -269,12 +275,14 @@ libvmi_build()
 	cd "$BUILDPATH"
 
 	# Configure:
-	track 'Configuring libvmi' "$libvmi_srcpath"/configure \
-		--with-llvm="$LLVM_BUILD/$ASSERTS" \
-		--with-libmemtracer-src="$SRCPATH_BASE/libmemtracer" \
-		$(test "$TARGET" = 'debug' && echo '--enable-debug') \
-		CC=$LLVM_NATIVE_CC \
-		CXX=$LLVM_NATIVE_CXX
+	if [ $STAMPED -ne 0 ]; then
+		track 'Configuring libvmi' "$libvmi_srcpath"/configure \
+			--with-llvm="$LLVM_BUILD/$ASSERTS" \
+			--with-libmemtracer-src="$SRCPATH_BASE/libmemtracer" \
+			$(test "$TARGET" = 'debug' && echo '--enable-debug') \
+			CC=$LLVM_NATIVE_CC \
+			CXX=$LLVM_NATIVE_CXX
+	fi
 
 	# Build:
 	track 'Building libvmi' make -j$JOBS
@@ -291,33 +299,35 @@ qemu_build()
 	cd "$BUILDPATH"
 
 	# Configure:
-	case "$MODE" in
-		asan) qemu_confopt='--enable-address-sanitizer' ;;
-		libmemtracer) qemu_confopt='--enable-memory-tracer' ;;
-		*) ;;
-	esac
-	track 'Configuring qemu' "$qemu_srcpath"/configure \
-		--with-klee="$BUILDPATH_BASE/klee/$ASSERTS" \
-		--with-llvm="$LLVM_BUILD/$ASSERTS" \
-		--with-libvmi-libdir="$BUILDPATH_BASE/libvmi" \
-		$(test "$TARGET" = 'debug' && echo '--enable-debug') \
-		--prefix="$BUILDPATH_BASE/opt" \
-		--cc="$LLVM_NATIVE_CC" \
-		--cxx="$LLVM_NATIVE_CXX" \
-		--target-list="$ARCH-s2e-softmmu,$ARCH-softmmu" \
-		--enable-llvm \
-		--enable-s2e \
-		--with-pkgversion=S2E \
-		--enable-boost \
-		--with-liblua="$BUILDPATH_BASE/lua/src" \
-		--extra-cxxflags=-Wno-deprecated \
-		--with-libvmi-incdir="$SRCPATH_BASE/libvmi/include" \
-		--disable-virtfs \
-		--with-stp="$BUILDPATH_BASE/stp" \
-		$qemu_confopt \
-		--extra-ldflags="$(test "$MODE" = 'libmemtracer' && \
-		  echo "-L$BUILDPATH_BASE/libmemtracer -lmemtracer")"\
-		$QEMU_FLAGS
+	if [ $STAMPED -ne 0 ]; then
+		case "$MODE" in
+			asan) qemu_confopt='--enable-address-sanitizer' ;;
+			libmemtracer) qemu_confopt='--enable-memory-tracer' ;;
+			*) ;;
+		esac
+		track 'Configuring qemu' "$qemu_srcpath"/configure \
+			--with-klee="$BUILDPATH_BASE/klee/$ASSERTS" \
+			--with-llvm="$LLVM_BUILD/$ASSERTS" \
+			--with-libvmi-libdir="$BUILDPATH_BASE/libvmi" \
+			$(test "$TARGET" = 'debug' && echo '--enable-debug') \
+			--prefix="$BUILDPATH_BASE/opt" \
+			--cc="$LLVM_NATIVE_CC" \
+			--cxx="$LLVM_NATIVE_CXX" \
+			--target-list="$ARCH-s2e-softmmu,$ARCH-softmmu" \
+			--enable-llvm \
+			--enable-s2e \
+			--with-pkgversion=S2E \
+			--enable-boost \
+			--with-liblua="$BUILDPATH_BASE/lua/src" \
+			--extra-cxxflags=-Wno-deprecated \
+			--with-libvmi-incdir="$SRCPATH_BASE/libvmi/include" \
+			--disable-virtfs \
+			--with-stp="$BUILDPATH_BASE/stp" \
+			$qemu_confopt \
+			--extra-ldflags="$(test "$MODE" = 'libmemtracer' && \
+			  echo "-L$BUILDPATH_BASE/libmemtracer -lmemtracer")"\
+			$QEMU_FLAGS
+	fi
 
 	# Build:
 	track 'Building qemu' make -j$JOBS
@@ -334,15 +344,17 @@ tools_build()
 	cd "$BUILDPATH"
 
 	# Configure:
-	track 'Configuring tools' "$tools_srcdir"/configure \
-		--with-llvmsrc="$LLVM_SRC" \
-		--with-llvmobj="$LLVM_BUILD" \
-		--with-s2esrc="$SRCPATH_BASE/qemu" \
-		--target=x86_64 \
-		CC="$LLVM_NATIVE_CC" \
-		CXX="$LLVM_NATIVE_CXX" \
-		ENABLE_OPTIMIZED=$(test "$TARGET" = 'release' && echo 1 || echo 0) \
-		REQUIRES_RTTI=1
+	if [ $STAMPED -ne 0 ]; then
+		track 'Configuring tools' "$tools_srcdir"/configure \
+			--with-llvmsrc="$LLVM_SRC" \
+			--with-llvmobj="$LLVM_BUILD" \
+			--with-s2esrc="$SRCPATH_BASE/qemu" \
+			--target=x86_64 \
+			CC="$LLVM_NATIVE_CC" \
+			CXX="$LLVM_NATIVE_CXX" \
+			ENABLE_OPTIMIZED=$(test "$TARGET" = 'release' && echo 1 || echo 0) \
+			REQUIRES_RTTI=1
+	fi
 
 	# Build:
 	track 'Building tools' make -j$JOBS
@@ -359,7 +371,9 @@ guest_build()
 	cd "$BUILDPATH"
 
 	# Configure:
-	track 'Configuring guest tools' "$guest_srcpath"/configure
+	if [ $STAMPED -ne 0 ]; then
+		track 'Configuring guest tools' "$guest_srcpath"/configure
+	fi
 
 	# Build:
 	case "$ARCH" in
@@ -411,9 +425,11 @@ gmock_build()
 	cd "$BUILDPATH"
 
 	# Configure:
-	track 'Configuring Google Mock' ./configure \
-		CC="$LLVM_NATIVE_CC" \
-		CXX="$LLVM_NATIVE_CXX"
+	if [ $STAMPED -ne 0 ]; then
+		track 'Configuring Google Mock' ./configure \
+			CC="$LLVM_NATIVE_CC" \
+			CXX="$LLVM_NATIVE_CXX"
+	fi
 
 	# Build:
 	track 'Building Google Mock' gmock_build_build
@@ -430,21 +446,23 @@ tests_build()
 	cd "$BUILDPATH"
 
 	# Configure:
-	track 'Configuring test suite' "$tests_srcpath"/configure \
-		--with-llvmsrc="$LLVM_SRC" \
-		--with-llvmobj="$LLVM_BUILD" \
-		--with-s2e-src="$SRCPATH_BASE/qemu" \
-		--with-s2eobj-release="$BUILDPATH_BASE/qemu" \
-		--with-s2eobj-debug="$BUILDPATH_BASE/qemu" \
-		--with-klee-src="$SRCPATH_BASE/klee" \
-		--with-klee-obj="$BUILDPATH_BASE/klee" \
-		--with-gmock="$BUILDPATH_BASE/gmock" \
-		--with-stp="$BUILDPATH_BASE/stp" \
-		--with-clang-profile-lib="$LLVM_NATIVE_LIB" \
-		--target=x86_64 \
-		CC="$LLVM_NATIVE_CC" \
-		CXX="$LLVM_NATIVE_CXX" \
-		REQUIRES_EH=1
+	if [ $STAMPED -ne 0 ]; then
+		track 'Configuring test suite' "$tests_srcpath"/configure \
+			--with-llvmsrc="$LLVM_SRC" \
+			--with-llvmobj="$LLVM_BUILD" \
+			--with-s2e-src="$SRCPATH_BASE/qemu" \
+			--with-s2eobj-release="$BUILDPATH_BASE/qemu" \
+			--with-s2eobj-debug="$BUILDPATH_BASE/qemu" \
+			--with-klee-src="$SRCPATH_BASE/klee" \
+			--with-klee-obj="$BUILDPATH_BASE/klee" \
+			--with-gmock="$BUILDPATH_BASE/gmock" \
+			--with-stp="$BUILDPATH_BASE/stp" \
+			--with-clang-profile-lib="$LLVM_NATIVE_LIB" \
+			--target=x86_64 \
+			CC="$LLVM_NATIVE_CC" \
+			CXX="$LLVM_NATIVE_CXX" \
+			REQUIRES_EH=1
+	fi
 
 	# Build:
 	tests_isopt=$(test "$TARGET" = 'debug' && echo 0 || echo 1)
@@ -458,6 +476,8 @@ all_build()
 {
 	for BUILDDIR in $COMPONENTS
 	do
+		BUILDPATH="$BUILDPATH_BASE/$BUILDDIR"
+
 		# Test whether this component needs to be ignored or not
 		cont=1
 		for i in $IGNORED; do
@@ -469,13 +489,28 @@ all_build()
 		done
 		test $cont -ne 0 || continue
 
+		# Test whether we run `make` on this component anyway:
+		CHECK=1
+		for i in $CHECKED; do
+			if [ "$BUILDDIR" = "$i" ]; then
+				CHECK=0
+				break
+			fi
+		done
+
+		# Test if there is a stamp on this component:
+		STAMPFILE="${BUILDPATH}.stamp"
+		if check_stamp; then
+			STAMPED=0
+		else
+			STAMPED=1
+		fi
+
 		# Build:
 		cd "$BUILDPATH_BASE"
-		BUILDPATH="$BUILDPATH_BASE/$BUILDDIR"
-		STAMPFILE="${BUILDPATH}.stamp"
 		LOGFILE="${BUILDPATH}.log"
-		if ! check_stamp; then
-			printf '' > "$LOGFILE"
+		if [ $CHECK -eq 0 ] || [ $STAMPED -ne 0 ]; then
+			rm -f "$LOGFILE"
 			${BUILDDIR}_build
 		fi
 		LOGFILE='/dev/null'
@@ -515,6 +550,7 @@ docker_build()
 		"$DOCKERIMG" \
 		"$HOSTPATH/$RUNNAME" \
 			-b "$HOSTPATH/build/$ARCH-$TARGET-$MODE" \
+			-c "$CHECKED" \
 			$(test $FORCE -eq 0 && printf '-f') \
 			-i "$IGNORED" \
 			-j$JOBS \
@@ -551,10 +587,10 @@ usage()
 	Options:
 	    -b PATH    Build chef in PATH [default=$BUILDDIR_BASE]
 	    -d IMAGE   Docker image to use [default=$DOCKERIMG]
-		-c COMPS   Check components COMPS, even if stamp file exists
+	    -c COMPS   Check components COMPS, even if stamp file exists (see below for a list) [default='$CHECKED']
 	    -f         Force-rebuild
 	    -h         Display this help
-	    -i COMPS   Ignore components COMPS (see below for a list) [default='$IGNORED']
+	    -i COMPS   Ignore components COMPS (see below for a list) (this has higher priority than -c) [default='$IGNORED']
 	    -j N       Compile with N jobs [default=$JOBS]
 	    -l PATH    Path to where the native LLVM-3.2 files are installed [default=$LLVM_BASE]
 	    -p         Pull docker image
@@ -572,6 +608,7 @@ get_options()
 {
 	# Default values:
 	BUILDDIR_BASE='./build'
+	CHECKED='qemu'
 	DIRECT=1
 	DOCKERIMG="dslab/s2e-chef:$DOCKER_VERSION"
 	FORCE=1
@@ -587,9 +624,10 @@ get_options()
 	SILENT=1
 
 	# Options:
-	while getopts b:d:fhi:j:l:pq:sz opt; do
+	while getopts b:c:d:fhi:j:l:pq:sz opt; do
 		case "$opt" in
 			b) BUILDDIR_BASE="$OPTARG" ;;
+			c) CHECKED="$OPTARG" ;;
 			d) DOCKERIMG="$OPTARG" ;;
 			f) FORCE=0 ;;
 			h) usage ;;
