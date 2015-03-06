@@ -201,9 +201,12 @@ private:
 
             for (unsigned i = 0; i < vseq.size(); ++i) {
                 if (i == 0)
-                    os << llvm::format("0x%x", vseq[i]->value) << " ";
+                    os << llvm::format("0x%x[EIP=0x%x]",
+                            vseq[i]->value, vseq[i]->pc);
                 else
-                    os << llvm::format("+%d", vseq[i]->value - vseq[i-1]->value) << " ";
+                    os << llvm::format("+%d[EIP=0x%x]",
+                            vseq[i]->value - vseq[i-1]->value, vseq[i]->pc);
+                os << ' ';
             }
             os << '\n';
         }
@@ -591,9 +594,9 @@ void InterpreterDetector::onLowLevelStackFramePush(S2EExecutionState *state,
 
     onHighLevelFramePush.emit(state, hl_stack);
 
-#if 0
+#if 1
     s2e().getMessagesStream(state) << "Enter high-level frame. Stack size: "
-            << stack_->frames_.size() << '\n';
+            << hl_stack->frames_.size() << '\n';
 #endif
 }
 
@@ -621,9 +624,9 @@ void InterpreterDetector::onLowLevelStackFramePopping(S2EExecutionState *state,
 
         hl_stack->frames_.pop_back();
 
-#if 0
+#if 1
         s2e().getMessagesStream(state) << "Leaving high-level frame. Stack size: "
-                << stack_->frames_.size() << '\n';
+                << hl_stack->frames_.size() << '\n';
 #endif
     }
 
