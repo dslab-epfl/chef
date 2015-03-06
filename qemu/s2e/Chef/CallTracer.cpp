@@ -165,7 +165,7 @@ void CallTracer::onThreadSwitch(S2EExecutionState *state,
         // TODO: Ideally, this should happen whenever onTranslate* callbacks are
         // modified.
         s2e_tb_safe_flush();
-    } else if (prev->tid() == tracked_tid_) {
+    } else if (prev && prev->tid() == tracked_tid_) {
         on_translate_register_access_.disconnect();
         on_custom_instruction_.disconnect();
     }
