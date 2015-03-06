@@ -538,7 +538,7 @@ docker_prepare()
 docker_build()
 {
 	if ! docker_image_exists "$DOCKERIMG"; then
-		WARN '%s: image not found, running with `-p` first ...' "$DOCKERIMG"
+		warn '%s: image not found, running with `-p` first ...' "$DOCKERIMG"
 		docker_prepare
 	fi
 
