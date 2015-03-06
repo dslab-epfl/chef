@@ -537,8 +537,10 @@ docker_prepare()
 
 docker_build()
 {
-	docker_image_exists "$DOCKERIMG" || \
-		die 2 "%s: image not found, please run with \`-p\` first" "$DOCKERIMG"
+	if ! docker_image_exists "$DOCKERIMG"; then
+		WARN '%s: image not found, running with `-p` first ...' "$DOCKERIMG"
+		docker_prepare
+	fi
 
 	mkdir -m a=rwx,g+s -p "$BUILDPATH_BASE"
 
@@ -587,20 +589,23 @@ usage()
 	Options:
 	    -b PATH    Build chef in PATH [default=$BUILDDIR_BASE]
 	    -d IMAGE   Docker image to use [default=$DOCKERIMG]
-	    -c COMPS   Check components COMPS, even if stamp file exists (see below for a list) [default='$CHECKED']
+	    -c COMPS   Force-\`make\` components COMPS
+	               [default='$CHECKED']
 	    -f         Force-rebuild
 	    -h         Display this help
-	    -i COMPS   Ignore components COMPS (see below for a list) (this has higher priority than -c) [default='$IGNORED']
+	    -i COMPS   Ignore components COMPS (has higher priority than -c)
+	               [default='$IGNORED']
 	    -j N       Compile with N jobs [default=$JOBS]
-	    -l PATH    Path to where the native LLVM-3.2 files are installed [default=$LLVM_BASE]
+	    -l PATH    Path to where the native LLVM-3.2 files are installed
+	               [default=$LLVM_BASE]
 	    -p         Pull docker image
 	    -q FLAGS   Additional flags passed to qemu's \`configure\` script
 	    -s         Silent: redirect compilation messages/warnings/errors into log file
 	    -z         Direct mode (build directly on machine, instead inside docker)
 
 	Components:
+	    $COMPONENTS
 	EOF
-	echo "    $COMPONENTS"
 	exit 1
 }
 
@@ -608,7 +613,7 @@ get_options()
 {
 	# Default values:
 	BUILDDIR_BASE='./build'
-	CHECKED='qemu'
+	CHECKED="$COMPONENTS"
 	DIRECT=1
 	DOCKERIMG="dslab/s2e-chef:$DOCKER_VERSION"
 	FORCE=1
