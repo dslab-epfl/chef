@@ -44,21 +44,21 @@ note()
 {
 	note_format="$1"
 	shift
-	test $VERBOSE -ne 0 && printf "       $note_format\n" "$@"
+	printf "       $note_format\n" "$@"
 }
 
 skip()
 {
 	skip_format="$1"
 	shift
-	test $VERBOSE -ne 0 && printf "[\033[34mSKIP\033[0m] $skip_format\n" "$@"
+	printf "[\033[34mSKIP\033[0m] $skip_format\n" "$@"
 }
 
 warn()
 {
 	warn_format="$1"
 	shift
-	test $VERBOSE -ne 0 && printf "[\033[33mWARN\033[0m] $warn_format\n" "$@">&2
+	printf "[\033[33mWARN\033[0m] $warn_format\n" "$@">&2
 }
 
 success()
@@ -69,8 +69,12 @@ success()
 
 fail()
 {
-	confirm "\033[1;31m>>>\033[0m Build failed. Examine $LOGFILE?" && \
-	        less "$LOGFILE"
+	printf "\033[1;31m>>>\033[0m Build failed."
+	if [ $SILENT -eq 0 ]; then
+		confirm " Examine $LOGFILE?" && less "$LOGFILE"
+	else
+		echo
+	fi
 	exit 2
 }
 
@@ -129,14 +133,14 @@ track()
 	track_msg="$1"
 	shift
 
-	test $VERBOSE -ne 0 && printf "[    ] %s ..." "$track_msg"
+	test $SILENT -eq 0 && printf "[    ] %s ..." "$track_msg"
 	track_status=0
-	if [ $VERBOSE -eq 0 ]; then
-		{ "$@" || track_status=1; } 2>&1 | tee -a "$LOGFILE"
-	else
+	if [ $SILENT -eq 0 ]; then
 		{ "$@" || track_status=1; } >>"$LOGFILE" 2>>"$LOGFILE"
+	else
+		"$@" || track_status=1
 	fi
-	test $VERBOSE -ne 0 && printf "\r[\033[%s\033[0m] %s    \n" \
+	test $SILENT -eq 0 && printf "\r[\033[%s\033[0m] %s    \n" \
 		"$(test $track_status -eq 0 && printf "32m OK " || printf "31mFAIL")" \
 		"$track_msg"
 	test $track_status -eq 0 || fail
@@ -516,7 +520,7 @@ docker_build()
 			-j$JOBS \
 			-l "$LLVM_BASE" \
 			-q "$QEMU_FLAGS" \
-			$(test $VERBOSE -eq 0 && printf '-v') \
+			$(test $SILENT -eq 0 && printf '-s') \
 			-z \
 			"$ARCH" "$TARGET" "$MODE"
 }
@@ -547,6 +551,7 @@ usage()
 	Options:
 	    -b PATH    Build chef in PATH [default=$BUILDDIR_BASE]
 	    -d IMAGE   Docker image to use [default=$DOCKERIMG]
+		-c COMPS   Check components COMPS, even if stamp file exists
 	    -f         Force-rebuild
 	    -h         Display this help
 	    -i COMPS   Ignore components COMPS (see below for a list) [default='$IGNORED']
@@ -554,7 +559,7 @@ usage()
 	    -l PATH    Path to where the native LLVM-3.2 files are installed [default=$LLVM_BASE]
 	    -p         Pull docker image
 	    -q FLAGS   Additional flags passed to qemu's \`configure\` script
-	    -v         Verbose: show compilation messages/warnings/errors on the console
+	    -s         Silent: redirect compilation messages/warnings/errors into log file
 	    -z         Direct mode (build directly on machine, instead inside docker)
 
 	Components:
@@ -579,10 +584,10 @@ get_options()
 	LLVM_BASE='/opt/s2e/llvm'
 	PREPARE=1
 	QEMU_FLAGS=''
-	VERBOSE=1
+	SILENT=1
 
 	# Options:
-	while getopts b:d:fhi:j:l:pq:vz opt; do
+	while getopts b:d:fhi:j:l:pq:sz opt; do
 		case "$opt" in
 			b) BUILDDIR_BASE="$OPTARG" ;;
 			d) DOCKERIMG="$OPTARG" ;;
@@ -593,7 +598,7 @@ get_options()
 			l) LLVM_BASE="$OPTARG" ;;
 			p) PREPARE=0 ;;
 			q) QEMU_FLAGS="$OPTARG" ;;
-			v) VERBOSE=0 ;;
+			s) SILENT=0 ;;
 			z) DIRECT=0 ;;
 			'?') die_help ;;
 		esac
