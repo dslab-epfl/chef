@@ -1,0 +1,2 @@
+# Allow root access to the jenkins user
+jenkins ALL=(ALL)NOPASSWD: ALL

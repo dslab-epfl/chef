@@ -1,0 +1,12 @@
+[extensions]
+pager =
+rebase =
+purge =
+shelve =
+
+[pager]
+pager = LESS='FRX' less
+attend = annotate, cat, diff, export, glog, log, qdiff, help
+
+[ui]
+username = Jenkins <jenkins@dslabci.epfl.ch>
