@@ -53,9 +53,11 @@ using boost::make_shared;
 
 namespace s2e {
 
+// CallStack ///////////////////////////////////////////////////////////////////
+
 
 CallStack::CallStack(CallTracer &call_tracer, S2EExecutionState *s2e_state)
-        : StreamAnalyzerState<CallTracer>(call_tracer, s2e_state),
+        : StreamAnalyzerState<CallStack, CallTracer>(call_tracer, s2e_state),
           next_id_(1) {
     OSThread *thread = call_tracer.os_tracer().getState(s2e_state)->getThread(
             call_tracer.tracked_tid());
@@ -66,17 +68,21 @@ CallStack::CallStack(CallTracer &call_tracer, S2EExecutionState *s2e_state)
 }
 
 
-CallStack::CallStack(const CallStack &other, S2EExecutionState *s2e_state)
-        : StreamAnalyzerState<CallTracer>(other, s2e_state),
-          next_id_(other.next_id_) {
-    for (FrameVector::const_iterator it = other.frames_.begin(),
-            ie = other.frames_.end(); it != ie; ++it) {
+shared_ptr<CallStack> CallStack::clone(S2EExecutionState *s2e_state) {
+    shared_ptr<CallStack> new_state = shared_ptr<CallStack>(
+            new CallStack(analyzer(), s2e_state));
+    new_state->next_id_ = next_id_;
+
+    for (FrameVector::const_iterator it = frames_.begin(),
+            ie = frames_.end(); it != ie; ++it) {
         shared_ptr<CallStackFrame> frame = make_shared<CallStackFrame>(*(*it));
-        if (!frames_.empty()) {
-            frame->parent = frames_.back();
+        if (!new_state->frames_.empty()) {
+            frame->parent = new_state->frames_.back();
         }
-        frames_.push_back(frame);
+        new_state->frames_.push_back(frame);
     }
+
+    return new_state;
 }
 
 
@@ -144,7 +150,7 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const CallStack &cs) {
 ////////////////////////////////////////////////////////////////////////////////
 
 CallTracer::CallTracer(OSTracer &os_tracer, int tid)
-    : StreamAnalyzer<CallStack, CallTracer>(os_tracer.s2e(), os_tracer.stream()),
+    : StreamAnalyzer<CallStack>(os_tracer.s2e(), os_tracer.stream()),
       os_tracer_(os_tracer),
       tracked_tid_(tid) {
 
@@ -158,6 +164,11 @@ CallTracer::~CallTracer() {
     on_custom_instruction_.disconnect();
 
     s2e_tb_safe_flush();
+}
+
+
+shared_ptr<CallStack> CallTracer::createState(S2EExecutionState *s2e_state) {
+    return shared_ptr<CallStack>(new CallStack(*this, s2e_state));
 }
 
 

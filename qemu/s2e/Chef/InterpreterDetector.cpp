@@ -42,6 +42,7 @@
 
 #include <llvm/Support/Format.h>
 #include <llvm/Support/raw_ostream.h>
+#include <llvm/Support/CommandLine.h>
 
 #include <boost/shared_ptr.hpp>
 #include <boost/make_shared.hpp>
@@ -49,6 +50,13 @@
 #include <map>
 #include <vector>
 #include <set>
+
+namespace {
+    llvm::cl::opt<bool>
+    DebugInstructions("debug-interp-instructions",
+            llvm::cl::desc("Print detected interpreter instructions"),
+            llvm::cl::init(false));
+}
 
 namespace s2e {
 
@@ -393,21 +401,20 @@ private:
 
 HighLevelStack::HighLevelStack(InterpreterDetector &detector,
         S2EExecutionState *s2e_state)
-    : StreamAnalyzerState<InterpreterDetector>(detector, s2e_state) {
+    : StreamAnalyzerState<HighLevelStack, InterpreterDetector>(detector, s2e_state) {
 
 }
 
-HighLevelStack::HighLevelStack(const HighLevelStack &other,
-        S2EExecutionState *s2e_state)
-    : StreamAnalyzerState<InterpreterDetector>(other, s2e_state) {
 
+shared_ptr<HighLevelStack> HighLevelStack::clone(S2EExecutionState *s2e_state) {
+    return shared_ptr<HighLevelStack>(new HighLevelStack(analyzer(), s2e_state));
 }
 
 // InterpreterDetector /////////////////////////////////////////////////////////
 
 InterpreterDetector::InterpreterDetector(OSTracer &os_tracer,
         int tid, boost::shared_ptr<S2ESyscallMonitor> syscall_monitor)
-    : StreamAnalyzer<HighLevelStack, InterpreterDetector>(
+    : StreamAnalyzer<HighLevelStack>(
             os_tracer.s2e(), os_tracer.stream()),
       os_tracer_(os_tracer),
       call_tracer_(new CallTracer(os_tracer, tid)),
@@ -430,6 +437,11 @@ InterpreterDetector::~InterpreterDetector() {
     on_concrete_data_memory_access_.disconnect();
     on_stack_frame_push_.disconnect();
     on_stack_frame_popping_.disconnect();
+}
+
+
+shared_ptr<HighLevelStack> InterpreterDetector::createState(S2EExecutionState *s2e_state) {
+    return shared_ptr<HighLevelStack>(new HighLevelStack(*this, s2e_state));
 }
 
 
@@ -470,10 +482,11 @@ void InterpreterDetector::onConcreteDataMemoryAccess(S2EExecutionState *state,
     if (address == hl_frame->hlpc_ptr && is_write) {
         hl_frame->hlpc = value;
         onHighLevelPCUpdate.emit(state, hl_stack.get());
-#if 1
-        s2e().getMessagesStream(state)
-                << llvm::format("HLPC=0x%x", hl_frame->hlpc) << '\n';
-#endif
+
+        if (DebugInstructions) {
+            s2e().getMessagesStream(state)
+                        << llvm::format("HLPC=0x%x", hl_frame->hlpc) << '\n';
+        }
     }
 
     if (state->getPc() == instrum_opcode_read_) {
@@ -481,10 +494,10 @@ void InterpreterDetector::onConcreteDataMemoryAccess(S2EExecutionState *state,
         //assert(!hl_frame->hlpc || address == hl_frame->hlpc);
         hl_frame->hlinst = address;
         onHighLevelInstructionFetch.emit(state, hl_stack.get());
-#if 1
-        s2e().getMessagesStream(state)
-                << llvm::format("Instruction=0x%x", hl_frame->hlinst) << '\n';
-#endif
+        if (DebugInstructions) {
+            s2e().getMessagesStream(state)
+                    << llvm::format("Instruction=0x%x", hl_frame->hlinst) << '\n';
+        }
     }
 }
 

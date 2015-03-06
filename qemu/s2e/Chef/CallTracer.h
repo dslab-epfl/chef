@@ -93,11 +93,9 @@ private:
 class CallTracer;
 
 
-class CallStack : public StreamAnalyzerState<CallTracer> {
+class CallStack : public StreamAnalyzerState<CallStack, CallTracer> {
 public:
     CallStack(CallTracer &tracer, S2EExecutionState *s2e_state);
-
-    CallStack(const CallStack &other, S2EExecutionState *s2e_state);
 
     unsigned size() const {
         return frames_.size();
@@ -111,6 +109,8 @@ public:
     boost::shared_ptr<CallStackFrame> top() const {
         return frames_.back();
     }
+
+    StateRef clone(S2EExecutionState *s2e_state);
 
 protected:
     void newFrame(uint64_t call_site, uint64_t function, uint64_t sp);
@@ -131,7 +131,7 @@ private:
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const CallStack &cs);
 
 
-class CallTracer : public StreamAnalyzer<CallStack, CallTracer> {
+class CallTracer : public StreamAnalyzer<CallStack> {
 public:
     CallTracer(OSTracer &os_tracer, int tid);
     ~CallTracer();
@@ -169,6 +169,9 @@ public:
                  CallStack*,
                  boost::shared_ptr<CallStackFrame> >
             onBasicBlockEnter;
+
+protected:
+    StateRef createState(S2EExecutionState *s2e_state);
 
 private:
     void onTranslateRegisterAccess(ExecutionSignal *signal,

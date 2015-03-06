@@ -186,30 +186,28 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &out, const OSThread &thread);
 class OSTracer;
 
 
-class OSTracerState : public StreamAnalyzerState<OSTracer>,
-                      public boost::enable_shared_from_this<OSTracerState> {
+class OSTracerState : public StreamAnalyzerState<OSTracerState, OSTracer> {
 public:
-    OSTracerState(OSTracer &os_tracer, S2EExecutionState *s2e_state);
-    OSTracerState(const OSTracerState &other, S2EExecutionState *s2e_state);
-
     OSThread *getThread(int tid);
+
+    boost::shared_ptr<OSTracerState> clone(S2EExecutionState *s2e_state);
 
 private:
     typedef std::map<int, boost::shared_ptr<OSThread> > ThreadMap;
     typedef std::map<uint64_t, boost::shared_ptr<OSAddressSpace> > PageTableMap;
+
+    OSTracerState(OSTracer &os_tracer, S2EExecutionState *s2e_state);
 
     ThreadMap threads_;
     PageTableMap address_spaces_;
 
     boost::shared_ptr<OSThread> active_thread_;
 
-    void operator=(const OSTracerState&);
-
     friend class OSTracer;
 };
 
 
-class OSTracer : public StreamAnalyzer<OSTracerState, OSTracer> {
+class OSTracer : public StreamAnalyzer<OSTracerState> {
 public:
     OSTracer(S2E &s2e, ExecutionStream &estream,
             boost::shared_ptr<S2ESyscallMonitor> &smonitor);
@@ -219,6 +217,9 @@ public:
     sigc::signal<void, S2EExecutionState*, OSThread*> onThreadExit;
     sigc::signal<void, S2EExecutionState*, OSThread*, OSThread*> onThreadSwitch;
     sigc::signal<void, S2EExecutionState*, OSThread*, bool> onThreadPrivilegeChange;
+
+protected:
+    boost::shared_ptr<OSTracerState> createState(S2EExecutionState *s2e_state);
 
 private:
     void onS2ESyscall(S2EExecutionState *state, uint64_t syscall_id,

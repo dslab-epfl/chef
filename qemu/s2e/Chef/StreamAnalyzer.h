@@ -49,20 +49,12 @@
 
 namespace s2e {
 
-template<typename Analyzer>
+template<typename State, typename Analyzer>
 class StreamAnalyzerState {
 public:
-    StreamAnalyzerState(Analyzer &analyzer, S2EExecutionState *s2e_state)
-        : analyzer_(analyzer), s2e_state_(s2e_state) {
+    typedef boost::shared_ptr<State> StateRef;
 
-    }
-
-    StreamAnalyzerState(const StreamAnalyzerState<Analyzer> &other,
-            S2EExecutionState *s2e_state)
-        : analyzer_(other.analyzer_), s2e_state_(s2e_state) {
-
-    }
-
+public:
     virtual ~StreamAnalyzerState() {
 
     }
@@ -75,7 +67,14 @@ public:
         return s2e_state_;
     }
 
+    virtual StateRef clone(S2EExecutionState *s2e_state) = 0;
+
 protected:
+    StreamAnalyzerState(Analyzer &analyzer, S2EExecutionState *s2e_state)
+        : analyzer_(analyzer), s2e_state_(s2e_state) {
+
+    }
+
     Analyzer &analyzer() {
         return analyzer_;
     }
@@ -83,10 +82,14 @@ protected:
 private:
     Analyzer &analyzer_;
     S2EExecutionState *s2e_state_;
+
+    // Non-copyable
+    StreamAnalyzerState(const StreamAnalyzerState&);
+    void operator=(const StreamAnalyzerState&);
 };
 
 
-template<typename State, typename Analyzer>
+template<typename State>
 class StreamAnalyzer {
 public:
     typedef boost::shared_ptr<State> StateRef;
@@ -94,9 +97,9 @@ public:
     StreamAnalyzer(S2E &s2e, ExecutionStream &estream)
         : s2e_(s2e), stream_(estream) {
         on_state_fork_ = stream_.onStateFork.connect(
-                sigc::mem_fun(*this, &StreamAnalyzer<State, Analyzer>::onStateFork));
+                sigc::mem_fun(*this, &StreamAnalyzer<State>::onStateFork));
         on_state_kill_ = stream_.onStateKill.connect(
-                sigc::mem_fun(*this, &StreamAnalyzer<State, Analyzer>::onStateKill));
+                sigc::mem_fun(*this, &StreamAnalyzer<State>::onStateKill));
     }
 
     virtual ~StreamAnalyzer() {
@@ -121,8 +124,7 @@ public:
 
         typename StateMap::iterator it = state_map_.find(s2e_state);
         if (it == state_map_.end()) {
-            StateRef state = StateRef(new State(*static_cast<Analyzer*>(this),
-                    s2e_state));
+            StateRef state = createState(s2e_state);
             lru_ = std::make_pair(s2e_state, state);
             state_map_.insert(lru_);
             return state;
@@ -131,6 +133,9 @@ public:
         lru_ = *it;
         return lru_.second;
     }
+
+protected:
+    virtual StateRef createState(S2EExecutionState *s2e_state) = 0;
 
 private:
     typedef std::vector<S2EExecutionState*> S2EStateVector;
@@ -149,8 +154,7 @@ private:
             if (new_s2e_state == s2e_state)
                 continue;
 
-            StateRef state = boost::make_shared<State>(*it->second,
-                    new_s2e_state);
+            StateRef state = it->second->clone(new_s2e_state);
             bool success = state_map_.insert(std::make_pair(new_s2e_state,
                     state)).second;
             assert(success && "Could not insert new state");

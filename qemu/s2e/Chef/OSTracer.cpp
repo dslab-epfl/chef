@@ -38,7 +38,6 @@
 #include <s2e/S2E.h>
 #include <s2e/Plugins/Opcodes.h>
 #include <s2e/Chef/S2ESyscallMonitor.h>
-#include <s2e/Chef/ExecutionStream.h>
 
 #include <llvm/Support/Format.h>
 
@@ -136,33 +135,37 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &out, const OSThread &thread) {
 // OSTracerState ///////////////////////////////////////////////////////////////
 
 OSTracerState::OSTracerState(OSTracer &os_tracer, S2EExecutionState *s2e_state)
-    : StreamAnalyzerState<OSTracer>(os_tracer, s2e_state) {
+    : StreamAnalyzerState<OSTracerState, OSTracer>(os_tracer, s2e_state) {
 
 }
 
-OSTracerState::OSTracerState(const OSTracerState &other, S2EExecutionState *s2e_state)
-    : StreamAnalyzerState<OSTracer>(other, s2e_state) {
+shared_ptr<OSTracerState> OSTracerState::clone(S2EExecutionState *s2e_state) {
+    shared_ptr<OSTracerState> new_state = shared_ptr<OSTracerState>(
+            new OSTracerState(analyzer(), s2e_state));
 
-    for (ThreadMap::const_iterator it = other.threads_.begin(),
-            ie = other.threads_.end(); it != ie; ++it) {
+    for (ThreadMap::const_iterator it = threads_.begin(),
+            ie = threads_.end(); it != ie; ++it) {
         shared_ptr<OSThread> thread = shared_ptr<OSThread>(
                 new OSThread(*it->second));
         shared_ptr<OSAddressSpace> address_space = shared_ptr<OSAddressSpace>(
                 new OSAddressSpace(*it->second->address_space_));
 
-        thread->os_state_ = shared_from_this();
+        thread->os_state_ = new_state;
         thread->address_space_ = address_space;
 
-        address_space->os_state_ = shared_from_this();
+        address_space->os_state_ = new_state;
         address_space->thread_ = thread;
 
-        threads_.insert(std::make_pair(thread->tid_, thread));
-        address_spaces_.insert(std::make_pair(address_space->page_table_, address_space));
+        new_state->threads_.insert(std::make_pair(thread->tid_, thread));
+        new_state->address_spaces_.insert(std::make_pair(
+                address_space->page_table_, address_space));
 
-        if (it->second == other.active_thread_) {
-            active_thread_ = thread;
+        if (it->second == active_thread_) {
+            new_state->active_thread_ = thread;
         }
     }
+
+    return new_state;
 }
 
 OSThread *OSTracerState::getThread(int tid) {
@@ -182,7 +185,7 @@ OSThread *OSTracerState::getThread(int tid) {
 
 OSTracer::OSTracer(S2E &s2e, ExecutionStream &estream,
         boost::shared_ptr<S2ESyscallMonitor> &smonitor)
-        : StreamAnalyzer<OSTracerState, OSTracer>(s2e, estream) {
+        : StreamAnalyzer<OSTracerState>(s2e, estream) {
 
     on_privilege_change_ = estream.onPrivilegeChange.connect(
             sigc::mem_fun(*this, &OSTracer::onPrivilegeChange));
@@ -201,6 +204,11 @@ OSTracer::~OSTracer() {
 
     on_privilege_change_.disconnect();
     on_page_directory_change_.disconnect();
+}
+
+
+shared_ptr<OSTracerState> OSTracer::createState(S2EExecutionState *s2e_state) {
+    return shared_ptr<OSTracerState>(new OSTracerState(*this, s2e_state));
 }
 
 

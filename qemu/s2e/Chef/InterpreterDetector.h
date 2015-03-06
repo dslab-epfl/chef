@@ -94,10 +94,9 @@ private:
 class InterpreterDetector;
 
 
-class HighLevelStack : public StreamAnalyzerState<InterpreterDetector> {
+class HighLevelStack : public StreamAnalyzerState<HighLevelStack, InterpreterDetector> {
 public:
     HighLevelStack(InterpreterDetector &detector, S2EExecutionState *s2e_state);
-    HighLevelStack(const HighLevelStack &other, S2EExecutionState *s2e_state);
 
     unsigned size() const {
         return frames_.size();
@@ -111,16 +110,16 @@ public:
     boost::shared_ptr<HighLevelFrame> top() const {
         return frames_.back();
     }
+
+    StateRef clone(S2EExecutionState *s2e_state);
 private:
     std::vector<boost::shared_ptr<HighLevelFrame> > frames_;
-
-    void operator=(const HighLevelStack&);
 
     friend class InterpreterDetector;
 };
 
 
-class InterpreterDetector : public StreamAnalyzer<HighLevelStack, InterpreterDetector> {
+class InterpreterDetector : public StreamAnalyzer<HighLevelStack> {
 public:
     InterpreterDetector(OSTracer &os_tracer, int tid,
             boost::shared_ptr<S2ESyscallMonitor> syscall_monitor);
@@ -145,6 +144,9 @@ public:
                  S2EExecutionState*,
                  HighLevelStack*>
             onHighLevelPCUpdate;
+
+protected:
+    StateRef createState(S2EExecutionState *s2e_state);
 
 private:
     struct MemoryOpRecorder;
