@@ -59,38 +59,27 @@ class HighLevelExecutor;
 class HighLevelPathSegment : public boost::enable_shared_from_this<HighLevelPathSegment> {
 public:
     typedef boost::shared_ptr<HighLevelPathSegment> SharedHLPSRef;
+    typedef boost::weak_ptr<HighLevelPathSegment> WeakHLPSRef;
+
+    typedef llvm::SmallDenseMap<uint64_t, SharedHLPSRef, 2> ChildrenMap;
+    // TODO: Replace with DenseSet if slow
+    typedef std::set<boost::weak_ptr<LowLevelState> > LowLevelStateSet;
 public:
     HighLevelPathSegment();
     HighLevelPathSegment(uint64_t hlpc, SharedHLPSRef parent);
     ~HighLevelPathSegment();
 
-    uint64_t hlpc() const {
-        return hlpc_;
-    }
-
-    boost::shared_ptr<HighLevelPathSegment> parent() {
-        return parent_;
-    }
-
     boost::shared_ptr<HighLevelPathSegment> getNext(uint64_t hlpc);
 
-public:
-    // TODO: Replace with DenseSet if slow
-    typedef std::set<boost::weak_ptr<LowLevelState> > LowLevelStateSet;
-    typedef std::set<boost::weak_ptr<HighLevelState> > HighLevelStateSet;
+    uint64_t hlpc;
+
+    WeakHLPSRef parent;
+    ChildrenMap children;
 
     LowLevelStateSet low_level_states;
-    HighLevelStateSet high_level_states;
+    boost::weak_ptr<HighLevelState> high_level_state;
 
 private:
-    typedef boost::weak_ptr<HighLevelPathSegment> WeakHLPSRef;
-    typedef llvm::SmallDenseMap<uint64_t, WeakHLPSRef> ChildrenMap;
-
-    SharedHLPSRef parent_;
-    ChildrenMap children_;
-
-    uint64_t hlpc_;
-
     // Non-copyable
     HighLevelPathSegment(const HighLevelPathSegment&);
     void operator=(const HighLevelPathSegment&);
@@ -108,9 +97,9 @@ public:
     HighLevelState();
     virtual ~HighLevelState();
 
-private:
-    boost::shared_ptr<HighLevelPathSegment> segment_;
+    boost::shared_ptr<HighLevelPathSegment> segment;
 
+private:
     // Non-copyable
     HighLevelState(const HighLevelState&);
     void operator=(const HighLevelState&);
@@ -124,10 +113,11 @@ public:
 
     boost::shared_ptr<LowLevelState> clone(S2EExecutionState *s2e_state);
     void terminate();
+
+    boost::shared_ptr<HighLevelPathSegment> segment;
+
 private:
     LowLevelState(HighLevelExecutor &analyzer, S2EExecutionState *s2e_state);
-
-    boost::shared_ptr<HighLevelPathSegment> segment_;
 
     friend class HighLevelExecutor;
 };
@@ -141,9 +131,27 @@ public:
     HighLevelExecutor(InterpreterDetector &detector);
     virtual ~HighLevelExecutor();
 
-    boost::shared_ptr<HighLevelPathSegment> root_segment() {
-        return root_segment_;
-    }
+    sigc::signal<void,
+                 S2EExecutionState*,
+                 HighLevelState*>
+        onHighLevelStateStep;
+
+    sigc::signal<void,
+                 S2EExecutionState*,
+                 HighLevelState*,
+                 const std::vector<HighLevelState*> >
+        onHighLevelStateFork;
+
+    sigc::signal<void,
+                 S2EExecutionState*,
+                 HighLevelState*>
+        onHighLevelStateKill;
+
+    sigc::signal<void,
+                 S2EExecutionState*,
+                 HighLevelState*,
+                 HighLevelState*>
+        onHighLevelStateSwitch;
 
     HighLevelStateSet high_level_states;
 
@@ -155,7 +163,6 @@ private:
             HighLevelStack *hl_stack);
 
     InterpreterDetector &detector_;
-    boost::shared_ptr<HighLevelPathSegment> root_segment_;
 
     sigc::connection on_high_level_pc_update_;
 };

@@ -46,7 +46,9 @@ class OSTracer;
 class OSThread;
 class S2ESyscallMonitor;
 class InterpreterDetector;
+
 class HighLevelExecutor;
+class HighLevelState;
 
 namespace plugins {
 
@@ -60,6 +62,9 @@ public:
 private:
     void onThreadCreate(S2EExecutionState *state, OSThread* thread);
     void onThreadExit(S2EExecutionState *state, OSThread* thread);
+
+    void onHighLevelStateStep(S2EExecutionState *state,
+            HighLevelState *hl_state);
 
     boost::shared_ptr<S2ESyscallMonitor> smonitor_;
     boost::scoped_ptr<OSTracer> os_tracer_;

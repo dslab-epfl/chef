@@ -96,6 +96,9 @@ void InterpreterAnalyzer::onThreadCreate(S2EExecutionState *state,
     tracked_tid_ = thread->tid();
     interp_detector_.reset(new InterpreterDetector(*os_tracer_, tracked_tid_, smonitor_));
     high_level_executor_.reset(new HighLevelExecutor(*interp_detector_));
+
+    high_level_executor_->onHighLevelStateStep.connect(
+            sigc::mem_fun(*this, &InterpreterAnalyzer::onHighLevelStateStep));
 }
 
 
@@ -111,6 +114,15 @@ void InterpreterAnalyzer::onThreadExit(S2EExecutionState *state,
     tracked_tid_ = 0;
     high_level_executor_.reset();
     interp_detector_.reset();
+}
+
+
+void InterpreterAnalyzer::onHighLevelStateStep(S2EExecutionState *state,
+        HighLevelState *hl_state) {
+#if 0
+    s2e()->getMessagesStream(state) << "HL state step. HLPC="
+            << hl_state->segment->hlpc << '\n';
+#endif
 }
 
 

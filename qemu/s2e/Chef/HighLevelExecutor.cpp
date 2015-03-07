@@ -46,14 +46,14 @@ namespace s2e {
 // HighLevelPathSegment ////////////////////////////////////////////////////////
 
 HighLevelPathSegment::HighLevelPathSegment()
-    : hlpc_(0) {
+    : hlpc(0) {
 
 }
 
 
-HighLevelPathSegment::HighLevelPathSegment(uint64_t hlpc, SharedHLPSRef parent)
-    : parent_(parent),
-      hlpc_(hlpc) {
+HighLevelPathSegment::HighLevelPathSegment(uint64_t hlpc_, SharedHLPSRef parent_)
+    : hlpc(hlpc_),
+      parent(parent_) {
 
 }
 
@@ -64,18 +64,20 @@ HighLevelPathSegment::~HighLevelPathSegment() {
 
 
 boost::shared_ptr<HighLevelPathSegment> HighLevelPathSegment::getNext(uint64_t hlpc) {
-    if (children_[hlpc].expired()) {
-        SharedHLPSRef child = make_shared<HighLevelPathSegment>(hlpc, shared_from_this());
-        children_[hlpc] = child;
-        return child;
+    ChildrenMap::iterator it = children.find(hlpc);
+    if (it != children.end()) {
+        return it->second;
     }
-    return children_[hlpc].lock();
+
+    SharedHLPSRef child = make_shared<HighLevelPathSegment>(hlpc, shared_from_this());
+    children.insert(std::make_pair(hlpc, child));
+    return child;
 }
 
 // HighLevelState //////////////////////////////////////////////////////////////
 
 HighLevelState::HighLevelState() {
-
+    segment = make_shared<HighLevelPathSegment>();
 }
 
 HighLevelState::~HighLevelState() {
@@ -94,21 +96,45 @@ LowLevelState::LowLevelState(HighLevelExecutor &analyzer,
 shared_ptr<LowLevelState> LowLevelState::clone(S2EExecutionState *s2e_state) {
     shared_ptr<LowLevelState> new_state = shared_ptr<LowLevelState>(
             new LowLevelState(analyzer(), s2e_state));
-    new_state->segment_ = segment_;
-    new_state->segment_->low_level_states.insert(new_state);
+    new_state->segment = segment;
+    new_state->segment->low_level_states.insert(new_state);
     return new_state;
 }
 
 
 void LowLevelState::terminate() {
-    segment_->low_level_states.erase(shared_from_this());
+    segment->low_level_states.erase(shared_from_this());
 }
 
 
 void LowLevelState::step(uint64_t hlpc) {
-    segment_->low_level_states.erase(shared_from_this());
-    segment_ = segment_->getNext(hlpc);
-    segment_->low_level_states.insert(shared_from_this());
+    shared_ptr<HighLevelPathSegment> next_segment = segment->getNext(hlpc);
+
+    next_segment->low_level_states.insert(shared_from_this());
+    segment->low_level_states.erase(shared_from_this());
+
+    if (!segment->high_level_state.expired() && segment->low_level_states.empty()) {
+        assert(segment->parent.expired());
+        if (segment->children.empty()) {
+            // High-level state terminated
+            return;
+        }
+        if (segment->children.size() > 1) {
+            // High-level fork
+            return;
+        }
+
+        // Plain step
+        next_segment->high_level_state.swap(segment->high_level_state);
+
+        shared_ptr<HighLevelState> hl_state = next_segment->high_level_state.lock();
+        hl_state->segment = next_segment;
+        next_segment->parent.reset();
+
+        analyzer().onHighLevelStateStep.emit(s2e_state(), hl_state.get());
+    }
+
+    segment = next_segment;
 }
 
 // HighLevelExecutor ///////////////////////////////////////////////////////////
@@ -116,7 +142,6 @@ void LowLevelState::step(uint64_t hlpc) {
 HighLevelExecutor::HighLevelExecutor(InterpreterDetector &detector)
     : StreamAnalyzer<LowLevelState>(detector.s2e(), detector.stream()),
       detector_(detector) {
-    root_segment_ = make_shared<HighLevelPathSegment>();
     on_high_level_pc_update_ = detector_.onHighLevelPCUpdate.connect(
             sigc::mem_fun(*this, &HighLevelExecutor::onHighLevelPCUpdate));
 
@@ -133,11 +158,17 @@ HighLevelExecutor::~HighLevelExecutor() {
 
 
 shared_ptr<LowLevelState> HighLevelExecutor::createState(S2EExecutionState *s2e_state) {
-    shared_ptr<LowLevelState> state = shared_ptr<LowLevelState>(
+    // For each new state created in the system, create an associated
+    // high-level state.
+    shared_ptr<HighLevelState> hl_state = make_shared<HighLevelState>();
+    hl_state->segment->high_level_state = hl_state;
+    high_level_states.insert(hl_state);
+
+    shared_ptr<LowLevelState> ll_state = shared_ptr<LowLevelState>(
             new LowLevelState(*this, s2e_state));
-    state->segment_ = root_segment_;
-    state->segment_->low_level_states.insert(state);
-    return state;
+    ll_state->segment = hl_state->segment;
+    ll_state->segment->low_level_states.insert(ll_state);
+    return ll_state;
 }
 
 
