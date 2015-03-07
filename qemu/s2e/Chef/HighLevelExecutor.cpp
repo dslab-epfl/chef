@@ -72,58 +72,78 @@ boost::shared_ptr<HighLevelPathSegment> HighLevelPathSegment::getNext(uint64_t h
     return children_[hlpc].lock();
 }
 
-// HLExecutorState /////////////////////////////////////////////////////////////
+// HighLevelState //////////////////////////////////////////////////////////////
 
-HLExecutorState::HLExecutorState(HighLevelExecutor &analyzer,
+HighLevelState::HighLevelState() {
+
+}
+
+HighLevelState::~HighLevelState() {
+
+}
+
+// LowLevelState ///////////////////////////////////////////////////////////////
+
+LowLevelState::LowLevelState(HighLevelExecutor &analyzer,
         S2EExecutionState *s2e_state)
-    : StreamAnalyzerState<HLExecutorState, HighLevelExecutor>(analyzer, s2e_state) {
+    : StreamAnalyzerState<LowLevelState, HighLevelExecutor>(analyzer, s2e_state) {
 
 }
 
 
-shared_ptr<HLExecutorState> HLExecutorState::clone(S2EExecutionState *s2e_state) {
-    shared_ptr<HLExecutorState> new_state = shared_ptr<HLExecutorState>(
-            new HLExecutorState(analyzer(), s2e_state));
+shared_ptr<LowLevelState> LowLevelState::clone(S2EExecutionState *s2e_state) {
+    shared_ptr<LowLevelState> new_state = shared_ptr<LowLevelState>(
+            new LowLevelState(analyzer(), s2e_state));
     new_state->segment_ = segment_;
-    new_state->segment_->states.insert(new_state);
+    new_state->segment_->low_level_states.insert(new_state);
     return new_state;
 }
 
 
-void HLExecutorState::step(uint64_t hlpc) {
-    // FIXME: The current segment might not contain the state if the state
-    // has just been created.
-    segment_->states.erase(shared_from_this());
+void LowLevelState::terminate() {
+    segment_->low_level_states.erase(shared_from_this());
+}
+
+
+void LowLevelState::step(uint64_t hlpc) {
+    segment_->low_level_states.erase(shared_from_this());
     segment_ = segment_->getNext(hlpc);
-    segment_->states.insert(shared_from_this());
+    segment_->low_level_states.insert(shared_from_this());
 }
 
 // HighLevelExecutor ///////////////////////////////////////////////////////////
 
-HighLevelExecutor::HighLevelExecutor(S2E &s2e, ExecutionStream &stream)
-    : StreamAnalyzer<HLExecutorState>(s2e, stream),
-      root_segment_() {
+HighLevelExecutor::HighLevelExecutor(InterpreterDetector &detector)
+    : StreamAnalyzer<LowLevelState>(detector.s2e(), detector.stream()),
+      detector_(detector) {
+    root_segment_ = make_shared<HighLevelPathSegment>();
+    on_high_level_pc_update_ = detector_.onHighLevelPCUpdate.connect(
+            sigc::mem_fun(*this, &HighLevelExecutor::onHighLevelPCUpdate));
 
+    s2e().getMessagesStream() << "Constructed high-level executor for tid="
+            << detector_.tracked_tid() << '\n';
 }
 
 
 HighLevelExecutor::~HighLevelExecutor() {
-
+    s2e().getMessagesStream() << "High-level executor terminated for tid="
+            << detector_.tracked_tid() << '\n';
+    on_high_level_pc_update_.disconnect();
 }
 
 
-shared_ptr<HLExecutorState> HighLevelExecutor::createState(S2EExecutionState *s2e_state) {
-    shared_ptr<HLExecutorState> state = shared_ptr<HLExecutorState>(
-            new HLExecutorState(*this, s2e_state));
+shared_ptr<LowLevelState> HighLevelExecutor::createState(S2EExecutionState *s2e_state) {
+    shared_ptr<LowLevelState> state = shared_ptr<LowLevelState>(
+            new LowLevelState(*this, s2e_state));
     state->segment_ = root_segment_;
-    state->segment_->states.insert(state);
+    state->segment_->low_level_states.insert(state);
     return state;
 }
 
 
 void HighLevelExecutor::onHighLevelPCUpdate(S2EExecutionState *s2e_state,
         HighLevelStack *hl_stack) {
-    shared_ptr<HLExecutorState> state = getState(s2e_state);
+    shared_ptr<LowLevelState> state = getState(s2e_state);
     uint64_t hlpc = hl_stack->top()->hlpc;
     state->step(hlpc);
 }

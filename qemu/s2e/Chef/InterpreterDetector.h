@@ -125,6 +125,10 @@ public:
             boost::shared_ptr<S2ESyscallMonitor> syscall_monitor);
     ~InterpreterDetector();
 
+    int tracked_tid() const {
+        return tracked_tid_;
+    }
+
     sigc::signal<void,
                  S2EExecutionState*,
                  HighLevelStack*>

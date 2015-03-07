@@ -49,14 +49,11 @@
 namespace s2e {
 
 
+class InterpreterDetector;
 class HighLevelStack;
-
-class HLExecutorState;
-
-
-class HighLevelState {
-
-};
+class LowLevelState;
+class HighLevelState;
+class HighLevelExecutor;
 
 
 class HighLevelPathSegment : public boost::enable_shared_from_this<HighLevelPathSegment> {
@@ -79,8 +76,11 @@ public:
 
 public:
     // TODO: Replace with DenseSet if slow
-    typedef std::set<boost::shared_ptr<HLExecutorState> > StateSet;
-    StateSet states;
+    typedef std::set<boost::weak_ptr<LowLevelState> > LowLevelStateSet;
+    typedef std::set<boost::weak_ptr<HighLevelState> > HighLevelStateSet;
+
+    LowLevelStateSet low_level_states;
+    HighLevelStateSet high_level_states;
 
 private:
     typedef boost::weak_ptr<HighLevelPathSegment> WeakHLPSRef;
@@ -97,18 +97,35 @@ private:
 };
 
 
-class HighLevelExecutor;
+/**
+ * Invariant: A high-level state is at the lowest point in the low-level
+ * execution trace.  It always has at least one low-level state active.
+ * When the last low-level state moves down in the tree, the HL state is
+ * advanced (and potentially forked).
+ */
+class HighLevelState : public boost::enable_shared_from_this<HighLevelState> {
+public:
+    HighLevelState();
+    virtual ~HighLevelState();
+
+private:
+    boost::shared_ptr<HighLevelPathSegment> segment_;
+
+    // Non-copyable
+    HighLevelState(const HighLevelState&);
+    void operator=(const HighLevelState&);
+};
 
 
-class HLExecutorState : public StreamAnalyzerState<HLExecutorState, HighLevelExecutor>,
-                        public boost::enable_shared_from_this<HLExecutorState> {
+class LowLevelState : public StreamAnalyzerState<LowLevelState, HighLevelExecutor>,
+                      public boost::enable_shared_from_this<LowLevelState> {
 public:
     void step(uint64_t hlpc);
 
-    boost::shared_ptr<HLExecutorState> clone(S2EExecutionState *s2e_state);
-
+    boost::shared_ptr<LowLevelState> clone(S2EExecutionState *s2e_state);
+    void terminate();
 private:
-    HLExecutorState(HighLevelExecutor &analyzer, S2EExecutionState *s2e_state);
+    LowLevelState(HighLevelExecutor &analyzer, S2EExecutionState *s2e_state);
 
     boost::shared_ptr<HighLevelPathSegment> segment_;
 
@@ -116,23 +133,31 @@ private:
 };
 
 
-class HighLevelExecutor : public StreamAnalyzer<HLExecutorState> {
+class HighLevelExecutor : public StreamAnalyzer<LowLevelState> {
 public:
-    HighLevelExecutor(S2E &s2e, ExecutionStream &stream);
+    typedef std::set<boost::shared_ptr<HighLevelState> > HighLevelStateSet;
+
+public:
+    HighLevelExecutor(InterpreterDetector &detector);
     virtual ~HighLevelExecutor();
 
     boost::shared_ptr<HighLevelPathSegment> root_segment() {
         return root_segment_;
     }
 
+    HighLevelStateSet high_level_states;
+
 protected:
-    boost::shared_ptr<HLExecutorState> createState(S2EExecutionState *s2e_state);
+    boost::shared_ptr<LowLevelState> createState(S2EExecutionState *s2e_state);
 
 private:
     void onHighLevelPCUpdate(S2EExecutionState *s2e_state,
             HighLevelStack *hl_stack);
 
+    InterpreterDetector &detector_;
     boost::shared_ptr<HighLevelPathSegment> root_segment_;
+
+    sigc::connection on_high_level_pc_update_;
 };
 
 

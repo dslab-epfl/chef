@@ -56,6 +56,11 @@ namespace {
     DebugInstructions("debug-interp-instructions",
             llvm::cl::desc("Print detected interpreter instructions"),
             llvm::cl::init(false));
+
+    llvm::cl::opt<bool>
+    DebugDetection("debug-interp-detection",
+            llvm::cl::desc("Print debug info for interpreter detection"),
+            llvm::cl::init(false));
 }
 
 namespace s2e {
@@ -293,7 +298,9 @@ private:
             return false;
         }
 
-        printCandidateHLPC(candidate_hlpcs, discarded_hlpcs);
+        if (DebugDetection) {
+            printCandidateHLPC(candidate_hlpcs, discarded_hlpcs);
+        }
 
         // Phase 2: Filter out non-HLPC access patterns
 

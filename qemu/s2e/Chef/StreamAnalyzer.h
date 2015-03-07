@@ -68,6 +68,9 @@ public:
     }
 
     virtual StateRef clone(S2EExecutionState *s2e_state) = 0;
+    virtual void terminate() {
+
+    }
 
 protected:
     StreamAnalyzerState(Analyzer &analyzer, S2EExecutionState *s2e_state)
@@ -165,7 +168,11 @@ private:
         if (lru_.first == s2e_state) {
             lru_ = std::pair<S2EExecutionState*, StateRef>();
         }
-        state_map_.erase(s2e_state);
+
+        typename StateMap::iterator it = state_map_.find(s2e_state);
+        assert(it != state_map_.end());
+        it->second->terminate();
+        state_map_.erase(it);
     }
 
     typedef llvm::DenseMap<S2EExecutionState*, StateRef> StateMap;
