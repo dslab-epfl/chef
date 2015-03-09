@@ -63,8 +63,17 @@ private:
     void onThreadCreate(S2EExecutionState *state, OSThread* thread);
     void onThreadExit(S2EExecutionState *state, OSThread* thread);
 
+    void onHighLevelStateCreate(S2EExecutionState *state,
+            HighLevelState *hl_state);
     void onHighLevelStateStep(S2EExecutionState *state,
             HighLevelState *hl_state);
+    void onHighLevelStateKill(S2EExecutionState *state,
+            HighLevelState *hl_state);
+    void onHighLevelStateFork(S2EExecutionState *state,
+            HighLevelState *hl_state,
+            const std::vector<HighLevelState*> &forks);
+    void onHighLevelStateSwitch(S2EExecutionState *state,
+            HighLevelState *prev, HighLevelState *next);
 
     boost::shared_ptr<S2ESyscallMonitor> smonitor_;
     boost::scoped_ptr<OSTracer> os_tracer_;

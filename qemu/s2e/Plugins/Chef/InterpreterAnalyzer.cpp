@@ -97,8 +97,16 @@ void InterpreterAnalyzer::onThreadCreate(S2EExecutionState *state,
     interp_detector_.reset(new InterpreterDetector(*os_tracer_, tracked_tid_, smonitor_));
     high_level_executor_.reset(new HighLevelExecutor(*interp_detector_));
 
+    high_level_executor_->onHighLevelStateCreate.connect(
+            sigc::mem_fun(*this, &InterpreterAnalyzer::onHighLevelStateCreate));
     high_level_executor_->onHighLevelStateStep.connect(
             sigc::mem_fun(*this, &InterpreterAnalyzer::onHighLevelStateStep));
+    high_level_executor_->onHighLevelStateKill.connect(
+            sigc::mem_fun(*this, &InterpreterAnalyzer::onHighLevelStateKill));
+    high_level_executor_->onHighLevelStateFork.connect(
+            sigc::mem_fun(*this, &InterpreterAnalyzer::onHighLevelStateFork));
+    high_level_executor_->onHighLevelStateSwitch.connect(
+            sigc::mem_fun(*this, &InterpreterAnalyzer::onHighLevelStateSwitch));
 }
 
 
@@ -116,12 +124,44 @@ void InterpreterAnalyzer::onThreadExit(S2EExecutionState *state,
     interp_detector_.reset();
 }
 
+void InterpreterAnalyzer::onHighLevelStateCreate(S2EExecutionState *state,
+        HighLevelState *hl_state) {
+#if 1
+    s2e()->getMessagesStream(state) << "HL state created." << '\n';
+#endif
+}
+
 
 void InterpreterAnalyzer::onHighLevelStateStep(S2EExecutionState *state,
         HighLevelState *hl_state) {
-#if 0
+#if 1
     s2e()->getMessagesStream(state) << "HL state step. HLPC="
-            << hl_state->segment->hlpc << '\n';
+            << llvm::format("0x%x", hl_state->segment->hlpc) << '\n';
+#endif
+}
+
+
+void InterpreterAnalyzer::onHighLevelStateKill(S2EExecutionState *state,
+        HighLevelState *hl_state) {
+#if 1
+    s2e()->getMessagesStream(state) << "HL state kill." << '\n';
+#endif
+}
+
+
+void InterpreterAnalyzer::onHighLevelStateFork(S2EExecutionState *state,
+        HighLevelState *hl_state,
+        const std::vector<HighLevelState*> &forks) {
+#if 1
+    s2e()->getMessagesStream(state) << "HL state fork" << '\n';
+#endif
+}
+
+
+void InterpreterAnalyzer::onHighLevelStateSwitch(S2EExecutionState *state,
+        HighLevelState *prev, HighLevelState *next) {
+#if 1
+    s2e()->getMessagesStream(state) << "HL state switch" << '\n';
 #endif
 }
 
