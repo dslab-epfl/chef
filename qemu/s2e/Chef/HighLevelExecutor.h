@@ -94,8 +94,12 @@ private:
  */
 class HighLevelState : public boost::enable_shared_from_this<HighLevelState> {
 public:
-    HighLevelState();
+    HighLevelState(boost::shared_ptr<HighLevelPathSegment> segment);
     virtual ~HighLevelState();
+
+    void step(uint64_t hlpc);
+    boost::shared_ptr<HighLevelState> fork(uint64_t hlpc);
+    void terminate();
 
     boost::shared_ptr<HighLevelPathSegment> segment;
 
@@ -134,12 +138,17 @@ public:
     sigc::signal<void,
                  S2EExecutionState*,
                  HighLevelState*>
+        onHighLevelStateCreate;
+
+    sigc::signal<void,
+                 S2EExecutionState*,
+                 HighLevelState*>
         onHighLevelStateStep;
 
     sigc::signal<void,
                  S2EExecutionState*,
                  HighLevelState*,
-                 const std::vector<HighLevelState*> >
+                 const std::vector<HighLevelState*>& >
         onHighLevelStateFork;
 
     sigc::signal<void,

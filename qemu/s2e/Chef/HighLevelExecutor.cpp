@@ -76,12 +76,40 @@ boost::shared_ptr<HighLevelPathSegment> HighLevelPathSegment::getNext(uint64_t h
 
 // HighLevelState //////////////////////////////////////////////////////////////
 
-HighLevelState::HighLevelState() {
-    segment = make_shared<HighLevelPathSegment>();
+HighLevelState::HighLevelState(shared_ptr<HighLevelPathSegment> segment_)
+    : segment(segment_) {
 }
+
 
 HighLevelState::~HighLevelState() {
 
+}
+
+
+void HighLevelState::step(uint64_t hlpc) {
+    shared_ptr<HighLevelPathSegment> next_segment = segment->getNext(hlpc);
+
+    next_segment->high_level_state = shared_from_this();
+    segment->high_level_state.reset();
+
+    segment = next_segment;
+    segment->parent.reset();
+}
+
+
+shared_ptr<HighLevelState> HighLevelState::fork(uint64_t hlpc) {
+    shared_ptr<HighLevelPathSegment> next_segment = segment->getNext(hlpc);
+
+    shared_ptr<HighLevelState> clone = make_shared<HighLevelState>(next_segment);
+    next_segment->high_level_state = clone;
+
+    next_segment->parent.reset();
+    return clone;
+}
+
+
+void HighLevelState::terminate() {
+    segment->high_level_state.reset();
 }
 
 // LowLevelState ///////////////////////////////////////////////////////////////
@@ -115,22 +143,34 @@ void LowLevelState::step(uint64_t hlpc) {
 
     if (!segment->high_level_state.expired() && segment->low_level_states.empty()) {
         assert(segment->parent.expired());
+        shared_ptr<HighLevelState> hl_state = segment->high_level_state.lock();
+
         if (segment->children.empty()) {
             // High-level state terminated
+            analyzer().onHighLevelStateKill.emit(s2e_state(), hl_state.get());
+
+            hl_state->terminate();
+            analyzer().high_level_states.erase(hl_state);
             return;
         }
         if (segment->children.size() > 1) {
-            // High-level fork
-            return;
+            typedef HighLevelPathSegment::ChildrenMap::iterator iterator;
+            std::vector<HighLevelState*> fork_list;
+            for (iterator it = segment->children.begin(),
+                    ie = segment->children.end(); it != ie; ++it) {
+                if (it->first != hlpc) {
+                    shared_ptr<HighLevelState> hl_fork = hl_state->fork(it->first);
+                    analyzer().high_level_states.insert(hl_fork);
+                    fork_list.push_back(hl_fork.get());
+                }
+            }
+            analyzer().onHighLevelStateFork.emit(s2e_state(), hl_state.get(),
+                    fork_list);
+            // Fall-through to stepping on the main state
         }
 
         // Plain step
-        next_segment->high_level_state.swap(segment->high_level_state);
-
-        shared_ptr<HighLevelState> hl_state = next_segment->high_level_state.lock();
-        hl_state->segment = next_segment;
-        next_segment->parent.reset();
-
+        hl_state->step(hlpc);
         analyzer().onHighLevelStateStep.emit(s2e_state(), hl_state.get());
     }
 
@@ -158,16 +198,24 @@ HighLevelExecutor::~HighLevelExecutor() {
 
 
 shared_ptr<LowLevelState> HighLevelExecutor::createState(S2EExecutionState *s2e_state) {
-    // For each new state created in the system, create an associated
-    // high-level state.
-    shared_ptr<HighLevelState> hl_state = make_shared<HighLevelState>();
+    // For each new state created in the system, create a new high-level path.
+    shared_ptr<HighLevelPathSegment> segment = make_shared<HighLevelPathSegment>();
+
+    // Create a high-level state at the base of the path.
+    shared_ptr<HighLevelState> hl_state = make_shared<HighLevelState>(segment);
     hl_state->segment->high_level_state = hl_state;
+
+    // Keep track of the new high-level state.
     high_level_states.insert(hl_state);
 
+    // Create a low-level state as the support for the HL path.
     shared_ptr<LowLevelState> ll_state = shared_ptr<LowLevelState>(
             new LowLevelState(*this, s2e_state));
-    ll_state->segment = hl_state->segment;
+    ll_state->segment = segment;
     ll_state->segment->low_level_states.insert(ll_state);
+
+    onHighLevelStateCreate.emit(s2e_state, hl_state.get());
+
     return ll_state;
 }
 
