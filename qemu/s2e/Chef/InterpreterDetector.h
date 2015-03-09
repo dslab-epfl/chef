@@ -85,8 +85,17 @@ struct HighLevelFrame {
 
     }
 
+    HighLevelFrame(const HighLevelFrame &other)
+        : parent(other.parent),
+          low_level_frame_id(other.low_level_frame_id),
+          hlpc_ptr(other.hlpc_ptr),
+          hlpc(other.hlpc),
+          hlinst(other.hlinst) {
+
+    }
+
 private:
-    HighLevelFrame(const HighLevelFrame&);
+
     void operator=(const HighLevelFrame&);
 };
 
@@ -113,7 +122,8 @@ public:
 
     StateRef clone(S2EExecutionState *s2e_state);
 private:
-    std::vector<boost::shared_ptr<HighLevelFrame> > frames_;
+    typedef std::vector<boost::shared_ptr<HighLevelFrame> > FrameVector;
+    FrameVector frames_;
 
     friend class InterpreterDetector;
 };
@@ -157,6 +167,8 @@ private:
 
     void onConcreteDataMemoryAccess(S2EExecutionState *state, uint64_t address,
             uint64_t value, uint8_t size, unsigned flags);
+    void onSymbolicDataMemoryAccess(S2EExecutionState *state,
+            klee::ref<klee::Expr> address, uint64_t concr_addr, bool &concretize);
 
     void onS2ESyscall(S2EExecutionState *state, uint64_t syscall_id,
             uint64_t data, uint64_t size);
@@ -171,6 +183,9 @@ private:
     void onLowLevelStackFramePopping(S2EExecutionState *state,
             CallStack *call_stack, boost::shared_ptr<CallStackFrame> old_top,
             boost::shared_ptr<CallStackFrame> new_top);
+
+    void updateMemoryTracking(S2EExecutionState *state,
+            boost::shared_ptr<CallStackFrame> top);
 
     // Dependencies
     OSTracer &os_tracer_;
@@ -194,7 +209,9 @@ private:
     // Signals
     sigc::connection on_stack_frame_push_;
     sigc::connection on_stack_frame_popping_;
+
     sigc::connection on_concrete_data_memory_access_;
+    sigc::connection on_symbolic_data_memory_access_;
 };
 
 } /* namespace s2e */
