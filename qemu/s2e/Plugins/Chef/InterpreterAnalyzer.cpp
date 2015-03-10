@@ -49,6 +49,7 @@
 #include <s2e/Chef/HighLevelStrategy.h>
 
 #include <llvm/Support/Format.h>
+#include <llvm/Support/TimeValue.h>
 
 using boost::shared_ptr;
 
@@ -82,6 +83,19 @@ void InterpreterAnalyzer::initialize() {
             sigc::mem_fun(*this, &InterpreterAnalyzer::onThreadCreate));
     os_tracer_->onThreadExit.connect(
             sigc::mem_fun(*this, &InterpreterAnalyzer::onThreadExit));
+}
+
+
+llvm::raw_ostream& InterpreterAnalyzer::getStream(const HighLevelState *hl_state) {
+    llvm::raw_ostream &os = s2e()->getMessagesStream();
+    if (hl_state) {
+        llvm::sys::TimeValue curTime = llvm::sys::TimeValue::now();
+        os << (curTime.seconds() - s2e()->getStartTime()) << ' ';
+        os << llvm::format("<HLState %d @ 0x%x>", hl_state->id(),
+                hl_state->segment->hlpc);
+        os << ' ';
+    }
+    return os;
 }
 
 
@@ -133,22 +147,21 @@ void InterpreterAnalyzer::onThreadExit(S2EExecutionState *state,
 
 void InterpreterAnalyzer::onHighLevelStateCreate(HighLevelState *hl_state) {
 #if 1
-    s2e()->getMessagesStream() << "HL state created." << '\n';
+    getStream(hl_state) << "State created." << '\n';
 #endif
 }
 
 
 void InterpreterAnalyzer::onHighLevelStateStep(HighLevelState *hl_state) {
 #if 1
-    s2e()->getMessagesStream() << "HL state step. HLPC="
-            << llvm::format("0x%x", hl_state->segment->hlpc) << '\n';
+    getStream(hl_state) << "State step." << '\n';
 #endif
 }
 
 
 void InterpreterAnalyzer::onHighLevelStateKill(HighLevelState *hl_state) {
 #if 1
-    s2e()->getMessagesStream() << "HL state kill." << '\n';
+    getStream(hl_state) << "State killed." << '\n';
 #endif
 }
 
@@ -156,7 +169,13 @@ void InterpreterAnalyzer::onHighLevelStateKill(HighLevelState *hl_state) {
 void InterpreterAnalyzer::onHighLevelStateFork(HighLevelState *hl_state,
         const std::vector<HighLevelState*> &forks) {
 #if 1
-    s2e()->getMessagesStream() << "HL state fork" << '\n';
+    for (std::vector<HighLevelState*>::const_iterator it = forks.begin(),
+            ie = forks.end(); it != ie; ++it) {
+        if (*it == hl_state)
+            continue;
+        getStream(hl_state) << "State " << (*it)->id() << " forked at "
+                << llvm::format("0x%x", (*it)->segment->hlpc) << '\n';
+    }
 #endif
 }
 

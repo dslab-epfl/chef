@@ -37,6 +37,8 @@
 
 #include <s2e/Plugin.h>
 
+#include <llvm/Support/raw_ostream.h>
+
 #include <boost/scoped_ptr.hpp>
 #include <boost/shared_ptr.hpp>
 
@@ -70,6 +72,9 @@ private:
     void onHighLevelStateFork(HighLevelState *hl_state,
             const std::vector<HighLevelState*> &forks);
     void onHighLevelStateSwitch(HighLevelState *prev, HighLevelState *next);
+
+    llvm::raw_ostream& getStream(const HighLevelState *hl_state);
+
 
     boost::shared_ptr<S2ESyscallMonitor> smonitor_;
     boost::scoped_ptr<OSTracer> os_tracer_;
