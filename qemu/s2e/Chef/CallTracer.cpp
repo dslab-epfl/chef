@@ -102,7 +102,7 @@ void CallStack::newFrame(uint64_t call_site, uint64_t function, uint64_t sp) {
 
     frames_.push_back(new_frame);
 
-    analyzer().onStackFramePush.emit(s2e_state(), this, old_frame, new_frame);
+    analyzer().onStackFramePush.emit(this, old_frame, new_frame);
 }
 
 
@@ -111,7 +111,7 @@ void CallStack::updateFrame(uint64_t sp) {
 
     // Unwind
     while (sp >= frames_.back()->top) {
-        analyzer().onStackFramePopping.emit(s2e_state(), this, frames_.back(),
+        analyzer().onStackFramePopping.emit(this, frames_.back(),
                 frames_[frames_.size()-2]);
         frames_.pop_back();
         assert(!frames_.empty());
@@ -120,7 +120,7 @@ void CallStack::updateFrame(uint64_t sp) {
     // Resize
     if (frames_.back()->bottom != sp) {
         frames_.back()->bottom = sp;
-        analyzer().onStackFrameResize.emit(s2e_state(), this, frames_.back());
+        analyzer().onStackFrameResize.emit(this, frames_.back());
     }
 }
 
@@ -129,7 +129,7 @@ void CallStack::updateBasicBlock(uint32_t bb_index) {
     assert(!frames_.empty());
 
     frames_.back()->bb_index = bb_index;
-    analyzer().onBasicBlockEnter.emit(s2e_state(), this, frames_.back());
+    analyzer().onBasicBlockEnter.emit(this, frames_.back());
 }
 
 

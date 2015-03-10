@@ -42,6 +42,7 @@
 #include <s2e/Selectors.h>
 
 #include <s2e/Chef/OSTracer.h>
+#include <s2e/Chef/CallTracer.h>
 #include <s2e/Chef/ExecutionStream.h>
 #include <s2e/Chef/S2ESyscallMonitor.h>
 #include <s2e/Chef/InterpreterDetector.h>
@@ -113,7 +114,8 @@ void InterpreterAnalyzer::onThreadCreate(S2EExecutionState *state,
             << thread->name() << ").  Started tracking..." << '\n';
 
     tracked_tid_ = thread->tid();
-    interp_detector_.reset(new InterpreterDetector(*os_tracer_, tracked_tid_, smonitor_));
+    call_tracer_.reset(new CallTracer(*os_tracer_, tracked_tid_));
+    interp_detector_.reset(new InterpreterDetector(*call_tracer_, smonitor_));
     strategy_.reset(new SelectorStrategy<DFSSelector<HighLevelStrategy::StateRef> >());
     high_level_executor_.reset(new HighLevelExecutor(*interp_detector_, *strategy_));
 

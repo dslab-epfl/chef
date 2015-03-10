@@ -32,64 +32,46 @@
  * All contributors are listed in the S2E-AUTHORS file.
  */
 
-#ifndef QEMU_S2E_PLUGINS_CHEF_INTERPRETERANALYZER_H_
-#define QEMU_S2E_PLUGINS_CHEF_INTERPRETERANALYZER_H_
+#ifndef QEMU_S2E_CHEF_LOWLEVELTOPOSTRATEGY_H_
+#define QEMU_S2E_CHEF_LOWLEVELTOPOSTRATEGY_H_
 
-#include <s2e/Plugin.h>
 
-#include <llvm/Support/raw_ostream.h>
-
-#include <boost/scoped_ptr.hpp>
 #include <boost/shared_ptr.hpp>
+#include <s2e/Signals/Signals.h>
 
 namespace s2e {
 
-class OSTracer;
 class CallTracer;
-class OSThread;
-class S2ESyscallMonitor;
-class InterpreterDetector;
-
+class CallStack;
+class CallStackFrame;
 class HighLevelExecutor;
-class HighLevelState;
-class HighLevelStrategy;
 
-namespace plugins {
 
-class InterpreterAnalyzer : public Plugin {
-    S2E_PLUGIN
+class LowLevelTopoStrategy {
 public:
-    InterpreterAnalyzer(S2E *s2e);
-    virtual ~InterpreterAnalyzer();
+    LowLevelTopoStrategy(HighLevelExecutor &hl_executor);
+    ~LowLevelTopoStrategy();
 
-    void initialize();
 private:
-    void onThreadCreate(S2EExecutionState *state, OSThread* thread);
-    void onThreadExit(S2EExecutionState *state, OSThread* thread);
+    void onStackFramePush(CallStack *stack,
+            boost::shared_ptr<CallStackFrame> old_top,
+            boost::shared_ptr<CallStackFrame> new_top);
 
-    void onHighLevelStateCreate(HighLevelState *hl_state);
-    void onHighLevelStateStep(HighLevelState *hl_state);
-    void onHighLevelStateKill(HighLevelState *hl_state);
-    void onHighLevelStateFork(HighLevelState *hl_state,
-            const std::vector<HighLevelState*> &forks);
-    void onHighLevelStateSwitch(HighLevelState *prev, HighLevelState *next);
+    void onStackFramePopping(CallStack *stack,
+            boost::shared_ptr<CallStackFrame> old_top,
+            boost::shared_ptr<CallStackFrame> new_top);
 
-    llvm::raw_ostream& getStream(const HighLevelState *hl_state);
+    void onBasicBlockEnter(CallStack *stack,
+            boost::shared_ptr<CallStackFrame> top);
 
+    HighLevelExecutor &hl_executor_;
+    CallTracer &call_tracer_;
 
-    boost::shared_ptr<S2ESyscallMonitor> smonitor_;
-    boost::scoped_ptr<OSTracer> os_tracer_;
-    boost::scoped_ptr<CallTracer> call_tracer_;
-    boost::scoped_ptr<InterpreterDetector> interp_detector_;
-    boost::scoped_ptr<HighLevelStrategy> strategy_;
-    boost::scoped_ptr<HighLevelExecutor> high_level_executor_;
-
-    int tracked_tid_;
-
+    sigc::connection on_stack_frame_push_;
+    sigc::connection on_stack_frame_popping_;
+    sigc::connection on_basic_block_enter_;
 };
-
-} /* namespace plugins */
 
 } /* namespace s2e */
 
-#endif /* QEMU_S2E_PLUGINS_CHEF_INTERPRETERANALYZER_H_ */
+#endif /* QEMU_S2E_CHEF_LOWLEVELTOPOSTRATEGY_H_ */

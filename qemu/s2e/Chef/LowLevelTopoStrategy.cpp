@@ -32,64 +32,56 @@
  * All contributors are listed in the S2E-AUTHORS file.
  */
 
-#ifndef QEMU_S2E_PLUGINS_CHEF_INTERPRETERANALYZER_H_
-#define QEMU_S2E_PLUGINS_CHEF_INTERPRETERANALYZER_H_
+#include "LowLevelTopoStrategy.h"
 
-#include <s2e/Plugin.h>
+#include <s2e/Chef/CallTracer.h>
+#include <s2e/Chef/HighLevelExecutor.h>
+#include <s2e/Chef/InterpreterDetector.h>
 
-#include <llvm/Support/raw_ostream.h>
-
-#include <boost/scoped_ptr.hpp>
 #include <boost/shared_ptr.hpp>
+
+using boost::shared_ptr;
 
 namespace s2e {
 
-class OSTracer;
-class CallTracer;
-class OSThread;
-class S2ESyscallMonitor;
-class InterpreterDetector;
+// LowLevelTopoStrategy ////////////////////////////////////////////////////////
 
-class HighLevelExecutor;
-class HighLevelState;
-class HighLevelStrategy;
-
-namespace plugins {
-
-class InterpreterAnalyzer : public Plugin {
-    S2E_PLUGIN
-public:
-    InterpreterAnalyzer(S2E *s2e);
-    virtual ~InterpreterAnalyzer();
-
-    void initialize();
-private:
-    void onThreadCreate(S2EExecutionState *state, OSThread* thread);
-    void onThreadExit(S2EExecutionState *state, OSThread* thread);
-
-    void onHighLevelStateCreate(HighLevelState *hl_state);
-    void onHighLevelStateStep(HighLevelState *hl_state);
-    void onHighLevelStateKill(HighLevelState *hl_state);
-    void onHighLevelStateFork(HighLevelState *hl_state,
-            const std::vector<HighLevelState*> &forks);
-    void onHighLevelStateSwitch(HighLevelState *prev, HighLevelState *next);
-
-    llvm::raw_ostream& getStream(const HighLevelState *hl_state);
+LowLevelTopoStrategy::LowLevelTopoStrategy(HighLevelExecutor &hl_executor)
+    : hl_executor_(hl_executor),
+      call_tracer_(hl_executor.detector().call_tracer()){
+    on_stack_frame_push_ = call_tracer_.onStackFramePush.connect(
+            sigc::mem_fun(*this, &LowLevelTopoStrategy::onStackFramePush));
+    on_stack_frame_popping_ = call_tracer_.onStackFramePopping.connect(
+            sigc::mem_fun(*this, &LowLevelTopoStrategy::onStackFramePopping));
+    on_basic_block_enter_ = call_tracer_.onBasicBlockEnter.connect(
+            sigc::mem_fun(*this, &LowLevelTopoStrategy::onBasicBlockEnter));
+}
 
 
-    boost::shared_ptr<S2ESyscallMonitor> smonitor_;
-    boost::scoped_ptr<OSTracer> os_tracer_;
-    boost::scoped_ptr<CallTracer> call_tracer_;
-    boost::scoped_ptr<InterpreterDetector> interp_detector_;
-    boost::scoped_ptr<HighLevelStrategy> strategy_;
-    boost::scoped_ptr<HighLevelExecutor> high_level_executor_;
+LowLevelTopoStrategy::~LowLevelTopoStrategy() {
+    on_stack_frame_push_.disconnect();
+    on_stack_frame_popping_.disconnect();
+    on_basic_block_enter_.disconnect();
+}
 
-    int tracked_tid_;
 
-};
+void LowLevelTopoStrategy::onStackFramePush(CallStack *stack,
+        boost::shared_ptr<CallStackFrame> old_top,
+        boost::shared_ptr<CallStackFrame> new_top) {
+    shared_ptr<LowLevelState> state = hl_executor_.getState(stack->s2e_state());
+}
 
-} /* namespace plugins */
+
+void LowLevelTopoStrategy::onStackFramePopping(CallStack *stack,
+        boost::shared_ptr<CallStackFrame> old_top,
+        boost::shared_ptr<CallStackFrame> new_top) {
+    shared_ptr<LowLevelState> state = hl_executor_.getState(stack->s2e_state());
+}
+
+
+void LowLevelTopoStrategy::onBasicBlockEnter(CallStack *stack,
+        boost::shared_ptr<CallStackFrame> top) {
+    shared_ptr<LowLevelState> state = hl_executor_.getState(stack->s2e_state());
+}
 
 } /* namespace s2e */
-
-#endif /* QEMU_S2E_PLUGINS_CHEF_INTERPRETERANALYZER_H_ */

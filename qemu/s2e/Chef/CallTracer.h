@@ -145,27 +145,23 @@ public:
     }
 
     sigc::signal<void,
-                 S2EExecutionState*,
                  CallStack*,
                  boost::shared_ptr<CallStackFrame>,
                  boost::shared_ptr<CallStackFrame> >
             onStackFramePush;
 
     sigc::signal<void,
-                 S2EExecutionState*,
                  CallStack*,
                  boost::shared_ptr<CallStackFrame>,
                  boost::shared_ptr<CallStackFrame> >
             onStackFramePopping;
 
     sigc::signal<void,
-                 S2EExecutionState*,
                  CallStack*,
                  boost::shared_ptr<CallStackFrame> >
             onStackFrameResize;
 
     sigc::signal<void,
-                 S2EExecutionState*,
                  CallStack*,
                  boost::shared_ptr<CallStackFrame> >
             onBasicBlockEnter;

@@ -131,12 +131,12 @@ private:
 
 class InterpreterDetector : public StreamAnalyzer<HighLevelStack> {
 public:
-    InterpreterDetector(OSTracer &os_tracer, int tid,
+    InterpreterDetector(CallTracer &call_tracer,
             boost::shared_ptr<S2ESyscallMonitor> syscall_monitor);
     ~InterpreterDetector();
 
-    int tracked_tid() const {
-        return tracked_tid_;
+    CallTracer &call_tracer() {
+        return call_tracer_;
     }
 
     sigc::signal<void,
@@ -177,23 +177,19 @@ private:
     void endCalibration(S2EExecutionState *state);
     void startMonitoring(S2EExecutionState *state);
 
-    void onLowLevelStackFramePush(S2EExecutionState *state,
-            CallStack *call_stack, boost::shared_ptr<CallStackFrame> old_top,
+    void onLowLevelStackFramePush(CallStack *call_stack,
+            boost::shared_ptr<CallStackFrame> old_top,
             boost::shared_ptr<CallStackFrame> new_top);
-    void onLowLevelStackFramePopping(S2EExecutionState *state,
-            CallStack *call_stack, boost::shared_ptr<CallStackFrame> old_top,
+    void onLowLevelStackFramePopping(CallStack *call_stack,
+            boost::shared_ptr<CallStackFrame> old_top,
             boost::shared_ptr<CallStackFrame> new_top);
 
-    void updateMemoryTracking(S2EExecutionState *state,
-            boost::shared_ptr<CallStackFrame> top);
+    void updateMemoryTracking(boost::shared_ptr<CallStackFrame> top);
 
     // Dependencies
     OSTracer &os_tracer_;
-    boost::scoped_ptr<CallTracer> call_tracer_;
+    CallTracer &call_tracer_;
     boost::shared_ptr<S2ESyscallRange> syscall_range_;
-
-    // Tracked thread
-    int tracked_tid_;
 
     // Calibration state
     bool calibrating_;

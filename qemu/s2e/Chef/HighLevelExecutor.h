@@ -48,13 +48,13 @@
 
 namespace s2e {
 
-
 class InterpreterDetector;
 class HighLevelStack;
 class LowLevelState;
 class HighLevelState;
 class HighLevelExecutor;
 class HighLevelStrategy;
+class LowLevelTopoStrategy;
 
 
 class HighLevelPathSegment : public boost::enable_shared_from_this<HighLevelPathSegment> {
@@ -145,6 +145,10 @@ public:
             HighLevelStrategy &strategy);
     virtual ~HighLevelExecutor();
 
+    InterpreterDetector &detector() {
+        return detector_;
+    }
+
     sigc::signal<void,
                  HighLevelState*>
         onHighLevelStateCreate;
@@ -181,7 +185,8 @@ private:
     bool doUpdateSelectedState();
 
     InterpreterDetector &detector_;
-    HighLevelStrategy &strategy_;
+    HighLevelStrategy &hl_strategy_;
+    boost::scoped_ptr<LowLevelTopoStrategy> ll_strategy_;
     sigc::connection on_high_level_pc_update_;
 
     HighLevelStateSet high_level_states_;
