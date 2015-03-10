@@ -123,14 +123,18 @@ private:
 struct TopologicNode : public boost::enable_shared_from_this<TopologicNode> {
     typedef llvm::SetVector<boost::shared_ptr<LowLevelState> > StateSet;
 
-    TopologicNode(int bb, int ci, bool cb);
+    TopologicNode(boost::shared_ptr<TopologicNode> p,
+            int bb, int ci, bool cb);
+    TopologicNode();
+
+    boost::shared_ptr<TopologicNode> parent;
 
     int basic_block;
     int call_index;
     bool is_call_base;
 
-    boost::shared_ptr<TopologicNode> next;
-    boost::shared_ptr<TopologicNode> down;
+    boost::weak_ptr<TopologicNode> next;
+    boost::weak_ptr<TopologicNode> down;
     StateSet states;
 
     boost::shared_ptr<TopologicNode> getDown(bool cb);

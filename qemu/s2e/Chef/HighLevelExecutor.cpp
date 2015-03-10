@@ -119,38 +119,56 @@ void HighLevelState::terminate() {
 
 // TopologicNode ///////////////////////////////////////////////////////////////
 
-TopologicNode::TopologicNode(int bb, int ci, bool cb)
-    : basic_block(bb),
+TopologicNode::TopologicNode(shared_ptr<TopologicNode> p, int bb, int ci, bool cb)
+    : parent(p),
+      basic_block(bb),
       call_index(ci),
       is_call_base(cb) {
 
 }
 
+TopologicNode::TopologicNode()
+    : basic_block(-1),
+      call_index(0),
+      is_call_base(true) {
+
+}
+
 shared_ptr<TopologicNode> TopologicNode::getDown(bool cb) {
-    if (!down) {
-        down = make_shared<TopologicNode>(-1, 0, cb);
-    }
-    return down;
+    if (!down.expired())
+        return down.lock();
+
+    shared_ptr<TopologicNode> node = make_shared<TopologicNode>(
+            shared_from_this(), -1, 0, cb);
+    down = node;
+    return node;
 }
 
 shared_ptr<TopologicNode> TopologicNode::getNext(int bb, int ci) {
     assert(bb > basic_block || (bb == basic_block && ci > call_index));
     shared_ptr<TopologicNode> previous = shared_from_this();
-    shared_ptr<TopologicNode> current = previous->next;
+    shared_ptr<TopologicNode> current = previous->next.lock();
 
     while (current) {
         if (bb == current->basic_block && ci == current->call_index)
             return current;
         if (bb < current->basic_block || (bb == current->basic_block && ci < current->call_index)) {
-            previous->next = make_shared<TopologicNode>(bb, ci, is_call_base);
-            previous->next->next = current;
-            return previous->next;
+            shared_ptr<TopologicNode> node = make_shared<TopologicNode>(
+                    previous, bb, ci, is_call_base);
+            previous->next = node;
+
+            current->parent = node;
+            node->next = current;
+
+            return node;
         }
         previous = current;
-        current = current->next;
+        current = current->next.lock();
     }
-    previous->next = make_shared<TopologicNode>(bb, ci, is_call_base);
-    return previous->next;
+
+    shared_ptr<TopologicNode> node = make_shared<TopologicNode>(previous, bb, ci, is_call_base);
+    previous->next = node;
+    return node;
 }
 
 // LowLevelState ///////////////////////////////////////////////////////////////

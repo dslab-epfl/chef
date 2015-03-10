@@ -54,7 +54,7 @@ LowLevelTopoStrategy::LowLevelTopoStrategy(HighLevelExecutor &hl_executor)
     : hl_executor_(hl_executor),
       call_tracer_(hl_executor.detector().call_tracer()){
 
-    cursor_.push_back(make_shared<TopologicNode>(-1, 0, true));
+    cursor_.push_back(make_shared<TopologicNode>());
 
     on_stack_frame_push_ = call_tracer_.onStackFramePush.connect(
             sigc::mem_fun(*this, &LowLevelTopoStrategy::onStackFramePush));
@@ -163,24 +163,28 @@ void LowLevelTopoStrategy::onBasicBlockEnter(CallStack *stack,
 klee::ExecutionState &LowLevelTopoStrategy::selectState() {
     hl_executor_.s2e().getMessagesStream() << "Selecting new state..." << '\n';
 
+    long int counter = 0;
     while (!cursor_.empty() && cursor_.back()->states.empty()) {
-        if (cursor_.back()->down) {
-            cursor_.push_back(cursor_.back()->down);
-        } else if (cursor_.back()->next) {
-            cursor_.back() = cursor_.back()->next;
+        if (!cursor_.back()->down.expired()) {
+            cursor_.push_back(cursor_.back()->down.lock());
+        } else if (!cursor_.back()->next.expired()) {
+            cursor_.back() = cursor_.back()->next.lock();
         } else {
-            while(!cursor_.empty() && !cursor_.back()->next) {
+            while(!cursor_.empty() && cursor_.back()->next.expired()) {
                 cursor_.pop_back();
             }
             if (!cursor_.empty()) {
-                assert(cursor_.back()->next);
-                cursor_.back() = cursor_.back()->next;
+                assert(!cursor_.back()->next.expired());
+                cursor_.back() = cursor_.back()->next.lock();
             }
         }
+        counter++;
     }
     if (!cursor_.empty()) {
         assert(!cursor_.back()->states.empty());
     }
+
+    hl_executor_.s2e().getMessagesStream() << "Advanced by " << counter << " topologic nodes" << '\n';
 
     return old_searcher_->selectState();
 }
