@@ -32,57 +32,35 @@
  * All contributors are listed in the S2E-AUTHORS file.
  */
 
-#ifndef QEMU_S2E_PLUGINS_CHEF_INTERPRETERANALYZER_H_
-#define QEMU_S2E_PLUGINS_CHEF_INTERPRETERANALYZER_H_
-
-#include <s2e/Plugin.h>
-
-#include <boost/scoped_ptr.hpp>
-#include <boost/shared_ptr.hpp>
+#include "HighLevelStrategy.h"
 
 namespace s2e {
 
-class OSTracer;
-class OSThread;
-class S2ESyscallMonitor;
-class InterpreterDetector;
+// RandomPathStrategy //////////////////////////////////////////////////////////
 
-class HighLevelExecutor;
-class HighLevelState;
-class HighLevelStrategy;
+RandomPathStrategy::RandomPathStrategy() {
 
-namespace plugins {
+}
 
-class InterpreterAnalyzer : public Plugin {
-    S2E_PLUGIN
-public:
-    InterpreterAnalyzer(S2E *s2e);
-    virtual ~InterpreterAnalyzer();
 
-    void initialize();
-private:
-    void onThreadCreate(S2EExecutionState *state, OSThread* thread);
-    void onThreadExit(S2EExecutionState *state, OSThread* thread);
+void RandomPathStrategy::addStates(StateRef current,
+        const std::vector<StateRef> &states) {
 
-    void onHighLevelStateCreate(HighLevelState *hl_state);
-    void onHighLevelStateStep(HighLevelState *hl_state);
-    void onHighLevelStateKill(HighLevelState *hl_state);
-    void onHighLevelStateFork(HighLevelState *hl_state,
-            const std::vector<HighLevelState*> &forks);
-    void onHighLevelStateSwitch(HighLevelState *prev, HighLevelState *next);
+}
 
-    boost::shared_ptr<S2ESyscallMonitor> smonitor_;
-    boost::scoped_ptr<OSTracer> os_tracer_;
-    boost::scoped_ptr<InterpreterDetector> interp_detector_;
-    boost::scoped_ptr<HighLevelStrategy> strategy_;
-    boost::scoped_ptr<HighLevelExecutor> high_level_executor_;
 
-    int tracked_tid_;
+void RandomPathStrategy::killState(StateRef state) {
 
-};
+}
 
-} /* namespace plugins */
+
+void RandomPathStrategy::updateState(StateRef state) {
+
+}
+
+
+RandomPathStrategy::StateRef RandomPathStrategy::selectState() {
+    return RandomPathStrategy::StateRef();
+}
 
 } /* namespace s2e */
-
-#endif /* QEMU_S2E_PLUGINS_CHEF_INTERPRETERANALYZER_H_ */

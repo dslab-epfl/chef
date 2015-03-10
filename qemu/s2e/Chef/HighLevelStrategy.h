@@ -32,57 +32,80 @@
  * All contributors are listed in the S2E-AUTHORS file.
  */
 
-#ifndef QEMU_S2E_PLUGINS_CHEF_INTERPRETERANALYZER_H_
-#define QEMU_S2E_PLUGINS_CHEF_INTERPRETERANALYZER_H_
+#ifndef QEMU_S2E_CHEF_HIGHLEVELSTRATEGY_H_
+#define QEMU_S2E_CHEF_HIGHLEVELSTRATEGY_H_
 
-#include <s2e/Plugin.h>
-
-#include <boost/scoped_ptr.hpp>
+#include <vector>
 #include <boost/shared_ptr.hpp>
 
 namespace s2e {
 
-class OSTracer;
-class OSThread;
-class S2ESyscallMonitor;
-class InterpreterDetector;
-
-class HighLevelExecutor;
 class HighLevelState;
-class HighLevelStrategy;
 
-namespace plugins {
 
-class InterpreterAnalyzer : public Plugin {
-    S2E_PLUGIN
+class HighLevelStrategy {
 public:
-    InterpreterAnalyzer(S2E *s2e);
-    virtual ~InterpreterAnalyzer();
+    typedef boost::shared_ptr<HighLevelState> StateRef;
+public:
+    virtual ~HighLevelStrategy() { }
 
-    void initialize();
-private:
-    void onThreadCreate(S2EExecutionState *state, OSThread* thread);
-    void onThreadExit(S2EExecutionState *state, OSThread* thread);
+    virtual void addStates(StateRef current,
+            const std::vector<StateRef> &states) = 0;
+    virtual void killState(StateRef state) = 0;
+    virtual void updateState(StateRef state) = 0;
 
-    void onHighLevelStateCreate(HighLevelState *hl_state);
-    void onHighLevelStateStep(HighLevelState *hl_state);
-    void onHighLevelStateKill(HighLevelState *hl_state);
-    void onHighLevelStateFork(HighLevelState *hl_state,
-            const std::vector<HighLevelState*> &forks);
-    void onHighLevelStateSwitch(HighLevelState *prev, HighLevelState *next);
-
-    boost::shared_ptr<S2ESyscallMonitor> smonitor_;
-    boost::scoped_ptr<OSTracer> os_tracer_;
-    boost::scoped_ptr<InterpreterDetector> interp_detector_;
-    boost::scoped_ptr<HighLevelStrategy> strategy_;
-    boost::scoped_ptr<HighLevelExecutor> high_level_executor_;
-
-    int tracked_tid_;
-
+    virtual StateRef selectState() = 0;
 };
 
-} /* namespace plugins */
+
+class RandomPathStrategy : public HighLevelStrategy {
+public:
+    RandomPathStrategy();
+
+    void addStates(StateRef current, const std::vector<StateRef> &states);
+    void killState(StateRef state);
+    void updateState(StateRef state);
+
+    StateRef selectState();
+};
+
+
+template<class Selector>
+class SelectorStrategy : public HighLevelStrategy {
+public:
+    SelectorStrategy() {
+
+    }
+
+    void addStates(StateRef current, const std::vector<StateRef> &states) {
+        if (current) {
+            bool result = selector_.update(current);
+            assert(!result && "Current state was not present in the selector");
+        }
+        for (std::vector<StateRef>::const_iterator it = states.begin(),
+                ie = states.end(); it != ie; ++it) {
+            bool result = selector_.update(*it);
+            assert(result && "State already added");
+        }
+    }
+
+    void killState(StateRef state) {
+        bool result = selector_.remove(state);
+        assert(result && "State killed twice");
+    }
+
+    void updateState(StateRef state) {
+        bool result = selector_.update(state);
+        assert(!result && "Current state was not present in the selector");
+    }
+
+    StateRef selectState() {
+        return selector_.select();
+    }
+private:
+    Selector selector_;
+};
 
 } /* namespace s2e */
 
-#endif /* QEMU_S2E_PLUGINS_CHEF_INTERPRETERANALYZER_H_ */
+#endif /* QEMU_S2E_CHEF_HIGHLEVELSTRATEGY_H_ */

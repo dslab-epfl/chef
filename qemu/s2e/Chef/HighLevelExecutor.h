@@ -54,6 +54,7 @@ class HighLevelStack;
 class LowLevelState;
 class HighLevelState;
 class HighLevelExecutor;
+class HighLevelStrategy;
 
 
 class HighLevelPathSegment : public boost::enable_shared_from_this<HighLevelPathSegment> {
@@ -97,6 +98,10 @@ public:
     HighLevelState(boost::shared_ptr<HighLevelPathSegment> segment);
     virtual ~HighLevelState();
 
+    int id() const {
+        return id_;
+    }
+
     void step(uint64_t hlpc);
     boost::shared_ptr<HighLevelState> fork(uint64_t hlpc);
     void terminate();
@@ -104,9 +109,13 @@ public:
     boost::shared_ptr<HighLevelPathSegment> segment;
 
 private:
+    int id_;
+
     // Non-copyable
     HighLevelState(const HighLevelState&);
     void operator=(const HighLevelState&);
+
+    friend class HighLevelExecutor;
 };
 
 
@@ -132,37 +141,31 @@ public:
     typedef std::set<boost::shared_ptr<HighLevelState> > HighLevelStateSet;
 
 public:
-    HighLevelExecutor(InterpreterDetector &detector);
+    HighLevelExecutor(InterpreterDetector &detector,
+            HighLevelStrategy &strategy);
     virtual ~HighLevelExecutor();
 
     sigc::signal<void,
-                 S2EExecutionState*,
                  HighLevelState*>
         onHighLevelStateCreate;
 
     sigc::signal<void,
-                 S2EExecutionState*,
                  HighLevelState*>
         onHighLevelStateStep;
 
     sigc::signal<void,
-                 S2EExecutionState*,
                  HighLevelState*,
                  const std::vector<HighLevelState*>& >
         onHighLevelStateFork;
 
     sigc::signal<void,
-                 S2EExecutionState*,
                  HighLevelState*>
         onHighLevelStateKill;
 
     sigc::signal<void,
-                 S2EExecutionState*,
                  HighLevelState*,
                  HighLevelState*>
         onHighLevelStateSwitch;
-
-    HighLevelStateSet high_level_states;
 
 protected:
     boost::shared_ptr<LowLevelState> createState(S2EExecutionState *s2e_state);
@@ -171,9 +174,21 @@ private:
     void onHighLevelPCUpdate(S2EExecutionState *s2e_state,
             HighLevelStack *hl_stack);
 
-    InterpreterDetector &detector_;
+    void registerHighLevelState(boost::shared_ptr<HighLevelState> hl_state);
+    void deregisterHighLevelState(boost::shared_ptr<HighLevelState> hl_state);
 
+    void tryUpdateSelectedState();
+    bool doUpdateSelectedState();
+
+    InterpreterDetector &detector_;
+    HighLevelStrategy &strategy_;
     sigc::connection on_high_level_pc_update_;
+
+    HighLevelStateSet high_level_states_;
+    boost::shared_ptr<HighLevelState> selected_state_;
+    int id_counter_;
+
+    friend class LowLevelState;
 };
 
 

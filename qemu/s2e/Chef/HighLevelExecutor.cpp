@@ -34,6 +34,7 @@
 
 #include "HighLevelExecutor.h"
 #include <s2e/Chef/InterpreterDetector.h>
+#include <s2e/Chef/HighLevelStrategy.h>
 
 #include <boost/shared_ptr.hpp>
 #include <boost/make_shared.hpp>
@@ -77,7 +78,8 @@ boost::shared_ptr<HighLevelPathSegment> HighLevelPathSegment::getNext(uint64_t h
 // HighLevelState //////////////////////////////////////////////////////////////
 
 HighLevelState::HighLevelState(shared_ptr<HighLevelPathSegment> segment_)
-    : segment(segment_) {
+    : segment(segment_),
+      id_(-1) {
 }
 
 
@@ -132,6 +134,7 @@ shared_ptr<LowLevelState> LowLevelState::clone(S2EExecutionState *s2e_state) {
 
 void LowLevelState::terminate() {
     segment->low_level_states.erase(shared_from_this());
+    analyzer().tryUpdateSelectedState();
 }
 
 
@@ -141,47 +144,19 @@ void LowLevelState::step(uint64_t hlpc) {
     next_segment->low_level_states.insert(shared_from_this());
     segment->low_level_states.erase(shared_from_this());
 
-    if (!segment->high_level_state.expired() && segment->low_level_states.empty()) {
-        assert(segment->parent.expired());
-        shared_ptr<HighLevelState> hl_state = segment->high_level_state.lock();
-
-        if (segment->children.empty()) {
-            // High-level state terminated
-            analyzer().onHighLevelStateKill.emit(s2e_state(), hl_state.get());
-
-            hl_state->terminate();
-            analyzer().high_level_states.erase(hl_state);
-            return;
-        }
-        if (segment->children.size() > 1) {
-            typedef HighLevelPathSegment::ChildrenMap::iterator iterator;
-            std::vector<HighLevelState*> fork_list;
-            for (iterator it = segment->children.begin(),
-                    ie = segment->children.end(); it != ie; ++it) {
-                if (it->first != hlpc) {
-                    shared_ptr<HighLevelState> hl_fork = hl_state->fork(it->first);
-                    analyzer().high_level_states.insert(hl_fork);
-                    fork_list.push_back(hl_fork.get());
-                }
-            }
-            analyzer().onHighLevelStateFork.emit(s2e_state(), hl_state.get(),
-                    fork_list);
-            // Fall-through to stepping on the main state
-        }
-
-        // Plain step
-        hl_state->step(hlpc);
-        analyzer().onHighLevelStateStep.emit(s2e_state(), hl_state.get());
-    }
+    analyzer().tryUpdateSelectedState();
 
     segment = next_segment;
 }
 
 // HighLevelExecutor ///////////////////////////////////////////////////////////
 
-HighLevelExecutor::HighLevelExecutor(InterpreterDetector &detector)
+HighLevelExecutor::HighLevelExecutor(InterpreterDetector &detector,
+        HighLevelStrategy &strategy)
     : StreamAnalyzer<LowLevelState>(detector.s2e(), detector.stream()),
-      detector_(detector) {
+      detector_(detector),
+      strategy_(strategy),
+      id_counter_(0) {
     on_high_level_pc_update_ = detector_.onHighLevelPCUpdate.connect(
             sigc::mem_fun(*this, &HighLevelExecutor::onHighLevelPCUpdate));
 
@@ -206,7 +181,7 @@ shared_ptr<LowLevelState> HighLevelExecutor::createState(S2EExecutionState *s2e_
     hl_state->segment->high_level_state = hl_state;
 
     // Keep track of the new high-level state.
-    high_level_states.insert(hl_state);
+    registerHighLevelState(hl_state);
 
     // Create a low-level state as the support for the HL path.
     shared_ptr<LowLevelState> ll_state = shared_ptr<LowLevelState>(
@@ -214,7 +189,15 @@ shared_ptr<LowLevelState> HighLevelExecutor::createState(S2EExecutionState *s2e_
     ll_state->segment = segment;
     ll_state->segment->low_level_states.insert(ll_state);
 
-    onHighLevelStateCreate.emit(s2e_state, hl_state.get());
+    onHighLevelStateCreate.emit(hl_state.get());
+
+    // Add the state to the strategy
+    std::vector<shared_ptr<HighLevelState> > statev;
+    statev.push_back(hl_state);
+    strategy_.addStates(shared_ptr<HighLevelState>(), statev);
+
+    // Invoke again the strategy
+    selected_state_ = strategy_.selectState();
 
     return ll_state;
 }
@@ -225,6 +208,80 @@ void HighLevelExecutor::onHighLevelPCUpdate(S2EExecutionState *s2e_state,
     shared_ptr<LowLevelState> state = getState(s2e_state);
     uint64_t hlpc = hl_stack->top()->hlpc;
     state->step(hlpc);
+}
+
+
+void HighLevelExecutor::tryUpdateSelectedState() {
+    for (;;) {
+        if (!selected_state_)
+            break;
+        if (!doUpdateSelectedState())
+            break;
+    }
+}
+
+
+bool HighLevelExecutor::doUpdateSelectedState() {
+    shared_ptr<HighLevelPathSegment> segment = selected_state_->segment;
+    if (!segment->low_level_states.empty())
+        return false;
+
+    assert(segment->parent.expired());
+
+    // TODO: Might be nice to have a "wildcard" type of check, to simulate
+    // strategy relinquish (e.g., update the selected_state_ when a low-level
+    // state makes some progress.
+
+    if (segment->children.empty()) {
+        // High-level state terminated
+        onHighLevelStateKill.emit(selected_state_.get());
+        strategy_.killState(selected_state_);
+
+        selected_state_->terminate();
+        deregisterHighLevelState(selected_state_);
+    } else if (segment->children.size() > 1) {
+        typedef HighLevelPathSegment::ChildrenMap::iterator iterator;
+
+        std::vector<HighLevelState*> fork_list;
+        fork_list.push_back(selected_state_.get());
+
+        std::vector<shared_ptr<HighLevelState> > add_list;
+
+        for (iterator it = segment->children.begin(),
+                ie = segment->children.end(); it != ie; ++it) {
+            if (it == segment->children.begin()) {
+                selected_state_->step(it->first);
+            } else {
+                shared_ptr<HighLevelState> hl_fork = selected_state_->fork(it->first);
+                registerHighLevelState(hl_fork);
+                fork_list.push_back(hl_fork.get());
+                add_list.push_back(hl_fork);
+            }
+        }
+
+        onHighLevelStateFork.emit(selected_state_.get(), fork_list);
+        strategy_.addStates(selected_state_, add_list);
+    } else {
+        // Plain step
+        selected_state_->step(segment->children.begin()->first);
+        onHighLevelStateStep.emit(selected_state_.get());
+        strategy_.updateState(selected_state_);
+    }
+
+    // Query the strategy for another state
+    selected_state_ = strategy_.selectState();
+    return true;
+}
+
+
+void HighLevelExecutor::registerHighLevelState(boost::shared_ptr<HighLevelState> hl_state) {
+    hl_state->id_ = id_counter_++;
+    high_level_states_.insert(hl_state);
+}
+
+
+void HighLevelExecutor::deregisterHighLevelState(boost::shared_ptr<HighLevelState> hl_state) {
+    high_level_states_.erase(hl_state);
 }
 
 } /* namespace s2e */
