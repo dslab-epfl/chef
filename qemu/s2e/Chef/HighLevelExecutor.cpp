@@ -117,6 +117,42 @@ void HighLevelState::terminate() {
     segment->high_level_state.reset();
 }
 
+// TopologicNode ///////////////////////////////////////////////////////////////
+
+TopologicNode::TopologicNode(int bb, int ci, bool cb)
+    : basic_block(bb),
+      call_index(ci),
+      is_call_base(cb) {
+
+}
+
+shared_ptr<TopologicNode> TopologicNode::getDown(bool cb) {
+    if (!down) {
+        down = make_shared<TopologicNode>(-1, 0, cb);
+    }
+    return down;
+}
+
+shared_ptr<TopologicNode> TopologicNode::getNext(int bb, int ci) {
+    assert(bb > basic_block || (bb == basic_block && ci > call_index));
+    shared_ptr<TopologicNode> previous = shared_from_this();
+    shared_ptr<TopologicNode> current = previous->next;
+
+    while (current) {
+        if (bb == current->basic_block && ci == current->call_index)
+            return current;
+        if (bb < current->basic_block || (bb == current->basic_block && ci < current->call_index)) {
+            previous->next = make_shared<TopologicNode>(bb, ci, is_call_base);
+            previous->next->next = current;
+            return previous->next;
+        }
+        previous = current;
+        current = current->next;
+    }
+    previous->next = make_shared<TopologicNode>(bb, ci, is_call_base);
+    return previous->next;
+}
+
 // LowLevelState ///////////////////////////////////////////////////////////////
 
 LowLevelState::LowLevelState(HighLevelExecutor &analyzer,
@@ -131,12 +167,22 @@ shared_ptr<LowLevelState> LowLevelState::clone(S2EExecutionState *s2e_state) {
             new LowLevelState(analyzer(), s2e_state));
     new_state->segment = segment;
     new_state->segment->low_level_states.insert(new_state);
+
+    if (!topo_index.empty()) {
+        new_state->topo_index = topo_index;
+        new_state->topo_index.back()->states.insert(new_state);
+    }
     return new_state;
 }
 
 
 void LowLevelState::terminate() {
     segment->low_level_states.erase(shared_from_this());
+
+    if (!topo_index.empty()) {
+        topo_index.back()->states.remove(shared_from_this());
+    }
+
     analyzer().tryUpdateSelectedState();
 }
 
@@ -193,6 +239,10 @@ shared_ptr<LowLevelState> HighLevelExecutor::createState(S2EExecutionState *s2e_
             new LowLevelState(*this, s2e_state));
     ll_state->segment = segment;
     ll_state->segment->low_level_states.insert(ll_state);
+
+    // Bootstrap the topologic index computation
+    ll_state->topo_index = ll_strategy_->cursor_;
+    ll_state->topo_index.back()->states.insert(ll_state);
 
     onHighLevelStateCreate.emit(hl_state.get());
 

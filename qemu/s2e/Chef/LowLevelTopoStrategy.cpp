@@ -34,13 +34,17 @@
 
 #include "LowLevelTopoStrategy.h"
 
+#include <s2e/S2EExecutor.h>
+
 #include <s2e/Chef/CallTracer.h>
 #include <s2e/Chef/HighLevelExecutor.h>
 #include <s2e/Chef/InterpreterDetector.h>
 
 #include <boost/shared_ptr.hpp>
+#include <boost/make_shared.hpp>
 
 using boost::shared_ptr;
+using boost::make_shared;
 
 namespace s2e {
 
@@ -49,12 +53,18 @@ namespace s2e {
 LowLevelTopoStrategy::LowLevelTopoStrategy(HighLevelExecutor &hl_executor)
     : hl_executor_(hl_executor),
       call_tracer_(hl_executor.detector().call_tracer()){
+
+    cursor_.push_back(make_shared<TopologicNode>(-1, 0, true));
+
     on_stack_frame_push_ = call_tracer_.onStackFramePush.connect(
             sigc::mem_fun(*this, &LowLevelTopoStrategy::onStackFramePush));
     on_stack_frame_popping_ = call_tracer_.onStackFramePopping.connect(
             sigc::mem_fun(*this, &LowLevelTopoStrategy::onStackFramePopping));
     on_basic_block_enter_ = call_tracer_.onBasicBlockEnter.connect(
             sigc::mem_fun(*this, &LowLevelTopoStrategy::onBasicBlockEnter));
+
+    old_searcher_ = hl_executor_.s2e().getExecutor()->getSearcher();
+    hl_executor_.s2e().getExecutor()->setSearcher(this);
 }
 
 
@@ -62,6 +72,8 @@ LowLevelTopoStrategy::~LowLevelTopoStrategy() {
     on_stack_frame_push_.disconnect();
     on_stack_frame_popping_.disconnect();
     on_basic_block_enter_.disconnect();
+
+    hl_executor_.s2e().getExecutor()->setSearcher(old_searcher_);
 }
 
 
@@ -69,6 +81,15 @@ void LowLevelTopoStrategy::onStackFramePush(CallStack *stack,
         boost::shared_ptr<CallStackFrame> old_top,
         boost::shared_ptr<CallStackFrame> new_top) {
     shared_ptr<LowLevelState> state = hl_executor_.getState(stack->s2e_state());
+    assert(!state->topo_index.empty());
+
+
+    shared_ptr<TopologicNode> slot = state->topo_index.back();
+    shared_ptr<TopologicNode> next_slot = slot->getDown(true);
+    state->topo_index.push_back(next_slot);
+
+    slot->states.remove(state);
+    next_slot->states.insert(state);
 }
 
 
@@ -76,12 +97,102 @@ void LowLevelTopoStrategy::onStackFramePopping(CallStack *stack,
         boost::shared_ptr<CallStackFrame> old_top,
         boost::shared_ptr<CallStackFrame> new_top) {
     shared_ptr<LowLevelState> state = hl_executor_.getState(stack->s2e_state());
+    assert(!state->topo_index.empty());
+
+    shared_ptr<TopologicNode> slot = state->topo_index.back();
+    shared_ptr<TopologicNode> next_slot;
+
+    while (!state->topo_index.empty() && !state->topo_index.back()->is_call_base) {
+        state->topo_index.pop_back();
+    }
+    assert(state->topo_index.size() > 1);
+    state->topo_index.pop_back();
+
+    next_slot = state->topo_index.back()->getNext(
+                state->topo_index.back()->basic_block,
+                state->topo_index.back()->call_index + 1);
+    state->topo_index.back() = next_slot;
+
+    slot->states.remove(state);
+    next_slot->states.insert(state);
 }
 
 
 void LowLevelTopoStrategy::onBasicBlockEnter(CallStack *stack,
         boost::shared_ptr<CallStackFrame> top) {
     shared_ptr<LowLevelState> state = hl_executor_.getState(stack->s2e_state());
+    assert(!state->topo_index.empty());
+
+    int bb = top->bb_index;
+
+#if 0
+    static int dbg_counter = 0;
+    if (dbg_counter > 100) {
+        hl_executor_.s2e().getMessagesStream(stack->s2e_state())
+                    << "Hit BB: " << bb << ' '
+                    << "Stack topo depth: " << state->topo_index.size() << '\n';
+        dbg_counter = 0;
+    }
+    dbg_counter++;
+#endif
+
+
+    shared_ptr<TopologicNode> slot = state->topo_index.back();
+    shared_ptr<TopologicNode> next_slot;
+
+    if (bb <= state->topo_index.back()->basic_block) {
+        next_slot = state->topo_index.back()->getDown(false);
+        next_slot = next_slot->getNext(bb, 0);
+        state->topo_index.push_back(next_slot);
+    } else {
+        while(!state->topo_index.back()->is_call_base) {
+            shared_ptr<TopologicNode> prev = *(state->topo_index.end() - 2);
+            if (bb <= prev->basic_block)
+                break;
+            state->topo_index.pop_back();
+        }
+        next_slot = state->topo_index.back()->getNext(bb, 0);
+        state->topo_index.back() = next_slot;
+    }
+
+    slot->states.remove(state);
+    next_slot->states.insert(state);
+}
+
+
+klee::ExecutionState &LowLevelTopoStrategy::selectState() {
+    hl_executor_.s2e().getMessagesStream() << "Selecting new state..." << '\n';
+
+    while (!cursor_.empty() && cursor_.back()->states.empty()) {
+        if (cursor_.back()->down) {
+            cursor_.push_back(cursor_.back()->down);
+        } else if (cursor_.back()->next) {
+            cursor_.back() = cursor_.back()->next;
+        } else {
+            while(!cursor_.empty() && !cursor_.back()->next) {
+                cursor_.pop_back();
+            }
+            if (!cursor_.empty()) {
+                assert(cursor_.back()->next);
+                cursor_.back() = cursor_.back()->next;
+            }
+        }
+    }
+    if (!cursor_.empty()) {
+        assert(!cursor_.back()->states.empty());
+    }
+
+    return old_searcher_->selectState();
+}
+
+void LowLevelTopoStrategy::update(klee::ExecutionState *current,
+            const std::set<klee::ExecutionState*> &addedStates,
+            const std::set<klee::ExecutionState*> &removedStates) {
+    old_searcher_->update(current, addedStates, removedStates);
+}
+
+bool LowLevelTopoStrategy::empty() {
+    return old_searcher_->empty();
 }
 
 } /* namespace s2e */

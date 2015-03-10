@@ -39,18 +39,33 @@
 #include <boost/shared_ptr.hpp>
 #include <s2e/Signals/Signals.h>
 
+#include <klee/Searcher.h>
+
+namespace klee {
+class ExecutionState;
+}
+
+
 namespace s2e {
 
 class CallTracer;
 class CallStack;
 class CallStackFrame;
 class HighLevelExecutor;
+class TopologicNode;
 
 
-class LowLevelTopoStrategy {
+class LowLevelTopoStrategy : public klee::Searcher {
 public:
     LowLevelTopoStrategy(HighLevelExecutor &hl_executor);
     ~LowLevelTopoStrategy();
+
+    // klee::Searcher
+    klee::ExecutionState &selectState();
+    void update(klee::ExecutionState *current,
+                const std::set<klee::ExecutionState*> &addedStates,
+                const std::set<klee::ExecutionState*> &removedStates);
+    bool empty();
 
 private:
     void onStackFramePush(CallStack *stack,
@@ -67,9 +82,15 @@ private:
     HighLevelExecutor &hl_executor_;
     CallTracer &call_tracer_;
 
+    std::vector<boost::shared_ptr<TopologicNode> > cursor_;
+
     sigc::connection on_stack_frame_push_;
     sigc::connection on_stack_frame_popping_;
     sigc::connection on_basic_block_enter_;
+
+    klee::Searcher *old_searcher_;
+
+    friend class HighLevelExecutor;
 };
 
 } /* namespace s2e */

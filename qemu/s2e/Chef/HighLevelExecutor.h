@@ -42,6 +42,7 @@
 #include <boost/enable_shared_from_this.hpp>
 
 #include <llvm/ADT/DenseMap.h>
+#include <llvm/ADT/SetVector.h>
 //#include <llvm/ADT/DenseSet.h>
 //#include <llvm/ADT/SmallSet.h>
 #include <set>
@@ -119,6 +120,32 @@ private:
 };
 
 
+struct TopologicNode : public boost::enable_shared_from_this<TopologicNode> {
+    typedef llvm::SetVector<boost::shared_ptr<LowLevelState> > StateSet;
+
+    TopologicNode(int bb, int ci, bool cb);
+
+    int basic_block;
+    int call_index;
+    bool is_call_base;
+
+    boost::shared_ptr<TopologicNode> next;
+    boost::shared_ptr<TopologicNode> down;
+    StateSet states;
+
+    boost::shared_ptr<TopologicNode> getDown(bool cb);
+    boost::shared_ptr<TopologicNode> getNext(int bb, int ci);
+
+private:
+    // Non-copyable
+    TopologicNode(const TopologicNode&);
+    void operator=(const TopologicNode&);
+};
+
+
+typedef std::vector<boost::shared_ptr<TopologicNode> > TopologicIndex;
+
+
 class LowLevelState : public StreamAnalyzerState<LowLevelState, HighLevelExecutor>,
                       public boost::enable_shared_from_this<LowLevelState> {
 public:
@@ -128,6 +155,10 @@ public:
     void terminate();
 
     boost::shared_ptr<HighLevelPathSegment> segment;
+
+    // This is updated only by the strategies that need it
+    // (currently, LowLevelTopoStrategy)
+    TopologicIndex topo_index;
 
 private:
     LowLevelState(HighLevelExecutor &analyzer, S2EExecutionState *s2e_state);
