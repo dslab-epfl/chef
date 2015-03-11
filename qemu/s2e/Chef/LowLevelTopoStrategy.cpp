@@ -48,6 +48,37 @@ using boost::make_shared;
 
 namespace s2e {
 
+static shared_ptr<LowLevelState> findNextState(int path_id,
+        std::vector<boost::shared_ptr<TopologicNode> > &cursor,
+        long int &counter) {
+    counter = 0;
+    while (!cursor.empty()) {
+        if (!cursor.back()->states.empty()) {
+            for (TopologicNode::StateSet::iterator it = cursor.back()->states.begin(),
+                    ie = cursor.back()->states.end(); it != ie; ++it) {
+                if ((*it)->segment->path_id == path_id) {
+                    return *it;
+                }
+            }
+        }
+        if (!cursor.back()->down.expired()) {
+            cursor.push_back(cursor.back()->down.lock());
+        } else if (!cursor.back()->next.expired()) {
+            cursor.back() = cursor.back()->next.lock();
+        } else {
+            while(!cursor.empty() && cursor.back()->next.expired()) {
+                cursor.pop_back();
+            }
+            if (!cursor.empty()) {
+                assert(!cursor.back()->next.expired());
+                cursor.back() = cursor.back()->next.lock();
+            }
+        }
+        counter++;
+    }
+    return shared_ptr<LowLevelState>();
+}
+
 // LowLevelTopoStrategy ////////////////////////////////////////////////////////
 
 LowLevelTopoStrategy::LowLevelTopoStrategy(HighLevelExecutor &hl_executor)
@@ -68,18 +99,18 @@ LowLevelTopoStrategy::LowLevelTopoStrategy(HighLevelExecutor &hl_executor)
 
 void LowLevelTopoStrategy::setTargetHighLevelState(
         boost::shared_ptr<HighLevelState> hl_state) {
-    if (target_state_) {
+    if (target_hl_state_) {
         // The state might have already terminated, but it's fine, since
         // the shared pointer pins the structure in memory.
-        target_state_->cursor = active_cursor_;
+        target_hl_state_->cursor = active_cursor_;
     }
-    target_state_ = hl_state;
+    target_hl_state_ = hl_state;
     active_cursor_.clear();
 
-    if (target_state_) {
+    if (target_hl_state_) {
         // We save the active cursor in order to prevent HL forks from inheriting
         // one that is ahead of the fork point, which could transiently happen.
-        active_cursor_ = target_state_->cursor;
+        active_cursor_ = target_hl_state_->cursor;
     }
 }
 
@@ -135,7 +166,8 @@ void LowLevelTopoStrategy::onStackFramePopping(CallStack *stack,
 
 
 void LowLevelTopoStrategy::onBasicBlockEnter(CallStack *stack,
-        boost::shared_ptr<CallStackFrame> top) {
+        boost::shared_ptr<CallStackFrame> top,
+        bool &schedule_state) {
     shared_ptr<LowLevelState> state = hl_executor_.getState(stack->s2e_state());
     assert(!state->topo_index.empty());
 
@@ -173,60 +205,45 @@ void LowLevelTopoStrategy::onBasicBlockEnter(CallStack *stack,
 
     slot->states.remove(state);
     next_slot->states.insert(state);
+
+    // Check if a new state should be scheduled
+    schedule_state = trySchedule();
 }
 
 
-shared_ptr<LowLevelState> LowLevelTopoStrategy::findNextState(int path_id,
-        std::vector<boost::shared_ptr<TopologicNode> > &cursor,
-        long int &counter) {
-    counter = 0;
-    while (!cursor.empty()) {
-        if (!cursor.back()->states.empty()) {
-            for (TopologicNode::StateSet::iterator it = cursor.back()->states.begin(),
-                    ie = cursor.back()->states.end(); it != ie; ++it) {
-                if ((*it)->segment->path_id == path_id) {
-                    return *it;
-                }
-            }
-        }
-        if (!cursor.back()->down.expired()) {
-            cursor.push_back(cursor.back()->down.lock());
-        } else if (!cursor.back()->next.expired()) {
-            cursor.back() = cursor.back()->next.lock();
-        } else {
-            while(!cursor.empty() && cursor.back()->next.expired()) {
-                cursor.pop_back();
-            }
-            if (!cursor.empty()) {
-                assert(!cursor.back()->next.expired());
-                cursor.back() = cursor.back()->next.lock();
-            }
-        }
-        counter++;
+bool LowLevelTopoStrategy::trySchedule() {
+    if (!target_hl_state_) {
+        hl_executor_.s2e().getWarningsStream()
+                << "LowLevelTopoStrategy: No high-level state registered. "
+                << "Resorting to underlying strategy..." << '\n';
+        return false;
     }
-    return shared_ptr<LowLevelState>();
+
+    long int counter;
+    shared_ptr<LowLevelState> next_state = findNextState(
+                target_hl_state_->id(), active_cursor_, counter);
+    assert(next_state && "No low-level path support on high-level path");
+
+#if 0
+    hl_executor_.s2e().getMessagesStream() << "Advanced path " << target_hl_state_->id()
+            << " by " << counter << " topologic nodes" << '\n';
+#endif
+
+    if (next_state == current_ll_state_) {
+        return false;
+    }
+
+    current_ll_state_ = next_state;
+    return true;
 }
 
 
 klee::ExecutionState &LowLevelTopoStrategy::selectState() {
-    if (!target_state_) {
-        hl_executor_.s2e().getWarningsStream()
-                << "LowLevelTopoStrategy: No high-level state registered. "
-                << "Resorting to underlying strategy..." << '\n';
+    if (!current_ll_state_) {
         return old_searcher_->selectState();
     }
 
-    hl_executor_.s2e().getMessagesStream() << "Selecting new state..." << '\n';
-
-    long int counter;
-    shared_ptr<LowLevelState> next_state = findNextState(
-            target_state_->id(), active_cursor_, counter);
-    assert(next_state && "No low-level path support on high-level path");
-
-    hl_executor_.s2e().getMessagesStream() << "Advanced path " << target_state_->id()
-            << " by " << counter << " topologic nodes" << '\n';
-
-    return *next_state->s2e_state();
+    return *current_ll_state_->s2e_state();
 }
 
 void LowLevelTopoStrategy::update(klee::ExecutionState *current,

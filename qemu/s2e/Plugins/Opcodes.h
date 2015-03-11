@@ -60,7 +60,11 @@
 
 #define OPSHIFT 8
 #define SUBOPSHIFT 16
+#ifdef S2E_DISPATCH_CUSTOM
 #define OPCODE_SIZE (2 + 8)
+#else
+#define OPCODE_SIZE 8
+#endif
 #define OPCODE_CHECK(operand, opcode) ((((operand)>> OPSHIFT) & 0xFF) == (opcode))
 #define OPCODE_GETSUBFUNCTION(operand) (((operand) >> SUBOPSHIFT) & 0xFF)
 

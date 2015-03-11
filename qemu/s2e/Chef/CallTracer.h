@@ -115,7 +115,7 @@ public:
 protected:
     void newFrame(uint64_t call_site, uint64_t function, uint64_t sp);
     void updateFrame(uint64_t sp);
-    void updateBasicBlock(uint32_t bb_index);
+    void updateBasicBlock(uint32_t bb_index, bool &schedule_state);
 
 private:
     typedef std::vector<boost::shared_ptr<CallStackFrame> > FrameVector;
@@ -163,7 +163,8 @@ public:
 
     sigc::signal<void,
                  CallStack*,
-                 boost::shared_ptr<CallStackFrame> >
+                 boost::shared_ptr<CallStackFrame>,
+                 bool&> // Force state scheduler
             onBasicBlockEnter;
 
 protected:
@@ -174,14 +175,18 @@ private:
             S2EExecutionState *state, TranslationBlock *tb, uint64_t pc,
             uint64_t rmask, uint64_t wmask, bool accessesMemory);
     void onThreadSwitch(S2EExecutionState *state, OSThread* prev, OSThread* next);
+    void onStateSwitch(S2EExecutionState *prev, S2EExecutionState *next);
     void onStackPointerModification(S2EExecutionState *state, uint64_t pc,
             bool isCall);
     void onCustomInstruction(S2EExecutionState *state, uint64_t opcode);
+
+    void updateConnections(S2EExecutionState *state, bool flush_tb);
 
     OSTracer &os_tracer_;
     int tracked_tid_;
 
     sigc::connection on_thread_switch_;
+    sigc::connection on_state_switch_;
     sigc::connection on_translate_register_access_;
     sigc::connection on_custom_instruction_;
 

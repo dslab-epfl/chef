@@ -444,6 +444,9 @@ InterpreterDetector::InterpreterDetector(CallTracer &call_tracer,
             S2E_CHEF_START, S2E_CHEF_END);
     syscall_range_->onS2ESystemCall.connect(
             sigc::mem_fun(*this, &InterpreterDetector::onS2ESyscall));
+
+    on_state_switch_ = stream().onStateSwitch.connect(
+            sigc::mem_fun(*this, &InterpreterDetector::onStateSwitch));
 }
 
 
@@ -453,6 +456,7 @@ InterpreterDetector::~InterpreterDetector() {
     on_symbolic_data_memory_access_.disconnect();
     on_stack_frame_push_.disconnect();
     on_stack_frame_popping_.disconnect();
+    on_state_switch_.disconnect();
 }
 
 
@@ -692,6 +696,14 @@ void InterpreterDetector::onLowLevelStackFramePopping(CallStack *call_stack,
                 << hl_stack->frames_.size() << '\n';
 #endif
     }
+}
+
+
+void InterpreterDetector::onStateSwitch(S2EExecutionState *prev,
+        S2EExecutionState *next) {
+    CallStack *call_stack = call_tracer_.getState(next).get();
+    assert(call_stack->size() > 0);
+    updateMemoryTracking(call_stack->top());
 }
 
 

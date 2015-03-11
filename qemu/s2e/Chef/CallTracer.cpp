@@ -37,9 +37,12 @@
 extern "C" {
 #include "config.h"
 #include "qemu-common.h"
+#include "cpu.h"
+extern CPUX86State *env;
 }
 
 #include <s2e/S2E.h>
+#include <s2e/S2EExecutor.h>
 #include <s2e/Chef/OSTracer.h>
 #include <s2e/S2EExecutionState.h>
 #include <s2e/Plugins/Opcodes.h>
@@ -125,11 +128,11 @@ void CallStack::updateFrame(uint64_t sp) {
 }
 
 
-void CallStack::updateBasicBlock(uint32_t bb_index) {
+void CallStack::updateBasicBlock(uint32_t bb_index, bool &schedule_state) {
     assert(!frames_.empty());
 
     frames_.back()->bb_index = bb_index;
-    analyzer().onBasicBlockEnter.emit(this, frames_.back());
+    analyzer().onBasicBlockEnter.emit(this, frames_.back(), schedule_state);
 }
 
 
@@ -156,9 +159,12 @@ CallTracer::CallTracer(OSTracer &os_tracer, int tid)
 
     on_thread_switch_ = os_tracer.onThreadSwitch.connect(
             sigc::mem_fun(*this, &CallTracer::onThreadSwitch));
+    on_state_switch_ = stream().onStateSwitch.connect(
+            sigc::mem_fun(*this, &CallTracer::onStateSwitch));
 }
 
 CallTracer::~CallTracer() {
+    on_state_switch_.disconnect();
     on_thread_switch_.disconnect();
     on_translate_register_access_.disconnect();
     on_custom_instruction_.disconnect();
@@ -194,19 +200,12 @@ void CallTracer::onTranslateRegisterAccess(ExecutionSignal *signal,
 
 void CallTracer::onThreadSwitch(S2EExecutionState *state,
             OSThread* prev, OSThread* next) {
-    if (next->tid() == tracked_tid_) {
-        on_custom_instruction_ = stream().onCustomInstruction.connect(
-                sigc::mem_fun(*this, &CallTracer::onCustomInstruction));
-        on_translate_register_access_ = stream().onTranslateRegisterAccessEnd.connect(
-                sigc::mem_fun(*this, &CallTracer::onTranslateRegisterAccess));
+    updateConnections(state, true);
+}
 
-        // TODO: Ideally, this should happen whenever onTranslate* callbacks are
-        // modified.
-        s2e_tb_safe_flush();
-    } else if (prev && prev->tid() == tracked_tid_) {
-        on_translate_register_access_.disconnect();
-        on_custom_instruction_.disconnect();
-    }
+void CallTracer::onStateSwitch(S2EExecutionState *prev,
+        S2EExecutionState *next) {
+    updateConnections(next, false);
 }
 
 
@@ -239,7 +238,50 @@ void CallTracer::onCustomInstruction(S2EExecutionState *state, uint64_t opcode) 
         return;
 
     uint32_t bb_index = (uint32_t)((opcode >> 16) & 0xFFFF);
-    getState(state)->updateBasicBlock(bb_index);
+    bool schedule_state = false;
+    getState(state)->updateBasicBlock(bb_index, schedule_state);
+
+    if (schedule_state) {
+        // Skip the current instruction, since we'll throw at the end
+        state->regs()->write<target_ulong>(CPU_OFFSET(eip), state->getPc() + S2E_CUSTOM_INSTRUCTION_SIZE);
+
+        // XXX: Not sure why we clear these.  Ask Vitaly next time...
+        state->regs()->write(CPU_OFFSET(cc_op), 0);
+        state->regs()->write(CPU_OFFSET(cc_src), 0);
+        state->regs()->write(CPU_OFFSET(cc_dst), 0);
+        state->regs()->write(CPU_OFFSET(cc_tmp), 0);
+
+        // What is the performance impact of this?
+        // Do we ever need a TLB in symbolic mode?
+        tlb_flush(env, 1);
+        s2e().getExecutor()->yieldState(*state);
+        throw CpuExitException();
+    }
+}
+
+
+void CallTracer::updateConnections(S2EExecutionState *state, bool flush_tb) {
+    OSThread *thread = os_tracer_.getState(state)->getThread(tracked_tid_);
+
+    if (thread->tid() == tracked_tid_) {
+        if (!on_custom_instruction_.connected()) {
+            on_custom_instruction_ = stream().onCustomInstruction.connect(
+                    sigc::mem_fun(*this, &CallTracer::onCustomInstruction));
+        }
+        if (!on_translate_register_access_.connected()) {
+            on_translate_register_access_ = stream().onTranslateRegisterAccessEnd.connect(
+                    sigc::mem_fun(*this, &CallTracer::onTranslateRegisterAccess));
+        }
+
+        // TODO: Ideally, this should happen whenever onTranslate* callbacks are
+        // modified.
+        if (flush_tb) {
+            s2e_tb_safe_flush();
+        }
+    } else {
+        on_translate_register_access_.disconnect();
+        on_custom_instruction_.disconnect();
+    }
 }
 
 } /* namespace s2e */

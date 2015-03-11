@@ -184,6 +184,7 @@ private:
             boost::shared_ptr<CallStackFrame> old_top,
             boost::shared_ptr<CallStackFrame> new_top);
 
+    void onStateSwitch(S2EExecutionState *prev, S2EExecutionState *next);
     void updateMemoryTracking(boost::shared_ptr<CallStackFrame> top);
 
     // Dependencies
@@ -208,6 +209,8 @@ private:
 
     sigc::connection on_concrete_data_memory_access_;
     sigc::connection on_symbolic_data_memory_access_;
+
+    sigc::connection on_state_switch_;
 };
 
 } /* namespace s2e */

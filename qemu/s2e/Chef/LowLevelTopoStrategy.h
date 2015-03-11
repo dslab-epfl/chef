@@ -81,17 +81,17 @@ private:
             boost::shared_ptr<CallStackFrame> new_top);
 
     void onBasicBlockEnter(CallStack *stack,
-            boost::shared_ptr<CallStackFrame> top);
+            boost::shared_ptr<CallStackFrame> top,
+            bool &schedule_state);
 
-    boost::shared_ptr<LowLevelState> findNextState(int path_id,
-            std::vector<boost::shared_ptr<TopologicNode> > &cursor,
-            long int &counter);
+    bool trySchedule();
 
     HighLevelExecutor &hl_executor_;
     CallTracer &call_tracer_;
 
-    boost::shared_ptr<HighLevelState> target_state_;
+    boost::shared_ptr<HighLevelState> target_hl_state_;
     std::vector<boost::shared_ptr<TopologicNode> > active_cursor_;
+    boost::shared_ptr<LowLevelState> current_ll_state_;
 
     sigc::connection on_stack_frame_push_;
     sigc::connection on_stack_frame_popping_;
