@@ -267,6 +267,7 @@ shared_ptr<LowLevelState> HighLevelExecutor::createState(S2EExecutionState *s2e_
     // Create a high-level state at the base of the path.
     shared_ptr<HighLevelState> hl_state = make_shared<HighLevelState>(boost::ref(*this), segment);
     hl_state->segment->high_level_state = hl_state;
+    hl_state->cursor.push_back(make_shared<TopologicNode>());
 
     // Keep track of the new high-level state.
     high_level_states_.insert(hl_state);
@@ -278,7 +279,7 @@ shared_ptr<LowLevelState> HighLevelExecutor::createState(S2EExecutionState *s2e_
     ll_state->segment->low_level_states.insert(ll_state);
 
     // Bootstrap the topologic index computation
-    ll_state->topo_index = ll_strategy_->cursor_;
+    ll_state->topo_index = hl_state->cursor;
     ll_state->topo_index.back()->states.insert(ll_state);
 
     onHighLevelStateCreate.emit(hl_state.get());
@@ -290,6 +291,7 @@ shared_ptr<LowLevelState> HighLevelExecutor::createState(S2EExecutionState *s2e_
 
     // Invoke again the strategy
     selected_state_ = hl_strategy_.selectState();
+    ll_strategy_->setTargetHighLevelState(selected_state_);
 
     return ll_state;
 }
@@ -362,6 +364,7 @@ bool HighLevelExecutor::doUpdateSelectedState() {
 
     // Query the strategy for another state
     selected_state_ = hl_strategy_.selectState();
+    ll_strategy_->setTargetHighLevelState(selected_state_);
     return true;
 }
 

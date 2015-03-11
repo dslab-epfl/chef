@@ -54,8 +54,6 @@ LowLevelTopoStrategy::LowLevelTopoStrategy(HighLevelExecutor &hl_executor)
     : hl_executor_(hl_executor),
       call_tracer_(hl_executor.detector().call_tracer()){
 
-    cursor_.push_back(make_shared<TopologicNode>());
-
     on_stack_frame_push_ = call_tracer_.onStackFramePush.connect(
             sigc::mem_fun(*this, &LowLevelTopoStrategy::onStackFramePush));
     on_stack_frame_popping_ = call_tracer_.onStackFramePopping.connect(
@@ -65,6 +63,24 @@ LowLevelTopoStrategy::LowLevelTopoStrategy(HighLevelExecutor &hl_executor)
 
     old_searcher_ = hl_executor_.s2e().getExecutor()->getSearcher();
     hl_executor_.s2e().getExecutor()->setSearcher(this);
+}
+
+
+void LowLevelTopoStrategy::setTargetHighLevelState(
+        boost::shared_ptr<HighLevelState> hl_state) {
+    if (target_state_) {
+        // The state might have already terminated, but it's fine, since
+        // the shared pointer pins the structure in memory.
+        target_state_->cursor = active_cursor_;
+    }
+    target_state_ = hl_state;
+    active_cursor_.clear();
+
+    if (target_state_) {
+        // We save the active cursor in order to prevent HL forks from inheriting
+        // one that is ahead of the fork point, which could transiently happen.
+        active_cursor_ = target_state_->cursor;
+    }
 }
 
 
@@ -160,33 +176,57 @@ void LowLevelTopoStrategy::onBasicBlockEnter(CallStack *stack,
 }
 
 
-klee::ExecutionState &LowLevelTopoStrategy::selectState() {
-    hl_executor_.s2e().getMessagesStream() << "Selecting new state..." << '\n';
-
-    long int counter = 0;
-    while (!cursor_.empty() && cursor_.back()->states.empty()) {
-        if (!cursor_.back()->down.expired()) {
-            cursor_.push_back(cursor_.back()->down.lock());
-        } else if (!cursor_.back()->next.expired()) {
-            cursor_.back() = cursor_.back()->next.lock();
-        } else {
-            while(!cursor_.empty() && cursor_.back()->next.expired()) {
-                cursor_.pop_back();
+shared_ptr<LowLevelState> LowLevelTopoStrategy::findNextState(int path_id,
+        std::vector<boost::shared_ptr<TopologicNode> > &cursor,
+        long int &counter) {
+    counter = 0;
+    while (!cursor.empty()) {
+        if (!cursor.back()->states.empty()) {
+            for (TopologicNode::StateSet::iterator it = cursor.back()->states.begin(),
+                    ie = cursor.back()->states.end(); it != ie; ++it) {
+                if ((*it)->segment->path_id == path_id) {
+                    return *it;
+                }
             }
-            if (!cursor_.empty()) {
-                assert(!cursor_.back()->next.expired());
-                cursor_.back() = cursor_.back()->next.lock();
+        }
+        if (!cursor.back()->down.expired()) {
+            cursor.push_back(cursor.back()->down.lock());
+        } else if (!cursor.back()->next.expired()) {
+            cursor.back() = cursor.back()->next.lock();
+        } else {
+            while(!cursor.empty() && cursor.back()->next.expired()) {
+                cursor.pop_back();
+            }
+            if (!cursor.empty()) {
+                assert(!cursor.back()->next.expired());
+                cursor.back() = cursor.back()->next.lock();
             }
         }
         counter++;
     }
-    if (!cursor_.empty()) {
-        assert(!cursor_.back()->states.empty());
+    return shared_ptr<LowLevelState>();
+}
+
+
+klee::ExecutionState &LowLevelTopoStrategy::selectState() {
+    if (!target_state_) {
+        hl_executor_.s2e().getWarningsStream()
+                << "LowLevelTopoStrategy: No high-level state registered. "
+                << "Resorting to underlying strategy..." << '\n';
+        return old_searcher_->selectState();
     }
 
-    hl_executor_.s2e().getMessagesStream() << "Advanced by " << counter << " topologic nodes" << '\n';
+    hl_executor_.s2e().getMessagesStream() << "Selecting new state..." << '\n';
 
-    return old_searcher_->selectState();
+    long int counter;
+    shared_ptr<LowLevelState> next_state = findNextState(
+            target_state_->id(), active_cursor_, counter);
+    assert(next_state && "No low-level path support on high-level path");
+
+    hl_executor_.s2e().getMessagesStream() << "Advanced path " << target_state_->id()
+            << " by " << counter << " topologic nodes" << '\n';
+
+    return *next_state->s2e_state();
 }
 
 void LowLevelTopoStrategy::update(klee::ExecutionState *current,

@@ -52,6 +52,8 @@ class CallTracer;
 class CallStack;
 class CallStackFrame;
 class HighLevelExecutor;
+class HighLevelState;
+class LowLevelState;
 class TopologicNode;
 
 
@@ -59,6 +61,8 @@ class LowLevelTopoStrategy : public klee::Searcher {
 public:
     LowLevelTopoStrategy(HighLevelExecutor &hl_executor);
     ~LowLevelTopoStrategy();
+
+    void setTargetHighLevelState(boost::shared_ptr<HighLevelState> hl_state);
 
     // klee::Searcher
     klee::ExecutionState &selectState();
@@ -79,10 +83,15 @@ private:
     void onBasicBlockEnter(CallStack *stack,
             boost::shared_ptr<CallStackFrame> top);
 
+    boost::shared_ptr<LowLevelState> findNextState(int path_id,
+            std::vector<boost::shared_ptr<TopologicNode> > &cursor,
+            long int &counter);
+
     HighLevelExecutor &hl_executor_;
     CallTracer &call_tracer_;
 
-    std::vector<boost::shared_ptr<TopologicNode> > cursor_;
+    boost::shared_ptr<HighLevelState> target_state_;
+    std::vector<boost::shared_ptr<TopologicNode> > active_cursor_;
 
     sigc::connection on_stack_frame_push_;
     sigc::connection on_stack_frame_popping_;
