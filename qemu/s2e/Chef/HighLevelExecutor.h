@@ -58,22 +58,33 @@ class HighLevelStrategy;
 class LowLevelTopoStrategy;
 
 
+class HighLevelPathSegment;
+typedef boost::shared_ptr<HighLevelPathSegment> SharedHLPSRef;
+typedef boost::weak_ptr<HighLevelPathSegment> WeakHLPSRef;
+
+class HighLevelPathTracer {
+public:
+    HighLevelPathTracer();
+
+    SharedHLPSRef createRootSegment();
+    SharedHLPSRef getNextSegment(SharedHLPSRef segment, uint64_t next_hlpc);
+private:
+    int path_id_counter_;
+};
+
+
 class HighLevelPathSegment : public boost::enable_shared_from_this<HighLevelPathSegment> {
 public:
-    typedef boost::shared_ptr<HighLevelPathSegment> SharedHLPSRef;
-    typedef boost::weak_ptr<HighLevelPathSegment> WeakHLPSRef;
-
     typedef llvm::SmallDenseMap<uint64_t, SharedHLPSRef, 2> ChildrenMap;
     // TODO: Replace with DenseSet if slow
     typedef std::set<boost::weak_ptr<LowLevelState> > LowLevelStateSet;
 public:
-    HighLevelPathSegment();
-    HighLevelPathSegment(uint64_t hlpc, SharedHLPSRef parent);
+    HighLevelPathSegment(int path_id);
+    HighLevelPathSegment(uint64_t hlpc, SharedHLPSRef parent, int path_id);
     ~HighLevelPathSegment();
 
-    boost::shared_ptr<HighLevelPathSegment> getNext(uint64_t hlpc);
-
     uint64_t hlpc;
+    int path_id;
 
     WeakHLPSRef parent;
     ChildrenMap children;
@@ -82,41 +93,10 @@ public:
     boost::weak_ptr<HighLevelState> high_level_state;
 
 private:
+
     // Non-copyable
     HighLevelPathSegment(const HighLevelPathSegment&);
     void operator=(const HighLevelPathSegment&);
-};
-
-
-/**
- * Invariant: A high-level state is at the lowest point in the low-level
- * execution trace.  It always has at least one low-level state active.
- * When the last low-level state moves down in the tree, the HL state is
- * advanced (and potentially forked).
- */
-class HighLevelState : public boost::enable_shared_from_this<HighLevelState> {
-public:
-    HighLevelState(boost::shared_ptr<HighLevelPathSegment> segment);
-    virtual ~HighLevelState();
-
-    int id() const {
-        return id_;
-    }
-
-    void step(uint64_t hlpc);
-    boost::shared_ptr<HighLevelState> fork(uint64_t hlpc);
-    void terminate();
-
-    boost::shared_ptr<HighLevelPathSegment> segment;
-
-private:
-    int id_;
-
-    // Non-copyable
-    HighLevelState(const HighLevelState&);
-    void operator=(const HighLevelState&);
-
-    friend class HighLevelExecutor;
 };
 
 
@@ -150,6 +130,42 @@ private:
 typedef std::vector<boost::shared_ptr<TopologicNode> > TopologicIndex;
 
 
+/**
+ * Invariant: A high-level state is at the lowest point in the low-level
+ * execution trace.  It always has at least one low-level state active.
+ * When the last low-level state moves down in the tree, the HL state is
+ * advanced (and potentially forked).
+ */
+class HighLevelState : public boost::enable_shared_from_this<HighLevelState> {
+public:
+    HighLevelState(HighLevelExecutor &analyzer,
+            boost::shared_ptr<HighLevelPathSegment> segment);
+    virtual ~HighLevelState();
+
+    int id() const {
+        return segment->path_id;
+    }
+
+    void step(uint64_t hlpc);
+    boost::shared_ptr<HighLevelState> fork(uint64_t hlpc);
+    void terminate();
+
+    boost::shared_ptr<HighLevelPathSegment> segment;
+
+    // Used by the strategies that need it (currently, LowLevelTopoStrategy)
+    TopologicIndex cursor;
+
+private:
+    HighLevelExecutor &analyzer_;
+
+    // Non-copyable
+    HighLevelState(const HighLevelState&);
+    void operator=(const HighLevelState&);
+
+    friend class HighLevelExecutor;
+};
+
+
 class LowLevelState : public StreamAnalyzerState<LowLevelState, HighLevelExecutor>,
                       public boost::enable_shared_from_this<LowLevelState> {
 public:
@@ -160,8 +176,7 @@ public:
 
     boost::shared_ptr<HighLevelPathSegment> segment;
 
-    // This is updated only by the strategies that need it
-    // (currently, LowLevelTopoStrategy)
+    // Used by the strategies that need it (currently, LowLevelTopoStrategy)
     TopologicIndex topo_index;
 
 private:
@@ -213,22 +228,21 @@ private:
     void onHighLevelPCUpdate(S2EExecutionState *s2e_state,
             HighLevelStack *hl_stack);
 
-    void registerHighLevelState(boost::shared_ptr<HighLevelState> hl_state);
-    void deregisterHighLevelState(boost::shared_ptr<HighLevelState> hl_state);
-
     void tryUpdateSelectedState();
     bool doUpdateSelectedState();
 
+    HighLevelPathTracer path_tracer_;
     InterpreterDetector &detector_;
     HighLevelStrategy &hl_strategy_;
     boost::scoped_ptr<LowLevelTopoStrategy> ll_strategy_;
+
     sigc::connection on_high_level_pc_update_;
 
     HighLevelStateSet high_level_states_;
     boost::shared_ptr<HighLevelState> selected_state_;
-    int id_counter_;
 
     friend class LowLevelState;
+    friend class HighLevelState;
 };
 
 

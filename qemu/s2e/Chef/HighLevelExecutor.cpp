@@ -41,22 +41,51 @@
 
 #include <boost/shared_ptr.hpp>
 #include <boost/make_shared.hpp>
+#include <boost/ref.hpp>
 
 using boost::shared_ptr;
 using boost::make_shared;
 
 namespace s2e {
 
+
+// HighLevelPathTracer /////////////////////////////////////////////////////////
+
+HighLevelPathTracer::HighLevelPathTracer()
+    : path_id_counter_(0) {
+
+}
+
+SharedHLPSRef HighLevelPathTracer::createRootSegment() {
+    return make_shared<HighLevelPathSegment>(path_id_counter_++);
+}
+
+SharedHLPSRef HighLevelPathTracer::getNextSegment(SharedHLPSRef segment, uint64_t next_hlpc) {
+    HighLevelPathSegment::ChildrenMap::iterator it = segment->children.find(next_hlpc);
+    if (it != segment->children.end()) {
+        return it->second;
+    }
+
+    SharedHLPSRef child = make_shared<HighLevelPathSegment>(next_hlpc, segment,
+            segment->children.empty() ? segment->path_id : path_id_counter_++);
+    segment->children.insert(std::make_pair(next_hlpc, child));
+    return child;
+}
+
+
 // HighLevelPathSegment ////////////////////////////////////////////////////////
 
-HighLevelPathSegment::HighLevelPathSegment()
-    : hlpc(0) {
+HighLevelPathSegment::HighLevelPathSegment(int path_id_)
+    : hlpc(0),
+      path_id(path_id_) {
 
 }
 
 
-HighLevelPathSegment::HighLevelPathSegment(uint64_t hlpc_, SharedHLPSRef parent_)
+HighLevelPathSegment::HighLevelPathSegment(uint64_t hlpc_, SharedHLPSRef parent_,
+        int path_id_)
     : hlpc(hlpc_),
+      path_id(path_id_),
       parent(parent_) {
 
 }
@@ -66,23 +95,12 @@ HighLevelPathSegment::~HighLevelPathSegment() {
 
 }
 
-
-boost::shared_ptr<HighLevelPathSegment> HighLevelPathSegment::getNext(uint64_t hlpc) {
-    ChildrenMap::iterator it = children.find(hlpc);
-    if (it != children.end()) {
-        return it->second;
-    }
-
-    SharedHLPSRef child = make_shared<HighLevelPathSegment>(hlpc, shared_from_this());
-    children.insert(std::make_pair(hlpc, child));
-    return child;
-}
-
 // HighLevelState //////////////////////////////////////////////////////////////
 
-HighLevelState::HighLevelState(shared_ptr<HighLevelPathSegment> segment_)
+HighLevelState::HighLevelState(HighLevelExecutor &analyzer,
+        shared_ptr<HighLevelPathSegment> segment_)
     : segment(segment_),
-      id_(-1) {
+      analyzer_(analyzer) {
 }
 
 
@@ -92,7 +110,7 @@ HighLevelState::~HighLevelState() {
 
 
 void HighLevelState::step(uint64_t hlpc) {
-    shared_ptr<HighLevelPathSegment> next_segment = segment->getNext(hlpc);
+    shared_ptr<HighLevelPathSegment> next_segment = analyzer_.path_tracer_.getNextSegment(segment, hlpc);
 
     next_segment->high_level_state = shared_from_this();
     segment->high_level_state.reset();
@@ -103,9 +121,11 @@ void HighLevelState::step(uint64_t hlpc) {
 
 
 shared_ptr<HighLevelState> HighLevelState::fork(uint64_t hlpc) {
-    shared_ptr<HighLevelPathSegment> next_segment = segment->getNext(hlpc);
+    shared_ptr<HighLevelPathSegment> next_segment = analyzer_.path_tracer_.getNextSegment(segment, hlpc);
+    assert(next_segment->path_id != segment->path_id);
 
-    shared_ptr<HighLevelState> clone = make_shared<HighLevelState>(next_segment);
+    shared_ptr<HighLevelState> clone = make_shared<HighLevelState>(boost::ref(analyzer_), next_segment);
+    clone->cursor = cursor;
     next_segment->high_level_state = clone;
 
     next_segment->parent.reset();
@@ -206,7 +226,7 @@ void LowLevelState::terminate() {
 
 
 void LowLevelState::step(uint64_t hlpc) {
-    shared_ptr<HighLevelPathSegment> next_segment = segment->getNext(hlpc);
+    shared_ptr<HighLevelPathSegment> next_segment = analyzer().path_tracer_.getNextSegment(segment, hlpc);
 
     next_segment->low_level_states.insert(shared_from_this());
     segment->low_level_states.erase(shared_from_this());
@@ -222,8 +242,7 @@ HighLevelExecutor::HighLevelExecutor(InterpreterDetector &detector,
         HighLevelStrategy &strategy)
     : StreamAnalyzer<LowLevelState>(detector.s2e(), detector.stream()),
       detector_(detector),
-      hl_strategy_(strategy),
-      id_counter_(0) {
+      hl_strategy_(strategy) {
     on_high_level_pc_update_ = detector_.onHighLevelPCUpdate.connect(
             sigc::mem_fun(*this, &HighLevelExecutor::onHighLevelPCUpdate));
 
@@ -243,14 +262,14 @@ HighLevelExecutor::~HighLevelExecutor() {
 
 shared_ptr<LowLevelState> HighLevelExecutor::createState(S2EExecutionState *s2e_state) {
     // For each new state created in the system, create a new high-level path.
-    shared_ptr<HighLevelPathSegment> segment = make_shared<HighLevelPathSegment>();
+    shared_ptr<HighLevelPathSegment> segment = path_tracer_.createRootSegment();
 
     // Create a high-level state at the base of the path.
-    shared_ptr<HighLevelState> hl_state = make_shared<HighLevelState>(segment);
+    shared_ptr<HighLevelState> hl_state = make_shared<HighLevelState>(boost::ref(*this), segment);
     hl_state->segment->high_level_state = hl_state;
 
     // Keep track of the new high-level state.
-    registerHighLevelState(hl_state);
+    high_level_states_.insert(hl_state);
 
     // Create a low-level state as the support for the HL path.
     shared_ptr<LowLevelState> ll_state = shared_ptr<LowLevelState>(
@@ -311,7 +330,7 @@ bool HighLevelExecutor::doUpdateSelectedState() {
         hl_strategy_.killState(selected_state_);
 
         selected_state_->terminate();
-        deregisterHighLevelState(selected_state_);
+        high_level_states_.erase(selected_state_);
     } else if (segment->children.size() > 1) {
         typedef HighLevelPathSegment::ChildrenMap::iterator iterator;
 
@@ -322,11 +341,11 @@ bool HighLevelExecutor::doUpdateSelectedState() {
 
         for (iterator it = segment->children.begin(),
                 ie = segment->children.end(); it != ie; ++it) {
-            if (it == segment->children.begin()) {
+            if (it->second->path_id == segment->path_id) {
                 selected_state_->step(it->first);
             } else {
                 shared_ptr<HighLevelState> hl_fork = selected_state_->fork(it->first);
-                registerHighLevelState(hl_fork);
+                high_level_states_.insert(hl_fork);
                 fork_list.push_back(hl_fork.get());
                 add_list.push_back(hl_fork);
             }
@@ -346,15 +365,5 @@ bool HighLevelExecutor::doUpdateSelectedState() {
     return true;
 }
 
-
-void HighLevelExecutor::registerHighLevelState(boost::shared_ptr<HighLevelState> hl_state) {
-    hl_state->id_ = id_counter_++;
-    high_level_states_.insert(hl_state);
-}
-
-
-void HighLevelExecutor::deregisterHighLevelState(boost::shared_ptr<HighLevelState> hl_state) {
-    high_level_states_.erase(hl_state);
-}
 
 } /* namespace s2e */
