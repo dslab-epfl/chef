@@ -84,6 +84,8 @@ private:
             boost::shared_ptr<CallStackFrame> top,
             bool &schedule_state);
 
+    void stepBasicBlock(boost::shared_ptr<LowLevelState> state, int bb);
+
     bool trySchedule();
 
     HighLevelExecutor &hl_executor_;

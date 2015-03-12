@@ -34,6 +34,14 @@
 
 #include "LowLevelTopoStrategy.h"
 
+// TODO: This is a bit messy; encapsulate somewhere else.
+extern "C" {
+#include "config.h"
+#include "qemu-common.h"
+#include "cpu.h"
+extern CPUX86State *env;
+}
+
 #include <s2e/S2EExecutor.h>
 
 #include <s2e/Chef/CallTracer.h>
@@ -174,7 +182,7 @@ void LowLevelTopoStrategy::onStackFramePush(CallStack *stack,
     shared_ptr<LowLevelState> state = hl_executor_.getState(stack->s2e_state());
     assert(!state->topo_index.empty());
 
-
+    // TODO: Move all this stuff in a separate TopologicIndex class
     shared_ptr<TopologicNode> slot = state->topo_index.back();
     shared_ptr<TopologicNode> next_slot = slot->getDown(true);
     state->topo_index.push_back(next_slot);
@@ -228,7 +236,74 @@ void LowLevelTopoStrategy::onBasicBlockEnter(CallStack *stack,
     dbg_counter++;
 #endif
 
+    stepBasicBlock(state, bb);
 
+    // TODO: This part is a bit rough. Think it through later.
+
+    TopologicNode::StateSet &state_set = state->topo_index.back()->states;
+    if (state_set.size() > 1) {
+        hl_executor_.s2e().getMessagesStream(stack->s2e_state())
+                << "Merging opportunity for "
+                << state_set.size() << " states." << '\n';
+
+        {
+            S2EExecutionState *s2e_state = state->s2e_state();
+            // Skip the current instruction, since we'll throw at the end
+            s2e_state->regs()->write<target_ulong>(CPU_OFFSET(eip), s2e_state->getPc() + S2E_CUSTOM_INSTRUCTION_SIZE);
+
+            // XXX: Not sure why we clear these.  Ask Vitaly next time...
+            s2e_state->regs()->write(CPU_OFFSET(cc_op), 0);
+            s2e_state->regs()->write(CPU_OFFSET(cc_src), 0);
+            s2e_state->regs()->write(CPU_OFFSET(cc_dst), 0);
+            s2e_state->regs()->write(CPU_OFFSET(cc_tmp), 0);
+
+            // What is the performance impact of this?
+            // Do we ever need a TLB in symbolic mode?
+            tlb_flush(env, 1);
+        }
+
+        // Find the first state that we can merge with
+        bool success = false;
+        for (TopologicNode::StateSet::iterator it = state_set.begin(),
+                ie = state_set.end(); it != ie; ++it) {
+            shared_ptr<LowLevelState> other_state = *it;
+            if (other_state == state) {
+                continue;
+            }
+
+            success = hl_executor_.s2e().getExecutor()->merge(
+                    *other_state->s2e_state(),
+                    *state->s2e_state());
+
+            if (success) {
+                hl_executor_.s2e().getMessagesStream(stack->s2e_state())
+                        << "*** MERGE SUCCESSFUL ***" << '\n';
+                break;
+            } else {
+                hl_executor_.s2e().getMessagesStream(stack->s2e_state())
+                        << "*** MERGE FAIL, moving on ***" << '\n';
+            }
+        }
+        if (success) {
+            // We don't call the scheduler on this path because it will
+            // be invoked by the code that handles the state termination.
+            hl_executor_.s2e().getExecutor()->terminateStateEarly(
+                    *state->s2e_state(), "Killed by merge");
+            assert(0 && "Unreachable");
+        } else {
+            trySchedule();
+            hl_executor_.s2e().getExecutor()->yieldState(*state->s2e_state());
+            throw CpuExitException();
+        }
+    }
+
+    // Check if a new state should be scheduled
+    schedule_state = trySchedule();
+}
+
+
+void LowLevelTopoStrategy::stepBasicBlock(shared_ptr<LowLevelState> state,
+        int bb) {
     shared_ptr<TopologicNode> slot = state->topo_index.back();
     shared_ptr<TopologicNode> next_slot;
 
@@ -249,9 +324,6 @@ void LowLevelTopoStrategy::onBasicBlockEnter(CallStack *stack,
 
     next_slot->states.insert(state);
     slot->states.remove(state);
-
-    // Check if a new state should be scheduled
-    schedule_state = trySchedule();
 }
 
 
