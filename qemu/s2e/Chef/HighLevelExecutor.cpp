@@ -191,6 +191,20 @@ shared_ptr<TopologicNode> TopologicNode::getNext(int bb, int ci) {
     return node;
 }
 
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
+        const TopologicIndex &topo_index) {
+    os << "[";
+    for (TopologicIndex::const_iterator it = topo_index.begin(),
+            ie = topo_index.end(); it != ie; ++it) {
+        if ((*it)->is_call_base && it != topo_index.begin()) {
+            os << "] [";
+        }
+        os << (*it)->basic_block << ":" << (*it)->call_index << "/";
+    }
+    os << "]";
+    return os;
+}
+
 // LowLevelState ///////////////////////////////////////////////////////////////
 
 LowLevelState::LowLevelState(HighLevelExecutor &analyzer,
@@ -231,9 +245,9 @@ void LowLevelState::step(uint64_t hlpc) {
     next_segment->low_level_states.insert(shared_from_this());
     segment->low_level_states.erase(shared_from_this());
 
-    analyzer().tryUpdateSelectedState();
-
     segment = next_segment;
+
+    analyzer().tryUpdateSelectedState();
 }
 
 // HighLevelExecutor ///////////////////////////////////////////////////////////
@@ -291,7 +305,7 @@ shared_ptr<LowLevelState> HighLevelExecutor::createState(S2EExecutionState *s2e_
 
     // Invoke again the strategy
     selected_state_ = hl_strategy_.selectState();
-    ll_strategy_->setTargetHighLevelState(selected_state_);
+    ll_strategy_->updateTargetHighLevelState(selected_state_);
 
     return ll_state;
 }
@@ -311,6 +325,9 @@ void HighLevelExecutor::tryUpdateSelectedState() {
             break;
         if (!doUpdateSelectedState())
             break;
+    }
+    if (selected_state_) {
+        ll_strategy_->updateTargetHighLevelState(selected_state_);
     }
 }
 
@@ -364,7 +381,6 @@ bool HighLevelExecutor::doUpdateSelectedState() {
 
     // Query the strategy for another state
     selected_state_ = hl_strategy_.selectState();
-    ll_strategy_->setTargetHighLevelState(selected_state_);
     return true;
 }
 

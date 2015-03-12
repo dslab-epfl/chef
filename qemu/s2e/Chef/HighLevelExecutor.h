@@ -47,6 +47,8 @@
 //#include <llvm/ADT/SmallSet.h>
 #include <set>
 
+#include <llvm/Support/raw_ostream.h>
+
 namespace s2e {
 
 class InterpreterDetector;
@@ -128,6 +130,9 @@ private:
 
 
 typedef std::vector<boost::shared_ptr<TopologicNode> > TopologicIndex;
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
+        const TopologicIndex &topo_index);
 
 
 /**

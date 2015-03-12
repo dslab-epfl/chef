@@ -62,7 +62,7 @@ public:
     LowLevelTopoStrategy(HighLevelExecutor &hl_executor);
     ~LowLevelTopoStrategy();
 
-    void setTargetHighLevelState(boost::shared_ptr<HighLevelState> hl_state);
+    void updateTargetHighLevelState(boost::shared_ptr<HighLevelState> hl_state);
 
     // klee::Searcher
     klee::ExecutionState &selectState();

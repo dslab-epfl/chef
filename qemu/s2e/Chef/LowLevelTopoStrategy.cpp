@@ -40,16 +40,48 @@
 #include <s2e/Chef/HighLevelExecutor.h>
 #include <s2e/Chef/InterpreterDetector.h>
 
+#include <llvm/Support/CommandLine.h>
+
 #include <boost/shared_ptr.hpp>
 #include <boost/make_shared.hpp>
 
 using boost::shared_ptr;
 using boost::make_shared;
 
+namespace {
+
+llvm::cl::opt<bool>
+DebugLowLevelScheduler("debug-low-level-scheduler",
+        llvm::cl::desc("Print debug info for the low-level Chef scheduler"),
+        llvm::cl::init(false));
+
+}
+
 namespace s2e {
 
-static shared_ptr<LowLevelState> findNextState(int path_id,
-        std::vector<boost::shared_ptr<TopologicNode> > &cursor,
+// TODO: This can be encapsulated in an iterator, together with the entire
+// topologic space.
+
+static bool stepCursor(TopologicIndex &cursor) {
+    if (cursor.empty())
+        return false;
+    if (!cursor.back()->down.expired()) {
+        cursor.push_back(cursor.back()->down.lock());
+    } else if (!cursor.back()->next.expired()) {
+        cursor.back() = cursor.back()->next.lock();
+    } else {
+        while(!cursor.empty() && cursor.back()->next.expired()) {
+            cursor.pop_back();
+        }
+        if (!cursor.empty()) {
+            assert(!cursor.back()->next.expired());
+            cursor.back() = cursor.back()->next.lock();
+        }
+    }
+    return true;
+}
+
+static shared_ptr<LowLevelState> findNextState(int path_id, TopologicIndex &cursor,
         long int &counter) {
     counter = 0;
     while (!cursor.empty()) {
@@ -61,22 +93,20 @@ static shared_ptr<LowLevelState> findNextState(int path_id,
                 }
             }
         }
-        if (!cursor.back()->down.expired()) {
-            cursor.push_back(cursor.back()->down.lock());
-        } else if (!cursor.back()->next.expired()) {
-            cursor.back() = cursor.back()->next.lock();
-        } else {
-            while(!cursor.empty() && cursor.back()->next.expired()) {
-                cursor.pop_back();
-            }
-            if (!cursor.empty()) {
-                assert(!cursor.back()->next.expired());
-                cursor.back() = cursor.back()->next.lock();
-            }
-        }
+        stepCursor(cursor);
         counter++;
     }
     return shared_ptr<LowLevelState>();
+}
+
+static int countAccessibleStates(const TopologicIndex &cursor) {
+    TopologicIndex moving_cursor = cursor;
+    int count = 0;
+    while (!moving_cursor.empty()) {
+        count += moving_cursor.back()->states.size();
+        stepCursor(moving_cursor);
+    }
+    return count;
 }
 
 // LowLevelTopoStrategy ////////////////////////////////////////////////////////
@@ -97,21 +127,35 @@ LowLevelTopoStrategy::LowLevelTopoStrategy(HighLevelExecutor &hl_executor)
 }
 
 
-void LowLevelTopoStrategy::setTargetHighLevelState(
+void LowLevelTopoStrategy::updateTargetHighLevelState(
         boost::shared_ptr<HighLevelState> hl_state) {
-    if (target_hl_state_) {
-        // The state might have already terminated, but it's fine, since
-        // the shared pointer pins the structure in memory.
-        target_hl_state_->cursor = active_cursor_;
-    }
-    target_hl_state_ = hl_state;
-    active_cursor_.clear();
+    assert(hl_state);
 
-    if (target_hl_state_) {
-        // We save the active cursor in order to prevent HL forks from inheriting
-        // one that is ahead of the fork point, which could transiently happen.
+    if (target_hl_state_ != hl_state) {
+        if (target_hl_state_) {
+            if (DebugLowLevelScheduler) {
+                hl_executor_.s2e().getMessagesStream()
+                        << "Saving old cursor at " << active_cursor_ << '\n';
+            }
+
+            // The state might have already terminated, but it's fine, since
+            // the shared pointer pins the structure in memory.
+            target_hl_state_->cursor = active_cursor_;
+        }
+
+        target_hl_state_ = hl_state;
         active_cursor_ = target_hl_state_->cursor;
+
+        if (DebugLowLevelScheduler) {
+            hl_executor_.s2e().getMessagesStream()
+                    << "New cursor at " << active_cursor_ << '\n';
+            hl_executor_.s2e().getMessagesStream()
+                    << "Accessible states: " << countAccessibleStates(active_cursor_)
+                    << '\n';
+        }
     }
+
+    trySchedule();
 }
 
 
@@ -135,8 +179,8 @@ void LowLevelTopoStrategy::onStackFramePush(CallStack *stack,
     shared_ptr<TopologicNode> next_slot = slot->getDown(true);
     state->topo_index.push_back(next_slot);
 
-    slot->states.remove(state);
     next_slot->states.insert(state);
+    slot->states.remove(state);
 }
 
 
@@ -160,8 +204,8 @@ void LowLevelTopoStrategy::onStackFramePopping(CallStack *stack,
                 state->topo_index.back()->call_index + 1);
     state->topo_index.back() = next_slot;
 
-    slot->states.remove(state);
     next_slot->states.insert(state);
+    slot->states.remove(state);
 }
 
 
@@ -203,8 +247,8 @@ void LowLevelTopoStrategy::onBasicBlockEnter(CallStack *stack,
         state->topo_index.back() = next_slot;
     }
 
-    slot->states.remove(state);
     next_slot->states.insert(state);
+    slot->states.remove(state);
 
     // Check if a new state should be scheduled
     schedule_state = trySchedule();
@@ -213,6 +257,7 @@ void LowLevelTopoStrategy::onBasicBlockEnter(CallStack *stack,
 
 bool LowLevelTopoStrategy::trySchedule() {
     if (!target_hl_state_) {
+        current_ll_state_.reset();
         hl_executor_.s2e().getWarningsStream()
                 << "LowLevelTopoStrategy: No high-level state registered. "
                 << "Resorting to underlying strategy..." << '\n';
@@ -222,12 +267,7 @@ bool LowLevelTopoStrategy::trySchedule() {
     long int counter;
     shared_ptr<LowLevelState> next_state = findNextState(
                 target_hl_state_->id(), active_cursor_, counter);
-    assert(next_state && "No low-level path support on high-level path");
-
-#if 0
-    hl_executor_.s2e().getMessagesStream() << "Advanced path " << target_hl_state_->id()
-            << " by " << counter << " topologic nodes" << '\n';
-#endif
+    assert(next_state && "Could not find next state. Perhaps wrong cursor position?");
 
     if (next_state == current_ll_state_) {
         return false;
