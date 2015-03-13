@@ -238,6 +238,12 @@ void LowLevelTopoStrategy::onBasicBlockEnter(CallStack *stack,
 
     stepBasicBlock(state, bb);
 
+    if (hl_executor_.detector().instrum_function() == top->function) {
+        // No merging inside the interpretation loop.
+        schedule_state = trySchedule();
+        return;
+    }
+
     // TODO: This part is a bit rough. Think it through later.
 
     TopologicNode::StateSet &state_set = state->topo_index.back()->states;

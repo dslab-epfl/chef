@@ -139,6 +139,10 @@ public:
         return call_tracer_;
     }
 
+    uint64_t instrum_function() const {
+        return instrum_function_;
+    }
+
     sigc::signal<void,
                  S2EExecutionState*,
                  HighLevelStack*>
