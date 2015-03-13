@@ -75,25 +75,40 @@ private:
 };
 
 
+class HighLevelPath {
+public:
+    typedef std::set<boost::weak_ptr<LowLevelState> > LowLevelStateSet;
+public:
+    HighLevelPath(int path_id) : id(path_id) {
+
+    }
+
+    int id;
+    LowLevelStateSet low_level_states;
+};
+
+
 class HighLevelPathSegment : public boost::enable_shared_from_this<HighLevelPathSegment> {
 public:
     typedef llvm::SmallDenseMap<uint64_t, SharedHLPSRef, 2> ChildrenMap;
     // TODO: Replace with DenseSet if slow
     typedef std::set<boost::weak_ptr<LowLevelState> > LowLevelStateSet;
 public:
-    HighLevelPathSegment(int path_id);
-    HighLevelPathSegment(uint64_t hlpc, SharedHLPSRef parent, int path_id);
+    HighLevelPathSegment(boost::shared_ptr<HighLevelPath> path);
+    HighLevelPathSegment(boost::shared_ptr<HighLevelPath> path, uint64_t hlpc,
+            SharedHLPSRef parent);
     ~HighLevelPathSegment();
 
+    void joinState(boost::shared_ptr<LowLevelState> state);
+    void leaveState(boost::shared_ptr<LowLevelState> state);
+
     uint64_t hlpc;
-    int path_id;
+    boost::shared_ptr<HighLevelPath> path;
 
     WeakHLPSRef parent;
     ChildrenMap children;
 
     LowLevelStateSet low_level_states;
-    boost::weak_ptr<HighLevelState> high_level_state;
-
 private:
 
     // Non-copyable
@@ -148,7 +163,7 @@ public:
     virtual ~HighLevelState();
 
     int id() const {
-        return segment->path_id;
+        return segment->path->id;
     }
 
     void step(uint64_t hlpc);
@@ -179,6 +194,9 @@ public:
     boost::shared_ptr<LowLevelState> clone(S2EExecutionState *s2e_state);
     void terminate();
 
+    void setAPICState(bool enabled);
+
+    // The position of the state on the high-level path trace
     boost::shared_ptr<HighLevelPathSegment> segment;
 
     // Used by the strategies that need it (currently, LowLevelTopoStrategy)
@@ -239,6 +257,7 @@ private:
     HighLevelPathTracer path_tracer_;
     InterpreterDetector &detector_;
     HighLevelStrategy &hl_strategy_;
+
     boost::scoped_ptr<LowLevelTopoStrategy> ll_strategy_;
 
     sigc::connection on_high_level_pc_update_;

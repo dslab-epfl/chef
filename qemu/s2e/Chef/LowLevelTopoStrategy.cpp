@@ -96,7 +96,7 @@ static shared_ptr<LowLevelState> findNextState(int path_id, TopologicIndex &curs
         if (!cursor.back()->states.empty()) {
             for (TopologicNode::StateSet::iterator it = cursor.back()->states.begin(),
                     ie = cursor.back()->states.end(); it != ie; ++it) {
-                if ((*it)->segment->path_id == path_id) {
+                if ((*it)->segment->path->id == path_id) {
                     return *it;
                 }
             }

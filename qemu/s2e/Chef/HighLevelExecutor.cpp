@@ -57,17 +57,20 @@ HighLevelPathTracer::HighLevelPathTracer()
 }
 
 SharedHLPSRef HighLevelPathTracer::createRootSegment() {
-    return make_shared<HighLevelPathSegment>(path_id_counter_++);
+    shared_ptr<HighLevelPath> path = make_shared<HighLevelPath>(path_id_counter_++);
+    return make_shared<HighLevelPathSegment>(path);
 }
 
-SharedHLPSRef HighLevelPathTracer::getNextSegment(SharedHLPSRef segment, uint64_t next_hlpc) {
+SharedHLPSRef HighLevelPathTracer::getNextSegment(SharedHLPSRef segment,
+        uint64_t next_hlpc) {
     HighLevelPathSegment::ChildrenMap::iterator it = segment->children.find(next_hlpc);
     if (it != segment->children.end()) {
         return it->second;
     }
 
-    SharedHLPSRef child = make_shared<HighLevelPathSegment>(next_hlpc, segment,
-            segment->children.empty() ? segment->path_id : path_id_counter_++);
+    shared_ptr<HighLevelPath> path = segment->children.empty() ? segment->path
+            : make_shared<HighLevelPath>(path_id_counter_++);
+    SharedHLPSRef child = make_shared<HighLevelPathSegment>(path, next_hlpc, segment);
     segment->children.insert(std::make_pair(next_hlpc, child));
     return child;
 }
@@ -75,17 +78,17 @@ SharedHLPSRef HighLevelPathTracer::getNextSegment(SharedHLPSRef segment, uint64_
 
 // HighLevelPathSegment ////////////////////////////////////////////////////////
 
-HighLevelPathSegment::HighLevelPathSegment(int path_id_)
+HighLevelPathSegment::HighLevelPathSegment(shared_ptr<HighLevelPath> path_)
     : hlpc(0),
-      path_id(path_id_) {
+      path(path_) {
 
 }
 
 
-HighLevelPathSegment::HighLevelPathSegment(uint64_t hlpc_, SharedHLPSRef parent_,
-        int path_id_)
+HighLevelPathSegment::HighLevelPathSegment(shared_ptr<HighLevelPath> path_,
+        uint64_t hlpc_, SharedHLPSRef parent_)
     : hlpc(hlpc_),
-      path_id(path_id_),
+      path(path_),
       parent(parent_) {
 
 }
@@ -93,6 +96,34 @@ HighLevelPathSegment::HighLevelPathSegment(uint64_t hlpc_, SharedHLPSRef parent_
 
 HighLevelPathSegment::~HighLevelPathSegment() {
 
+}
+
+
+void HighLevelPathSegment::joinState(boost::shared_ptr<LowLevelState> state) {
+    if (path->low_level_states.size() == 1) {
+        path->low_level_states.begin()->lock()->setAPICState(false);
+        state->setAPICState(false);
+    }
+
+    state->segment = shared_from_this();
+    low_level_states.insert(state);
+    path->low_level_states.insert(state);
+
+    if (path->low_level_states.size() == 1) {
+        state->setAPICState(true);
+    }
+}
+
+
+void HighLevelPathSegment::leaveState(boost::shared_ptr<LowLevelState> state) {
+    low_level_states.erase(state);
+    path->low_level_states.erase(state);
+    state->segment.reset();
+
+    if (path->low_level_states.size() == 1) {
+        path->low_level_states.begin()->lock()->setAPICState(true);
+        // state->setAPICState(true); // Not sure if this one is really needed
+    }
 }
 
 // HighLevelState //////////////////////////////////////////////////////////////
@@ -112,9 +143,6 @@ HighLevelState::~HighLevelState() {
 void HighLevelState::step(uint64_t hlpc) {
     shared_ptr<HighLevelPathSegment> next_segment = analyzer_.path_tracer_.getNextSegment(segment, hlpc);
 
-    next_segment->high_level_state = shared_from_this();
-    segment->high_level_state.reset();
-
     segment = next_segment;
     segment->parent.reset();
 }
@@ -122,11 +150,10 @@ void HighLevelState::step(uint64_t hlpc) {
 
 shared_ptr<HighLevelState> HighLevelState::fork(uint64_t hlpc) {
     shared_ptr<HighLevelPathSegment> next_segment = analyzer_.path_tracer_.getNextSegment(segment, hlpc);
-    assert(next_segment->path_id != segment->path_id);
+    assert(next_segment->path != segment->path);
 
     shared_ptr<HighLevelState> clone = make_shared<HighLevelState>(boost::ref(analyzer_), next_segment);
     clone->cursor = cursor;
-    next_segment->high_level_state = clone;
 
     next_segment->parent.reset();
     return clone;
@@ -134,7 +161,7 @@ shared_ptr<HighLevelState> HighLevelState::fork(uint64_t hlpc) {
 
 
 void HighLevelState::terminate() {
-    segment->high_level_state.reset();
+
 }
 
 // TopologicNode ///////////////////////////////////////////////////////////////
@@ -217,8 +244,7 @@ LowLevelState::LowLevelState(HighLevelExecutor &analyzer,
 shared_ptr<LowLevelState> LowLevelState::clone(S2EExecutionState *s2e_state) {
     shared_ptr<LowLevelState> new_state = shared_ptr<LowLevelState>(
             new LowLevelState(analyzer(), s2e_state));
-    new_state->segment = segment;
-    new_state->segment->low_level_states.insert(new_state);
+    segment->joinState(new_state);
 
     if (!topo_index.empty()) {
         new_state->topo_index = topo_index;
@@ -229,7 +255,7 @@ shared_ptr<LowLevelState> LowLevelState::clone(S2EExecutionState *s2e_state) {
 
 
 void LowLevelState::terminate() {
-    segment->low_level_states.erase(shared_from_this());
+    segment->leaveState(shared_from_this());
 
     if (!topo_index.empty()) {
         topo_index.back()->states.remove(shared_from_this());
@@ -240,14 +266,19 @@ void LowLevelState::terminate() {
 
 
 void LowLevelState::step(uint64_t hlpc) {
+    shared_ptr<HighLevelPathSegment> old_segment = segment;
     shared_ptr<HighLevelPathSegment> next_segment = analyzer().path_tracer_.getNextSegment(segment, hlpc);
 
-    next_segment->low_level_states.insert(shared_from_this());
-    segment->low_level_states.erase(shared_from_this());
-
-    segment = next_segment;
+    old_segment->leaveState(shared_from_this());
+    next_segment->joinState(shared_from_this());
 
     analyzer().tryUpdateSelectedState();
+}
+
+
+void LowLevelState::setAPICState(bool enabled) {
+    s2e_state()->regs()->write(CPU_OFFSET(all_apic_interrupts_disabled),
+                (uint8_t)!enabled);
 }
 
 // HighLevelExecutor ///////////////////////////////////////////////////////////
@@ -279,8 +310,8 @@ shared_ptr<LowLevelState> HighLevelExecutor::createState(S2EExecutionState *s2e_
     shared_ptr<HighLevelPathSegment> segment = path_tracer_.createRootSegment();
 
     // Create a high-level state at the base of the path.
-    shared_ptr<HighLevelState> hl_state = make_shared<HighLevelState>(boost::ref(*this), segment);
-    hl_state->segment->high_level_state = hl_state;
+    shared_ptr<HighLevelState> hl_state = make_shared<HighLevelState>(
+            boost::ref(*this), segment);
     hl_state->cursor.push_back(make_shared<TopologicNode>());
 
     // Keep track of the new high-level state.
@@ -289,8 +320,7 @@ shared_ptr<LowLevelState> HighLevelExecutor::createState(S2EExecutionState *s2e_
     // Create a low-level state as the support for the HL path.
     shared_ptr<LowLevelState> ll_state = shared_ptr<LowLevelState>(
             new LowLevelState(*this, s2e_state));
-    ll_state->segment = segment;
-    ll_state->segment->low_level_states.insert(ll_state);
+    segment->joinState(ll_state);
 
     // Bootstrap the topologic index computation
     ll_state->topo_index = hl_state->cursor;
@@ -360,7 +390,7 @@ bool HighLevelExecutor::doUpdateSelectedState() {
 
         for (iterator it = segment->children.begin(),
                 ie = segment->children.end(); it != ie; ++it) {
-            if (it->second->path_id == segment->path_id) {
+            if (it->second->path == segment->path) {
                 selected_state_->step(it->first);
             } else {
                 shared_ptr<HighLevelState> hl_fork = selected_state_->fork(it->first);
