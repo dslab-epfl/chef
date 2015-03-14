@@ -388,10 +388,16 @@ bool HighLevelExecutor::doUpdateSelectedState() {
 
         std::vector<shared_ptr<HighLevelState> > add_list;
 
+        uint64_t stepping_hlpc = 0;
+
         for (iterator it = segment->children.begin(),
                 ie = segment->children.end(); it != ie; ++it) {
             if (it->second->path == segment->path) {
-                selected_state_->step(it->first);
+                // We advance the current state after all the other states
+                // have forked from it, so all states start off from the same
+                // base segment.
+                assert(!stepping_hlpc && "Successor in fork found more than once");
+                stepping_hlpc = it->first;
             } else {
                 shared_ptr<HighLevelState> hl_fork = selected_state_->fork(it->first);
                 high_level_states_.insert(hl_fork);
@@ -399,6 +405,8 @@ bool HighLevelExecutor::doUpdateSelectedState() {
                 add_list.push_back(hl_fork);
             }
         }
+        assert(stepping_hlpc && "Could not find path successor in fork");
+        selected_state_->step(stepping_hlpc);
 
         onHighLevelStateFork.emit(selected_state_.get(), fork_list);
         hl_strategy_.addStates(selected_state_, add_list);
