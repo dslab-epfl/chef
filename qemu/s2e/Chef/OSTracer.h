@@ -189,6 +189,7 @@ class OSTracer;
 class OSTracerState : public StreamAnalyzerState<OSTracerState, OSTracer> {
 public:
     OSThread *getThread(int tid);
+    OSThread *getActiveThread();
 
     boost::shared_ptr<OSTracerState> clone(S2EExecutionState *s2e_state);
 

@@ -169,7 +169,7 @@ shared_ptr<OSTracerState> OSTracerState::clone(S2EExecutionState *s2e_state) {
 }
 
 OSThread *OSTracerState::getThread(int tid) {
-    if (active_thread_->tid_ == tid) {
+    if (active_thread_ && active_thread_->tid_ == tid) {
         return active_thread_.get();
     }
 
@@ -178,6 +178,10 @@ OSThread *OSTracerState::getThread(int tid) {
         return NULL;
 
     return it->second.get();
+}
+
+OSThread *OSTracerState::getActiveThread() {
+    return active_thread_.get();
 }
 
 
@@ -330,26 +334,27 @@ void OSTracer::onPrivilegeChange(S2EExecutionState *state,
 void OSTracer::onPageDirectoryChange(S2EExecutionState *state,
         uint64_t previous, uint64_t next) {
     shared_ptr<OSTracerState> os_state = getState(state);
+    shared_ptr<OSThread> next_thread;
 
     OSTracerState::PageTableMap::iterator it = os_state->address_spaces_.find(next);
     if (it == os_state->address_spaces_.end()) {
         s2e().getWarningsStream(state) << "Unknown process scheduled: Address space "
                 << llvm::format("0x%x", next) << '\n';
-        return;
+    } else {
+        next_thread = it->second->thread();
+        assert(next_thread);
     }
-
-    shared_ptr<OSThread> next_thread = it->second->thread();
-    assert(next_thread);
 
     if (os_state->active_thread_ != next_thread) {
         if (os_state->active_thread_) {
             assert(os_state->active_thread_->running_);
             os_state->active_thread_->running_ = false;
         }
-        assert(!next_thread->running_);
-        next_thread->running_ = true;
-
-        s2e().getMessagesStream(state) << "Process scheduled: " << *next_thread << '\n';
+        if (next_thread) {
+            s2e().getMessagesStream(state) << "Process scheduled: " << *next_thread << '\n';
+            assert(!next_thread->running_);
+            next_thread->running_ = true;
+        }
 
         shared_ptr<OSThread> old_thread = os_state->active_thread_;
         os_state->active_thread_ = next_thread;

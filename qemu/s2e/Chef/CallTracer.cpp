@@ -261,9 +261,9 @@ void CallTracer::onCustomInstruction(S2EExecutionState *state, uint64_t opcode) 
 
 
 void CallTracer::updateConnections(S2EExecutionState *state, bool flush_tb) {
-    OSThread *thread = os_tracer_.getState(state)->getThread(tracked_tid_);
+    OSThread *thread = os_tracer_.getState(state)->getActiveThread();
 
-    if (thread->tid() == tracked_tid_) {
+    if (thread && thread->tid() == tracked_tid_) {
         if (!on_custom_instruction_.connected()) {
             on_custom_instruction_ = stream().onCustomInstruction.connect(
                     sigc::mem_fun(*this, &CallTracer::onCustomInstruction));
