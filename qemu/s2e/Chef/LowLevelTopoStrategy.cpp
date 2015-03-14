@@ -46,7 +46,7 @@ extern CPUX86State *env;
 
 #include <s2e/Chef/CallTracer.h>
 #include <s2e/Chef/HighLevelExecutor.h>
-#include <s2e/Chef/InterpreterDetector.h>
+#include <s2e/Chef/InterpreterTracer.h>
 
 #include <llvm/Support/CommandLine.h>
 
@@ -121,7 +121,7 @@ static int countAccessibleStates(const TopologicIndex &cursor) {
 
 LowLevelTopoStrategy::LowLevelTopoStrategy(HighLevelExecutor &hl_executor)
     : hl_executor_(hl_executor),
-      call_tracer_(hl_executor.detector().call_tracer()){
+      call_tracer_(hl_executor.interp_tracer().call_tracer()){
 
     on_stack_frame_push_ = call_tracer_.onStackFramePush.connect(
             sigc::mem_fun(*this, &LowLevelTopoStrategy::onStackFramePush));
@@ -238,7 +238,7 @@ void LowLevelTopoStrategy::onBasicBlockEnter(CallStack *stack,
 
     stepBasicBlock(state, bb);
 
-    if (hl_executor_.detector().instrum_function() == top->function) {
+    if (hl_executor_.interp_tracer().interp_params().interp_loop_function == top->function) {
         // No merging inside the interpretation loop.
         schedule_state = trySchedule();
         return;

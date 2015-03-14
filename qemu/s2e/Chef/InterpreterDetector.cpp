@@ -44,31 +44,22 @@
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/Support/CommandLine.h>
 
-#include <boost/shared_ptr.hpp>
-#include <boost/make_shared.hpp>
-
 #include <map>
 #include <vector>
 #include <set>
 
+using boost::shared_ptr;
+
 namespace {
-llvm::cl::opt<bool>
-DebugInstructions("debug-interp-instructions",
-        llvm::cl::desc("Print detected interpreter instructions"),
-        llvm::cl::init(false));
 
 llvm::cl::opt<bool>
 DebugDetection("debug-interp-detection",
         llvm::cl::desc("Print debug info for interpreter detection"),
         llvm::cl::init(false));
+
 }
 
 namespace s2e {
-
-
-using boost::shared_ptr;
-using boost::make_shared;
-
 
 enum {
     S2E_CHEF_START = 0x1000,
@@ -404,64 +395,28 @@ private:
     void operator=(const MemoryOpAnalyzer&);
 };
 
-// HighLevelStack //////////////////////////////////////////////////////////////
 
-HighLevelStack::HighLevelStack(InterpreterDetector &detector,
-        S2EExecutionState *s2e_state)
-    : StreamAnalyzerState<HighLevelStack, InterpreterDetector>(detector, s2e_state) {
-
-}
-
-
-shared_ptr<HighLevelStack> HighLevelStack::clone(S2EExecutionState *s2e_state) {
-    shared_ptr<HighLevelStack> new_state = shared_ptr<HighLevelStack>(
-            new HighLevelStack(analyzer(), s2e_state));
-    for (FrameVector::const_iterator it = frames_.begin(),
-            ie = frames_.end(); it != ie; ++it) {
-        shared_ptr<HighLevelFrame> frame = make_shared<HighLevelFrame>(*(*it));
-        if (!new_state->frames_.empty()) {
-            frame->parent = new_state->frames_.back();
-        }
-        new_state->frames_.push_back(frame);
-    }
-    return new_state;
-}
 
 // InterpreterDetector /////////////////////////////////////////////////////////
 
 InterpreterDetector::InterpreterDetector(CallTracer &call_tracer,
         boost::shared_ptr<S2ESyscallMonitor> syscall_monitor)
-    : StreamAnalyzer<HighLevelStack>(call_tracer.s2e(), call_tracer.stream()),
-      os_tracer_(call_tracer.os_tracer()),
+    : os_tracer_(call_tracer.os_tracer()),
       call_tracer_(call_tracer),
+      s2e_(call_tracer.s2e()),
       calibrating_(false),
-      min_opcode_count_(0),
-      instrum_function_(0),
-      instrum_hlpc_update_(0),
-      instrum_opcode_read_(0) {
+      min_opcode_count_(0) {
 
     syscall_range_ = syscall_monitor->registerForRange(
             S2E_CHEF_START, S2E_CHEF_END);
     syscall_range_->onS2ESystemCall.connect(
             sigc::mem_fun(*this, &InterpreterDetector::onS2ESyscall));
-
-    on_state_switch_ = stream().onStateSwitch.connect(
-            sigc::mem_fun(*this, &InterpreterDetector::onStateSwitch));
 }
 
 
 InterpreterDetector::~InterpreterDetector() {
     syscall_range_->deregister();
     on_concrete_data_memory_access_.disconnect();
-    on_symbolic_data_memory_access_.disconnect();
-    on_stack_frame_push_.disconnect();
-    on_stack_frame_popping_.disconnect();
-    on_state_switch_.disconnect();
-}
-
-
-shared_ptr<HighLevelStack> InterpreterDetector::createState(S2EExecutionState *s2e_state) {
-    return shared_ptr<HighLevelStack>(new HighLevelStack(*this, s2e_state));
 }
 
 
@@ -477,60 +432,9 @@ void InterpreterDetector::onConcreteDataMemoryAccess(S2EExecutionState *state,
 
     shared_ptr<CallStack> ll_stack = call_tracer_.getState(state);
 
-    if (calibrating_) {
-        memory_recording_->recordMemoryOp(state->getPc(), ll_stack->top(),
-                address, value, size, is_write);
-        return;
-    }
-
-    shared_ptr<HighLevelStack> hl_stack = getState(state);
-    assert(hl_stack->size() > 0);
-    HighLevelFrame *hl_frame = hl_stack->top().get();
-    assert(ll_stack->top()->id == hl_frame->low_level_frame_id);
-
-    if (state->getPc() == instrum_hlpc_update_) {
-        if (!is_write) {
-            s2e().getWarningsStream(state) << "Unexpected memory access: "
-                    << llvm::format("EIP=0x%x Addr=0x%x Value=0x%x Size=%d Flags=0x%08x",
-                            state->getPc(), address, value, size, flags)
-                    << '\n';
-        }
-        assert(is_write);
-
-        if (!hl_frame->hlpc_ptr) {
-            hl_frame->hlpc_ptr = address;
-        } else {
-            assert(hl_frame->hlpc_ptr == address);
-        }
-    }
-
-    if (address == hl_frame->hlpc_ptr && is_write) {
-        hl_frame->hlpc = value;
-        onHighLevelPCUpdate.emit(state, hl_stack.get());
-
-        if (DebugInstructions) {
-            s2e().getMessagesStream(state)
-                        << llvm::format("HLPC=0x%x", hl_frame->hlpc) << '\n';
-        }
-    }
-
-    if (state->getPc() == instrum_opcode_read_) {
-        // XXX: Extra memory reads in symbolic mode.
-        assert(!is_write);
-        //assert(!hl_frame->hlpc || address == hl_frame->hlpc);
-        hl_frame->hlinst = address;
-        onHighLevelInstructionFetch.emit(state, hl_stack.get());
-        if (DebugInstructions) {
-            s2e().getMessagesStream(state)
-                    << llvm::format("Instruction=0x%x", hl_frame->hlinst) << '\n';
-        }
-    }
-}
-
-
-void InterpreterDetector::onSymbolicDataMemoryAccess(S2EExecutionState *state,
-        klee::ref<klee::Expr> address, uint64_t concr_addr, bool &concretize) {
-    // TODO Make sure here that no symbolic HLPC updates ever occur
+    memory_recording_->recordMemoryOp(state->getPc(), ll_stack->top(),
+            address, value, size, is_write);
+    return;
 }
 
 
@@ -561,20 +465,17 @@ void InterpreterDetector::onS2ESyscall(S2EExecutionState *state,
 
 void InterpreterDetector::startCalibration(S2EExecutionState *state) {
     assert(!calibrating_ && "Calibration start attempted while running");
-    assert(!instrum_function_ && "Calibration attempted twice on the same interpreter");
+    assert(!detected_params_ && "Calibration attempted twice on the same interpreter");
 
     calibrating_ = true;
 
-    s2e().getMessagesStream(state)
+    s2e_.getMessagesStream(state)
             << "Starting interpreter detector calibration." << '\n';
 
     memory_recording_.reset(new MemoryOpRecorder());
     on_concrete_data_memory_access_ = os_tracer_.stream().
             onConcreteDataMemoryAccess.connect(
                     sigc::mem_fun(*this, &InterpreterDetector::onConcreteDataMemoryAccess));
-    on_symbolic_data_memory_access_ = os_tracer_.stream().
-            onSymbolicMemoryAddress.connect(
-                    sigc::mem_fun(*this, &InterpreterDetector::onSymbolicDataMemoryAccess));
 
     min_opcode_count_ = 0;
     memop_range_ = std::make_pair(0, 0);
@@ -584,7 +485,7 @@ void InterpreterDetector::startCalibration(S2EExecutionState *state) {
 void InterpreterDetector::checkpointCalibration(S2EExecutionState *state,
         unsigned count) {
     assert(calibrating_ && "Cannot checkpoint before calibration starts");
-    s2e().getMessagesStream(state) << "Calibration checkpoint." << '\n';
+    s2e_.getMessagesStream(state) << "Calibration checkpoint." << '\n';
 
 
     min_opcode_count_ += count;
@@ -597,13 +498,12 @@ void InterpreterDetector::checkpointCalibration(S2EExecutionState *state,
 
 void InterpreterDetector::endCalibration(S2EExecutionState *state) {
     assert(calibrating_ && "Calibration end attempted before start");
-    s2e().getMessagesStream(state) << "Calibration ended." << '\n';
+    s2e_.getMessagesStream(state) << "Calibration ended." << '\n';
 
     on_concrete_data_memory_access_.disconnect();
-    on_symbolic_data_memory_access_.disconnect();
     calibrating_ = false;
 
-    MemoryOpAnalyzer analyzer(s2e(), state, memory_recording_->mem_ops,
+    MemoryOpAnalyzer analyzer(s2e_, state, memory_recording_->mem_ops,
                 min_opcode_count_, memop_range_);
 
     bool result = analyzer.analyze();
@@ -614,116 +514,13 @@ void InterpreterDetector::endCalibration(S2EExecutionState *state) {
         return;
     }
 
-    instrum_function_ = analyzer.instrum_function;
-    instrum_hlpc_update_ = analyzer.instrum_hlpc_update;
-    instrum_opcode_read_ = analyzer.instrum_opcode_read;
+    detected_params_.reset(new InterpreterStructureParams());
+    detected_params_->interp_loop_function = analyzer.instrum_function;
+    detected_params_->hlpc_update_pc = analyzer.instrum_hlpc_update;
+    detected_params_->instruction_fetch_pc = analyzer.instrum_opcode_read;
 
-    startMonitoring(state);
-}
-
-
-void InterpreterDetector::startMonitoring(S2EExecutionState *state) {
-    HighLevelStack *hl_stack = getState(state).get();
-    CallStack *ll_stack = call_tracer_.getState(state).get();
-
-    hl_stack->frames_.clear();
-
-    for (unsigned i = 0; i < ll_stack->size(); ++i) {
-        shared_ptr<CallStackFrame> ll_frame = ll_stack->frame(
-                ll_stack->size() - i - 1);
-        if (ll_frame->function == instrum_function_) {
-            if (hl_stack->frames_.empty()) {
-                hl_stack->frames_.push_back(make_shared<HighLevelFrame>(
-                        ll_frame->id));
-            } else {
-                hl_stack->frames_.push_back(make_shared<HighLevelFrame>(
-                        hl_stack->frames_.back(), ll_frame->id));
-            }
-        }
-    }
-
-    on_stack_frame_push_ = call_tracer_.onStackFramePush.connect(
-            sigc::mem_fun(*this, &InterpreterDetector::onLowLevelStackFramePush));
-    on_stack_frame_popping_ = call_tracer_.onStackFramePopping.connect(
-            sigc::mem_fun(*this, &InterpreterDetector::onLowLevelStackFramePopping));
-}
-
-
-void InterpreterDetector::onLowLevelStackFramePush(CallStack *call_stack,
-        shared_ptr<CallStackFrame> old_top,
-        shared_ptr<CallStackFrame> new_top) {
-    updateMemoryTracking(new_top);
-
-    if (new_top->function == instrum_function_) {
-        HighLevelStack *hl_stack = getState(call_stack->s2e_state()).get();
-
-        // Enter a new interpretation frame
-        if (hl_stack->frames_.empty()) {
-            hl_stack->frames_.push_back(make_shared<HighLevelFrame>(new_top->id));
-        } else {
-            hl_stack->frames_.push_back(make_shared<HighLevelFrame>(
-                    hl_stack->frames_.back(), new_top->id));
-        }
-
-        onHighLevelFramePush.emit(call_stack->s2e_state(), hl_stack);
-
-#if 1
-        s2e().getMessagesStream(call_stack->s2e_state())
-                << "Enter high-level frame. Stack size: "
-                << hl_stack->frames_.size() << '\n';
-#endif
-    }
-}
-
-
-void InterpreterDetector::onLowLevelStackFramePopping(CallStack *call_stack,
-        shared_ptr<CallStackFrame> old_top,
-        shared_ptr<CallStackFrame> new_top) {
-    updateMemoryTracking(new_top);
-
-    if (old_top->function == instrum_function_) {
-        // Return from the interpretation frame
-        HighLevelStack *hl_stack = getState(call_stack->s2e_state()).get();
-        assert(!hl_stack->frames_.empty());
-
-        onHighLevelFramePopping.emit(call_stack->s2e_state(), hl_stack);
-
-        hl_stack->frames_.pop_back();
-
-#if 1
-        s2e().getMessagesStream(call_stack->s2e_state())
-                << "Leaving high-level frame. Stack size: "
-                << hl_stack->frames_.size() << '\n';
-#endif
-    }
-}
-
-
-void InterpreterDetector::onStateSwitch(S2EExecutionState *prev,
-        S2EExecutionState *next) {
-    CallStack *call_stack = call_tracer_.getState(next).get();
-    assert(call_stack->size() > 0);
-    updateMemoryTracking(call_stack->top());
-}
-
-
-void InterpreterDetector::updateMemoryTracking(boost::shared_ptr<CallStackFrame> top) {
-    if (top->function != instrum_function_) {
-        on_concrete_data_memory_access_.disconnect();
-        on_symbolic_data_memory_access_.disconnect();
-        return;
-    }
-
-    if (!on_concrete_data_memory_access_.connected()) {
-        on_concrete_data_memory_access_ = os_tracer_.stream().
-            onConcreteDataMemoryAccess.connect(sigc::mem_fun(
-                    *this, &InterpreterDetector::onConcreteDataMemoryAccess));
-    }
-    if (!on_symbolic_data_memory_access_.connected()) {
-        on_symbolic_data_memory_access_ = os_tracer_.stream().
-            onSymbolicMemoryAddress.connect(sigc::mem_fun(
-                    *this, &InterpreterDetector::onSymbolicDataMemoryAccess));
-    }
+    onInterpreterStructureDetected.emit(state, call_tracer_.tracked_tid(),
+            detected_params_.get());
 }
 
 

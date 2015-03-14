@@ -51,7 +51,7 @@
 
 namespace s2e {
 
-class InterpreterDetector;
+class InterpreterTracer;
 class HighLevelStack;
 class LowLevelState;
 class HighLevelState;
@@ -214,12 +214,12 @@ public:
     typedef std::set<boost::shared_ptr<HighLevelState> > HighLevelStateSet;
 
 public:
-    HighLevelExecutor(InterpreterDetector &detector,
+    HighLevelExecutor(InterpreterTracer &tracer,
             HighLevelStrategy &strategy);
     virtual ~HighLevelExecutor();
 
-    InterpreterDetector &detector() {
-        return detector_;
+    InterpreterTracer &interp_tracer() {
+        return interp_tracer_;
     }
 
     sigc::signal<void,
@@ -255,7 +255,7 @@ private:
     bool doUpdateSelectedState();
 
     HighLevelPathTracer path_tracer_;
-    InterpreterDetector &detector_;
+    InterpreterTracer &interp_tracer_;
     HighLevelStrategy &hl_strategy_;
 
     boost::scoped_ptr<LowLevelTopoStrategy> ll_strategy_;

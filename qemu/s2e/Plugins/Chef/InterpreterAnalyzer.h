@@ -49,6 +49,8 @@ class CallTracer;
 class OSThread;
 class S2ESyscallMonitor;
 class InterpreterDetector;
+class InterpreterTracer;
+class InterpreterStructureParams;
 
 class HighLevelExecutor;
 class HighLevelState;
@@ -67,6 +69,9 @@ private:
     void onThreadCreate(S2EExecutionState *state, OSThread* thread);
     void onThreadExit(S2EExecutionState *state, OSThread* thread);
 
+    void onInterpreterStructureDetected(S2EExecutionState *state, int tracked_tid,
+            const InterpreterStructureParams *params);
+
     void onHighLevelStateCreate(HighLevelState *hl_state);
     void onHighLevelStateStep(HighLevelState *hl_state);
     void onHighLevelStateKill(HighLevelState *hl_state);
@@ -79,12 +84,18 @@ private:
 
     boost::shared_ptr<S2ESyscallMonitor> smonitor_;
     boost::scoped_ptr<OSTracer> os_tracer_;
+
     boost::scoped_ptr<CallTracer> call_tracer_;
+
     boost::scoped_ptr<InterpreterDetector> interp_detector_;
+
+    boost::scoped_ptr<InterpreterTracer> interp_tracer_;
     boost::scoped_ptr<HighLevelStrategy> strategy_;
     boost::scoped_ptr<HighLevelExecutor> high_level_executor_;
 
     int tracked_tid_;
+    std::string selected_interpreter_;
+    boost::scoped_ptr<InterpreterStructureParams> interp_params_;
 
 };
 

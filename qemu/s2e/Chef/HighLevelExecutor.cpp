@@ -33,7 +33,7 @@
  */
 
 #include "HighLevelExecutor.h"
-#include <s2e/Chef/InterpreterDetector.h>
+#include <s2e/Chef/InterpreterTracer.h>
 #include <s2e/Chef/HighLevelStrategy.h>
 #include <s2e/Chef/CallTracer.h>
 
@@ -283,24 +283,24 @@ void LowLevelState::setAPICState(bool enabled) {
 
 // HighLevelExecutor ///////////////////////////////////////////////////////////
 
-HighLevelExecutor::HighLevelExecutor(InterpreterDetector &detector,
+HighLevelExecutor::HighLevelExecutor(InterpreterTracer &tracer,
         HighLevelStrategy &strategy)
-    : StreamAnalyzer<LowLevelState>(detector.s2e(), detector.stream()),
-      detector_(detector),
+    : StreamAnalyzer<LowLevelState>(tracer.s2e(), tracer.stream()),
+      interp_tracer_(tracer),
       hl_strategy_(strategy) {
-    on_high_level_pc_update_ = detector_.onHighLevelPCUpdate.connect(
+    on_high_level_pc_update_ = interp_tracer_.onHighLevelPCUpdate.connect(
             sigc::mem_fun(*this, &HighLevelExecutor::onHighLevelPCUpdate));
 
     ll_strategy_.reset(new LowLevelTopoStrategy(*this));
 
     s2e().getMessagesStream() << "Constructed high-level executor for tid="
-            << detector_.call_tracer().tracked_tid() << '\n';
+            << interp_tracer_.call_tracer().tracked_tid() << '\n';
 }
 
 
 HighLevelExecutor::~HighLevelExecutor() {
     s2e().getMessagesStream() << "High-level executor terminated for tid="
-            << detector_.call_tracer().tracked_tid() << '\n';
+            << interp_tracer_.call_tracer().tracked_tid() << '\n';
     on_high_level_pc_update_.disconnect();
 }
 

@@ -46,6 +46,7 @@
 #include <s2e/Chef/ExecutionStream.h>
 #include <s2e/Chef/S2ESyscallMonitor.h>
 #include <s2e/Chef/InterpreterDetector.h>
+#include <s2e/Chef/InterpreterTracer.h>
 #include <s2e/Chef/HighLevelExecutor.h>
 #include <s2e/Chef/HighLevelStrategy.h>
 
@@ -57,6 +58,15 @@ using boost::shared_ptr;
 namespace s2e {
 
 namespace plugins {
+
+static const char *valid_interpreters[] = {
+        "python",
+        "phantomjs",
+        "js24",
+        "lua"
+};
+
+// InterpreterAnalyzer /////////////////////////////////////////////////////////
 
 
 S2E_DEFINE_PLUGIN(InterpreterAnalyzer,
@@ -102,11 +112,19 @@ llvm::raw_ostream& InterpreterAnalyzer::getStream(const HighLevelState *hl_state
 
 void InterpreterAnalyzer::onThreadCreate(S2EExecutionState *state,
             OSThread *thread) {
-    // FIXME: We both agree this is horrible...
-    if (thread->name() != "python" &&
-        thread->name() != "phantomjs" &&
-        thread->name() != "js24" &&
-        thread->name() != "lua") {
+    // If there is no interpreter pinned, try to do it now
+    if (selected_interpreter_.empty()) {
+        for (unsigned i = 0; i < sizeof(valid_interpreters)/sizeof(valid_interpreters[0]); ++i) {
+            if (thread->name() == valid_interpreters[i]) {
+                selected_interpreter_ = thread->name();
+                s2e()->getMessagesStream(state) << "Locked on interpreter: "
+                        << selected_interpreter_ << '\n';
+                break;
+            }
+        }
+    }
+
+    if (thread->name() != selected_interpreter_) {
         return;
     }
 
@@ -115,9 +133,21 @@ void InterpreterAnalyzer::onThreadCreate(S2EExecutionState *state,
 
     tracked_tid_ = thread->tid();
     call_tracer_.reset(new CallTracer(*os_tracer_, tracked_tid_));
-    interp_detector_.reset(new InterpreterDetector(*call_tracer_, smonitor_));
+    interp_tracer_.reset(new InterpreterTracer(*call_tracer_));
+
+    if (interp_params_) {
+        s2e()->getMessagesStream(state) << "Reusing interpreter structure..." << '\n';
+        interp_tracer_->setInterpreterStructureParams(state, *interp_params_);
+    } else {
+        s2e()->getMessagesStream(state) << "Interpreter structure unknown. "
+                << "Registering detector..." << '\n';
+        interp_detector_.reset(new InterpreterDetector(*call_tracer_, smonitor_));
+        interp_detector_->onInterpreterStructureDetected.connect(
+                sigc::mem_fun(*this, &InterpreterAnalyzer::onInterpreterStructureDetected));
+    }
+
     strategy_.reset(new SelectorStrategy<DFSSelector<HighLevelStrategy::StateRef> >());
-    high_level_executor_.reset(new HighLevelExecutor(*interp_detector_, *strategy_));
+    high_level_executor_.reset(new HighLevelExecutor(*interp_tracer_, *strategy_));
 
     high_level_executor_->onHighLevelStateCreate.connect(
             sigc::mem_fun(*this, &InterpreterAnalyzer::onHighLevelStateCreate));
@@ -142,10 +172,31 @@ void InterpreterAnalyzer::onThreadExit(S2EExecutionState *state,
             << thread->name() << ")." << '\n';
 
     tracked_tid_ = 0;
+
     high_level_executor_.reset();
-    interp_detector_.reset();
     strategy_.reset();
+
+    interp_detector_.reset();
+    interp_tracer_.reset();
+    call_tracer_.reset();
 }
+
+
+void InterpreterAnalyzer::onInterpreterStructureDetected(S2EExecutionState *state,
+        int tracked_tid, const InterpreterStructureParams *params) {
+    interp_params_.reset(new InterpreterStructureParams(*params));
+
+    s2e()->getMessagesStream(state) << "Interpreter structure detected:" << '\n'
+            << "Interpretation function: "
+            << llvm::format("0x%x", interp_params_->interp_loop_function) << '\n'
+            << "HLPC update point: "
+            << llvm::format("0x%x", interp_params_->hlpc_update_pc) << '\n'
+            << "Instruction fetch point: "
+            << llvm::format("0x%x", interp_params_->instruction_fetch_pc) << '\n';
+
+    interp_tracer_->setInterpreterStructureParams(state, *interp_params_);
+}
+
 
 void InterpreterAnalyzer::onHighLevelStateCreate(HighLevelState *hl_state) {
 #if 1
