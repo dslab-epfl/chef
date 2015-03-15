@@ -48,7 +48,7 @@ SpiderMonkeySemantics::SpiderMonkeySemantics() {
 
 bool SpiderMonkeySemantics::decodeInstruction(S2EExecutionState *state,
         uint64_t hlpc, InterpreterInstruction &inst) {
-    target_int opcode;
+    uint8_t opcode;
     if (!state->readMemoryConcrete(hlpc, &opcode, sizeof(opcode), VirtualAddress)) {
         return false;
     }
