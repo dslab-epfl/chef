@@ -39,6 +39,8 @@
 
 #include <llvm/Support/raw_ostream.h>
 
+#include <llvm/ADT/DenseMap.h>
+
 #include <boost/scoped_ptr.hpp>
 #include <boost/shared_ptr.hpp>
 
@@ -54,6 +56,7 @@ class InterpreterStructureParams;
 
 class HighLevelExecutor;
 class HighLevelState;
+class HighLevelStack;
 class HighLevelStrategy;
 
 namespace plugins {
@@ -71,6 +74,9 @@ private:
 
     void onInterpreterStructureDetected(S2EExecutionState *state, int tracked_tid,
             const InterpreterStructureParams *params);
+
+    void onHighLevelInstructionFetch(S2EExecutionState *state,
+            HighLevelStack *hl_stack);
 
     void onHighLevelStateCreate(HighLevelState *hl_state);
     void onHighLevelStateStep(HighLevelState *hl_state);
@@ -97,6 +103,8 @@ private:
     std::string selected_interpreter_;
     boost::scoped_ptr<InterpreterStructureParams> interp_params_;
 
+    typedef llvm::DenseMap<int, uint64_t> OpcodeStatsMap;
+    OpcodeStatsMap opcode_stats_;
 };
 
 } /* namespace plugins */

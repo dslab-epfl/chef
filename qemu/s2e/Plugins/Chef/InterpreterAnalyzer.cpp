@@ -53,6 +53,8 @@
 #include <llvm/Support/Format.h>
 #include <llvm/Support/TimeValue.h>
 
+#include <inttypes.h>
+
 using boost::shared_ptr;
 
 namespace s2e {
@@ -134,6 +136,8 @@ void InterpreterAnalyzer::onThreadCreate(S2EExecutionState *state,
     tracked_tid_ = thread->tid();
     call_tracer_.reset(new CallTracer(*os_tracer_, tracked_tid_));
     interp_tracer_.reset(new InterpreterTracer(*call_tracer_));
+    interp_tracer_->onHighLevelInstructionFetch.connect(
+            sigc::mem_fun(*this, &InterpreterAnalyzer::onHighLevelInstructionFetch));
 
     if (interp_params_) {
         s2e()->getMessagesStream(state) << "Reusing interpreter structure..." << '\n';
@@ -171,6 +175,16 @@ void InterpreterAnalyzer::onThreadExit(S2EExecutionState *state,
     s2e()->getMessagesStream(state) << "Interpreter thread exited ("
             << thread->name() << ")." << '\n';
 
+    std::string opcode_stats_str;
+    llvm::raw_string_ostream sos(opcode_stats_str);
+
+    for (OpcodeStatsMap::iterator it = opcode_stats_.begin(),
+            ie = opcode_stats_.end(); it != ie; ++it) {
+        sos << llvm::format("[%d]:%" PRIu64, it->first, it->second) << ' ';
+    }
+
+    s2e()->getMessagesStream(state) << "OPCODE STATS: " << sos.str() << '\n';
+
     tracked_tid_ = 0;
 
     high_level_executor_.reset();
@@ -195,6 +209,22 @@ void InterpreterAnalyzer::onInterpreterStructureDetected(S2EExecutionState *stat
             << llvm::format("0x%x", interp_params_->instruction_fetch_pc) << '\n';
 
     interp_tracer_->setInterpreterStructureParams(state, *interp_params_);
+}
+
+
+void InterpreterAnalyzer::onHighLevelInstructionFetch(S2EExecutionState *state,
+        HighLevelStack *hl_stack) {
+    uint64_t hlpc = hl_stack->top()->hlpc;
+    InterpreterInstruction instruction(hlpc);
+    SpiderMonkeySemantics semantics;
+
+    if (!semantics.decodeInstruction(state, hlpc, instruction)) {
+        s2e()->getWarningsStream(state)
+                << "Could not decode instruction at HLPC "
+                << llvm::format("0x%x", hlpc) << '\n';
+        return;
+    }
+    opcode_stats_[instruction.opcode] += 1;
 }
 
 
