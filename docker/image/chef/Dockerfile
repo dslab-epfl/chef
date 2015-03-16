@@ -2,7 +2,7 @@ FROM dslab/s2e-base:v0.3
 MAINTAINER Stefan Bucur <stefan.bucur@epfl.ch>
 
 RUN apt-get update &&\
-  apt-get install -y emacs23-nox sudo
+  apt-get install -y emacs23-nox sudo gdb tmux socat
 
 # Additional S2E dependencies
 RUN apt-get install -y libdwarf-dev libelf-dev libboost-dev \

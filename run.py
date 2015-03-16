@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python2
 #
 # Copyright (C) 2015 EPFL.
 #
@@ -26,7 +26,7 @@ __author__ = "stefan.bucur@epfl.ch (Stefan Bucur)"
 
 
 import argparse
-import http.client
+import httplib
 import json
 import multiprocessing
 import os
@@ -49,7 +49,7 @@ S2E_IMAGE_PATH = os.environ.get("CHEF_IMAGE_S2E",
                                 os.path.splitext(RAW_IMAGE_PATH)[0] + ".s2e")
 
 DEFAULT_CONFIG_FILE = os.environ.get("CHEF_CONFIG",
-                                     os.path.join(THIS_DIR, "config", "default-config.lua"))
+                                     os.path.join(CHEF_DATA_ROOT, "config", "default-config.lua"))
 
 DEFAULT_COMMAND_PORT = 1234
 DEFAULT_TAP_INTERFACE = "tap0"
@@ -57,7 +57,6 @@ GDB_BIN = "gdb"
 COMMAND_SEND_TIMEOUT = 60
 MAX_DEFAULT_CORES = 4
 
-DOCKER_S2E_PATH = "/host"
 
 class Command(object):
     url_path = '/command'
@@ -223,9 +222,11 @@ def parse_cmd_line():
 
 
 def build_qemu_cmd_line(args):
-    cmd_line = ["docker", "run", "--rm", "-t", "-i", "-p", "5900:5900",
+    # Construct the docker command line
+    cmd_line = ["docker", "run", "--rm", "-t", "-i",
+                "-p", "%d:%d" % (args.command_port, args.command_port),
                 "-v", "%s:/host" % CHEF_ROOT,
-                "dslab/s2e-chef:v0.3"]
+                "dslab/s2e-chef:v0.4"]
 
     # Construct the qemu path
     qemu_path = os.path.join(CHEF_DATA_ROOT, "build",
@@ -236,43 +237,54 @@ def build_qemu_cmd_line(args):
                              ("i386-softmmu", "i386-s2e-softmmu")[args.mode == "sym"],
                              "qemu-system-i386")
 
-    # Construct the command line
+    # Construct the qemu command line
+    qemu_cmd_line = []
     if args.gdb:
-        cmd_line.extend([GDB_BIN, "--args"])
-    cmd_line.extend([qemu_path, (S2E_IMAGE_PATH, RAW_IMAGE_PATH)[args.mode == "kvm"],
+        qemu_cmd_line.extend([GDB_BIN, "--args"])
+    qemu_cmd_line.extend([qemu_path, (S2E_IMAGE_PATH, RAW_IMAGE_PATH)[args.mode == "kvm"],
                      "-cpu", "pentium"  # Non-Pentium instructions cause spurious concretizations
                      ])
     if args.net_none:
-        cmd_line.extend(["-net", "none"])  # No networking
+        qemu_cmd_line.extend(["-net", "none"])  # No networking
     else:
-        cmd_line.extend(["-net", "nic,model=pcnet"])  # The only network device supported by S2E, IIRC
+        qemu_cmd_line.extend(["-net", "nic,model=pcnet"])  # The only network device supported by S2E, IIRC
         if args.net_tap:
-            cmd_line.extend(["-net", "tap,ifname=%s" % DEFAULT_TAP_INTERFACE])
+            qemu_cmd_line.extend(["-net", "tap,ifname=%s" % DEFAULT_TAP_INTERFACE])
         else:
-            cmd_line.extend(["-net", "user",
+            qemu_cmd_line.extend(["-net", "user",
                              "-redir", "tcp:%d::4321" % args.command_port  # Command port forwarding
                              ])
 
     if args.batch:
-        cmd_line.extend(["-vnc", ":0",
-                         "-monitor", "/dev/null"
-                         ])
+        if args.gdb:
+            qemu_cmd_line.extend(["-vnc", ":0", "-monitor", "unix:qemu.sock,server,nowait"])
+        else:
+            qemu_cmd_line.extend(["-vnc", "none", "-monitor", "/dev/null"])
     elif args.x_forward:
-        cmd_line.extend(["-k", "en-us",  # Without it, the default key mapping is messed up
+        qemu_cmd_line.extend(["-k", "en-us",  # Without it, the default key mapping is messed up
                          "-monitor", "stdio"  # The monitor is not accessible over the regular Ctrl+Alt+2
                          ])
 
     if args.mode == "kvm":
-        cmd_line.extend(["-enable-kvm",
+        qemu_cmd_line.extend(["-enable-kvm",
                          "-smp", str(args.cores)  # KVM mode is the only multi-core one
                          ])
     if (args.mode == "prep" and args.load) or args.mode == "sym":
-        cmd_line.extend(["-loadvm", "1"])  # Assumption: snapshot is saved in slot 1 ("savevm 1" in the monitor)
+        qemu_cmd_line.extend(["-loadvm", "1"])  # Assumption: snapshot is saved in slot 1 ("savevm 1" in the monitor)
     if args.mode == "sym":
-        cmd_line.extend(["-s2e-config-file", args.config,
+        qemu_cmd_line.extend(["-s2e-config-file", args.config,
                          "-s2e-verbose"])
         if args.out_dir:
-            cmd_line.extend(["-s2e-output-dir", args.out_dir])
+            qemu_cmd_line.extend(["-s2e-output-dir", args.out_dir])
+
+    # Wrap gdb in tmux and open separate socat connection:
+    if args.gdb:
+        cmd_line.extend(["tmux", "new-session"])
+        cmd_line.append(' '.join(qemu_cmd_line))
+        cmd_line.extend([";", "split-window"])
+        cmd_line.append("while ! socat stdio UNIX-CONNECT:qemu.sock; do sleep 5; done")
+    else:
+        cmd_line.extend(qemu_cmd_line)
 
     return cmd_line
 
@@ -282,17 +294,18 @@ def main():
     qemu_cmd_line = build_qemu_cmd_line(args)
 
     if args.dry_run:
-        print(" ".join(pipes.quote(arg) for arg in qemu_cmd_line))
+        print " ".join(pipes.quote(arg) for arg in qemu_cmd_line)
         return
 
-    print("** Executing %s\n" % " ".join(pipes.quote(arg) for arg in qemu_cmd_line), file=sys.stderr)
+    print >>sys.stderr, "** Executing", " ".join(pipes.quote(arg) for arg in qemu_cmd_line)
+    print >>sys.stderr
 
     environ = dict(os.environ)
 
     if args.mode == "sym":
         environ["LUA_PATH"] = ";".join([os.path.join(os.path.dirname(args.config), "?.lua"),
                                         environ.get("LUA_PATH", "")])
-        print("** Setting LUA_PATH=%s" % environ["LUA_PATH"], file=sys.stderr)
+        print >>sys.stderr, "** Setting LUA_PATH=%s" % environ["LUA_PATH"]
 
         if args.time_out:
             kill_me_later(args.time_out)
