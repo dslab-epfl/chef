@@ -4,7 +4,7 @@ FROM ubuntu:14.04
 MAINTAINER Stefan Bucur <stefan.bucur@epfl.ch>
 
 # Tool dependencies
-RUN apt-get update && apt-get install -y build-essential subversion git gettext python-docutils python-pygments nasm unzip wget
+RUN apt-get update && apt-get install -y build-essential subversion git gettext python-docutils python-pygments nasm unzip wget qemu-kvm
 
 # Library dependencies
 RUN apt-get install -y liblua5.1-dev libsdl1.2-dev libsigc++-2.0-dev binutils-dev libiberty-dev libc6-dev-i386
