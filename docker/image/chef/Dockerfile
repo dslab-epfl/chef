@@ -1,4 +1,4 @@
-FROM dslab/s2e-base:v0.2
+FROM dslab/s2e-base:v0.3
 MAINTAINER Stefan Bucur <stefan.bucur@epfl.ch>
 
 RUN apt-get update &&\

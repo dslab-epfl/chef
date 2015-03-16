@@ -40,11 +40,8 @@ from datetime import datetime, timedelta
 
 THIS_DIR = os.path.dirname(__file__)
 
-CHEF_INSTALL_ROOT = os.path.abspath(os.path.join(THIS_DIR, ".."))
-CHEF_DATA_ROOT = "/var/local/chef"
-
-S2E_ROOT = os.path.abspath(os.path.join(CHEF_INSTALL_ROOT, "s2e"))
-
+CHEF_DATA_ROOT = "/host"
+CHEF_ROOT = os.path.abspath(THIS_DIR)
 
 RAW_IMAGE_PATH = os.environ.get("CHEF_IMAGE_RAW",
                                 os.path.join(CHEF_DATA_ROOT, "vm", "chef_disk.raw"))
@@ -192,9 +189,6 @@ def parse_cmd_line():
     parser.add_argument("-y", "--dry-run", action="store_true", default=False,
                         help="Only display the S2E command to be run, don't run anything.")
 
-    parser.add_argument("--docker", action="store_true", default=False,
-                        help="Run inside docker")
-
     modes = parser.add_subparsers(help="The S2E operation mode")
     modes.required = True
     modes.dest = 'operation mode'
@@ -229,23 +223,16 @@ def parse_cmd_line():
 
 
 def build_qemu_cmd_line(args):
-    cmd_line = []
+    cmd_line = ["docker", "run", "--rm", "-t", "-i", "-p", "5900:5900",
+                "-v", "%s:/host" % CHEF_ROOT,
+                "dslab/s2e-chef:v0.3"]
 
     # Construct the qemu path
-    if args.docker:
-        # FIXME: os.path root? --rm?
-        cmd_line.extend(["docker", "run", "--rm", "-t", "-i",
-                         "-v", "%s:/host" % CHEF_INSTALL_ROOT,
-                         "dslab/s2e-chef:v0.2"])
-        qemu_path = os.path.join("/host", "s2e", "build",
-                                 "%s-%s-%s" % ("i386",
-                                              ("release", "debug")[args.debug],
-                                              "normal"),
-                                 "qemu")
-    else:
-        qemu_path = os.path.join(S2E_ROOT, "build",
-                                 ("qemu-release", "qemu-debug")[args.debug])
-    qemu_path = os.path.join(qemu_path,
+    qemu_path = os.path.join(CHEF_DATA_ROOT, "build",
+                             "%s-%s-%s" % ("i386",
+                                           ("release", "debug")[args.debug],
+                                           "normal"),
+                             "qemu",
                              ("i386-softmmu", "i386-s2e-softmmu")[args.mode == "sym"],
                              "qemu-system-i386")
 
@@ -267,7 +254,7 @@ def build_qemu_cmd_line(args):
                              ])
 
     if args.batch:
-        cmd_line.extend(["-vnc", "none",
+        cmd_line.extend(["-vnc", ":0",
                          "-monitor", "/dev/null"
                          ])
     elif args.x_forward:

@@ -17,4 +17,5 @@ autom4te.cache
 .idea/
 
 # Compiled chef
-build
+/build
+/vm
