@@ -427,6 +427,12 @@ void InterpreterDetector::onConcreteDataMemoryAccess(S2EExecutionState *state,
     if (!thread->running() || thread->kernel_mode()) {
         return;
     }
+    // XXX: Hack, hack, hack: We filter out memory accesses in the kernel
+    // space that occur as part of Qemu's interrupt handling preparation,
+    // which happens before the task's privilege level is updated.
+    if (address >= 0xc0000000) {
+        return;
+    }
 
     bool is_write = flags & S2E_MEM_TRACE_FLAG_WRITE;
 

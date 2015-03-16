@@ -180,6 +180,14 @@ void InterpreterTracer::onConcreteDataMemoryAccess(S2EExecutionState *state,
     if (!thread->running() || thread->kernel_mode()) {
         return;
     }
+    // XXX: Hack, hack, hack: We filter out memory accesses in the kernel
+    // space that occur as part of Qemu's interrupt handling preparation,
+    // which happens before the task's privilege level is updated.
+    // See op_helper.c, function do_interrupt_protected.
+    if (address >= 0xc0000000) {
+        s2e().getWarningsStream(state) << "Spurious kernel-space memory access from userland. Skipping." << '\n';
+        return;
+    }
 
     bool is_write = flags & S2E_MEM_TRACE_FLAG_WRITE;
 
@@ -237,6 +245,12 @@ void InterpreterTracer::onConcreteDataMemoryAccess(S2EExecutionState *state,
     }
 
     if (state->getPc() == interp_params_.instruction_fetch_pc) {
+        if (is_write) {
+            s2e().getWarningsStream(state) << "Unexpected memory access: "
+                    << llvm::format("EIP=0x%x Addr=0x%x Value=0x%x Size=%d Flags=0x%08x",
+                            state->getPc(), address, value, size, flags)
+                    << '\n';
+        }
         assert(!is_write);
         //assert(!hl_frame->hlpc || address == hl_frame->hlpc);
         hl_frame->hlinst = address;
