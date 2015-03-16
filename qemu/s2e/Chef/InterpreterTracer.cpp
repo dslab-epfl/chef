@@ -137,6 +137,42 @@ shared_ptr<HighLevelStack> InterpreterTracer::createState(S2EExecutionState *s2e
 }
 
 
+void InterpreterTracer::pushHighLevelFrame(CallStack *call_stack,
+        HighLevelStack *hl_stack) {
+    // Enter a new interpretation frame
+    if (hl_stack->frames_.empty()) {
+        hl_stack->frames_.push_back(make_shared<HighLevelFrame>(
+                call_stack->top()->id));
+    } else {
+        hl_stack->frames_.push_back(make_shared<HighLevelFrame>(
+                hl_stack->frames_.back(), call_stack->top()->id));
+    }
+
+    onHighLevelFramePush.emit(call_stack->s2e_state(), hl_stack);
+
+#if 1
+    s2e().getMessagesStream(call_stack->s2e_state())
+            << "Enter high-level frame. Stack size: "
+            << hl_stack->frames_.size() << '\n';
+#endif
+}
+
+
+void InterpreterTracer::popHighLevelFrame(CallStack *call_stack,
+        HighLevelStack *hl_stack) {
+
+    onHighLevelFramePopping.emit(call_stack->s2e_state(), hl_stack);
+
+    hl_stack->frames_.pop_back();
+
+#if 1
+    s2e().getMessagesStream(call_stack->s2e_state())
+            << "Leaving high-level frame. Stack size: "
+            << hl_stack->frames_.size() << '\n';
+#endif
+}
+
+
 void InterpreterTracer::onConcreteDataMemoryAccess(S2EExecutionState *state,
         uint64_t address, uint64_t value, uint8_t size, unsigned flags) {
     OSThread *thread = os_tracer_.getState(state)->getThread(call_tracer_.tracked_tid());
@@ -165,8 +201,28 @@ void InterpreterTracer::onConcreteDataMemoryAccess(S2EExecutionState *state,
 
         if (!hl_frame->hlpc_ptr) {
             hl_frame->hlpc_ptr = address;
-        } else {
-            assert(hl_frame->hlpc_ptr == address);
+        } else if (hl_frame->hlpc_ptr != address){
+            s2e().getMessagesStream(state)
+                    << "Different HLPC location used within the same LL frame. " <<
+                    "Assuming different HL frame." << '\n';
+
+            bool is_return = false;
+            for (unsigned i = 0; i < hl_stack->size(); ++i) {
+                if (hl_stack->frame(i)->hlpc_ptr == address) {
+                    is_return = true;
+                    break;
+                }
+            }
+
+            if (is_return) {
+                while (hl_stack->top()->hlpc_ptr != address) {
+                    popHighLevelFrame(ll_stack.get(), hl_stack.get());
+                }
+            } else {
+                pushHighLevelFrame(ll_stack.get(), hl_stack.get());
+                hl_stack->top()->hlpc_ptr = address;
+            }
+            hl_frame = hl_stack->top().get();
         }
     }
 
@@ -206,22 +262,7 @@ void InterpreterTracer::onLowLevelStackFramePush(CallStack *call_stack,
 
     if (new_top->function == interp_params_.interp_loop_function) {
         HighLevelStack *hl_stack = getState(call_stack->s2e_state()).get();
-
-        // Enter a new interpretation frame
-        if (hl_stack->frames_.empty()) {
-            hl_stack->frames_.push_back(make_shared<HighLevelFrame>(new_top->id));
-        } else {
-            hl_stack->frames_.push_back(make_shared<HighLevelFrame>(
-                    hl_stack->frames_.back(), new_top->id));
-        }
-
-        onHighLevelFramePush.emit(call_stack->s2e_state(), hl_stack);
-
-#if 1
-        s2e().getMessagesStream(call_stack->s2e_state())
-                << "Enter high-level frame. Stack size: "
-                << hl_stack->frames_.size() << '\n';
-#endif
+        pushHighLevelFrame(call_stack, hl_stack);
     }
 }
 
@@ -235,16 +276,7 @@ void InterpreterTracer::onLowLevelStackFramePopping(CallStack *call_stack,
         // Return from the interpretation frame
         HighLevelStack *hl_stack = getState(call_stack->s2e_state()).get();
         assert(!hl_stack->frames_.empty());
-
-        onHighLevelFramePopping.emit(call_stack->s2e_state(), hl_stack);
-
-        hl_stack->frames_.pop_back();
-
-#if 1
-        s2e().getMessagesStream(call_stack->s2e_state())
-                << "Leaving high-level frame. Stack size: "
-                << hl_stack->frames_.size() << '\n';
-#endif
+        popHighLevelFrame(call_stack, hl_stack);
     }
 }
 

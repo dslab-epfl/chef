@@ -116,7 +116,7 @@ public:
 
     boost::shared_ptr<HighLevelFrame> frame(unsigned index) const {
         assert(index < frames_.size());
-        return frames_[index];
+        return frames_[frames_.size() - index - 1];
     }
 
     boost::shared_ptr<HighLevelFrame> top() const {
@@ -179,7 +179,8 @@ private:
     void onSymbolicDataMemoryAccess(S2EExecutionState *state,
             klee::ref<klee::Expr> address, uint64_t concr_addr, bool &concretize);
 
-    void startMonitoring(S2EExecutionState *state);
+    void pushHighLevelFrame(CallStack *call_stack, HighLevelStack *hl_stack);
+    void popHighLevelFrame(CallStack *call_stack, HighLevelStack *hl_stack);
 
     void onLowLevelStackFramePush(CallStack *call_stack,
             boost::shared_ptr<CallStackFrame> old_top,
