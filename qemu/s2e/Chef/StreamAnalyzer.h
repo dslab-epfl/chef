@@ -170,7 +170,10 @@ private:
         }
 
         typename StateMap::iterator it = state_map_.find(s2e_state);
-        assert(it != state_map_.end());
+        if (it == state_map_.end()) {
+            // A state was terminated before being created
+            return;
+        }
         it->second->terminate();
         state_map_.erase(it);
     }
