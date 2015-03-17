@@ -42,6 +42,7 @@ THIS_DIR = os.path.dirname(__file__)
 
 CHEF_DATA_ROOT = "/host"
 CHEF_ROOT = os.path.abspath(THIS_DIR)
+DOCKER_VERSION = "v0.4"
 
 RAW_IMAGE_PATH = os.environ.get("CHEF_IMAGE_RAW",
                                 os.path.join(CHEF_DATA_ROOT, "vm", "chef_disk.raw"))
@@ -52,6 +53,7 @@ DEFAULT_CONFIG_FILE = os.environ.get("CHEF_CONFIG",
                                      os.path.join(CHEF_DATA_ROOT, "config", "default-config.lua"))
 
 DEFAULT_COMMAND_PORT = 1234
+DEFAULT_MONITOR_PORT = 12345
 DEFAULT_TAP_INTERFACE = "tap0"
 GDB_BIN = "gdb"
 COMMAND_SEND_TIMEOUT = 60
@@ -179,6 +181,8 @@ def parse_cmd_line():
 
     parser.add_argument("-p", "--command-port", type=int, default=DEFAULT_COMMAND_PORT,
                         help="The command port configured for port forwarding")
+    parser.add_argument("-m", "--monitor-port", type=int, default=DEFAULT_MONITOR_PORT,
+                        help="The port on which the qemu monitor can be accessed")
 
     parser.add_argument("-d", "--debug", action="store_true", default=False,
                         help="Run in debug mode")
@@ -223,10 +227,14 @@ def parse_cmd_line():
 
 def build_qemu_cmd_line(args):
     # Construct the docker command line
-    cmd_line = ["docker", "run", "--rm", "-t", "-i",
-                "-p", "%d:%d" % (args.command_port, args.command_port),
-                "-v", "%s:/host" % CHEF_ROOT,
-                "dslab/s2e-chef:v0.4"]
+    cmd_line = ["docker", "run"]
+    cmd_line.extend(["--rm", "-t", "-i",
+                     "-v", "%s:/host" % CHEF_ROOT,
+                     "-p", "%d:%d" % (args.command_port, args.command_port),
+                     "-p", "%d:%d" % (args.monitor_port, args.monitor_port)])
+    if args.gdb:
+        cmd_line.extend(["-p", "5900:5900"])
+    cmd_line.append("dslab/s2e-chef:%s" % DOCKER_VERSION)
 
     # Construct the qemu path
     qemu_path = os.path.join(CHEF_DATA_ROOT, "build",
@@ -242,7 +250,8 @@ def build_qemu_cmd_line(args):
     if args.gdb:
         qemu_cmd_line.extend([GDB_BIN, "--args"])
     qemu_cmd_line.extend([qemu_path, (S2E_IMAGE_PATH, RAW_IMAGE_PATH)[args.mode == "kvm"],
-                     "-cpu", "pentium"  # Non-Pentium instructions cause spurious concretizations
+                     "-cpu", "pentium",  # Non-Pentium instructions cause spurious concretizations
+                     "-monitor", "tcp::%d,server,nowait" % (args.monitor_port)
                      ])
     if args.net_none:
         qemu_cmd_line.extend(["-net", "none"])  # No networking
@@ -252,18 +261,16 @@ def build_qemu_cmd_line(args):
             qemu_cmd_line.extend(["-net", "tap,ifname=%s" % DEFAULT_TAP_INTERFACE])
         else:
             qemu_cmd_line.extend(["-net", "user",
-                             "-redir", "tcp:%d::4321" % args.command_port  # Command port forwarding
-                             ])
+                                  "-redir", "tcp:%d::4321" % args.command_port  # Command port forwarding
+                                 ])
 
     if args.batch:
         if args.gdb:
-            qemu_cmd_line.extend(["-vnc", ":0", "-monitor", "unix:qemu.sock,server,nowait"])
+            qemu_cmd_line.extend(["-vnc", ":0"])
         else:
-            qemu_cmd_line.extend(["-vnc", "none", "-monitor", "/dev/null"])
+            qemu_cmd_line.extend(["-vnc", "none"])
     elif args.x_forward:
-        qemu_cmd_line.extend(["-k", "en-us",  # Without it, the default key mapping is messed up
-                         "-monitor", "stdio"  # The monitor is not accessible over the regular Ctrl+Alt+2
-                         ])
+        qemu_cmd_line.extend(["-k", "en-us"]) # Without it, the default key mapping is messed up
 
     if args.mode == "kvm":
         qemu_cmd_line.extend(["-enable-kvm",
@@ -282,7 +289,7 @@ def build_qemu_cmd_line(args):
         cmd_line.extend(["tmux", "new-session"])
         cmd_line.append(' '.join(qemu_cmd_line))
         cmd_line.extend([";", "split-window"])
-        cmd_line.append("while ! socat stdio UNIX-CONNECT:qemu.sock; do sleep 5; done")
+        cmd_line.append("echo 'socat stdio UNIX-CONNECT:qemu.sock'; bash")
     else:
         cmd_line.extend(qemu_cmd_line)
 
