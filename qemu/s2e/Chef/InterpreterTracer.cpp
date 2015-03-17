@@ -196,7 +196,10 @@ void InterpreterTracer::onConcreteDataMemoryAccess(S2EExecutionState *state,
     shared_ptr<HighLevelStack> hl_stack = getState(state);
     assert(hl_stack->size() > 0);
     HighLevelFrame *hl_frame = hl_stack->top().get();
-    assert(ll_stack->top()->id == hl_frame->low_level_frame_id);
+    if (ll_stack->top()->id != hl_frame->low_level_frame_id) {
+        s2e().getMessagesStream(state) << "HL frame ID does not match LL frame ID. "
+                << "Assuming HL stack unwind." << '\n';
+    }
 
     if (state->getPc() == interp_params_.hlpc_update_pc) {
         if (!is_write) {
