@@ -40,22 +40,31 @@ from datetime import datetime, timedelta
 
 THIS_DIR = os.path.dirname(__file__)
 
-CHEF_DATA_ROOT = "/host"
-CHEF_ROOT = os.path.abspath(THIS_DIR)
-DOCKER_VERSION = "v0.4"
+# Host:
+HOST_CHEF_ROOT = os.path.abspath(THIS_DIR)
+HOST_DATA_ROOT = os.path.join("/var", "local", "chef")
 
-RAW_IMAGE_PATH = os.environ.get("CHEF_IMAGE_RAW",
-                                os.path.join(CHEF_DATA_ROOT, "vm", "chef_disk.raw"))
-S2E_IMAGE_PATH = os.environ.get("CHEF_IMAGE_S2E",
-                                os.path.splitext(RAW_IMAGE_PATH)[0] + ".s2e")
+# Docker:
+VERSION = "v0.5"
+CHEF_ROOT = "/chef"
+DATA_ROOT = "/data"
+DATA_VM_DIR = os.path.join(DATA_ROOT, "vm")
+DATA_OUT_DIR = os.path.join(DATA_ROOT, "expdata")
+CHEF_CONFIG_DIR = os.path.join(CHEF_ROOT, "config")
 
-DEFAULT_CONFIG_FILE = os.environ.get("CHEF_CONFIG",
-                                     os.path.join(CHEF_DATA_ROOT, "config", "default-config.lua"))
+# Qemu image:
+RAW_IMAGE_PATH = os.path.join(DATA_VM_DIR, "chef_disk.raw")
+S2E_IMAGE_PATH = os.path.join(DATA_VM_DIR, "chef_disk.s2e")
 
+# Default configuration values:
+DEFAULT_CONFIG_FILE = os.path.join(CHEF_CONFIG_DIR, "default-config.lua")
+DEFAULT_OUTDIR = DATA_OUT_DIR
+DEFAULT_HOST_DATA_ROOT = HOST_DATA_ROOT
 DEFAULT_COMMAND_PORT = 1234
 DEFAULT_MONITOR_PORT = 12345
 DEFAULT_TAP_INTERFACE = "tap0"
 GDB_BIN = "gdb"
+STRACE_BIN = "strace"
 COMMAND_SEND_TIMEOUT = 60
 MAX_DEFAULT_CORES = 4
 
@@ -179,6 +188,8 @@ def parse_cmd_line():
     network.add_argument("-n", "--net-none", action="store_true", default=False,
                          help="Disable networking")
 
+    parser.add_argument("--data-root", default=DEFAULT_HOST_DATA_ROOT,
+                        help="location of data root")
     parser.add_argument("-p", "--command-port", type=int, default=DEFAULT_COMMAND_PORT,
                         help="The command port configured for port forwarding")
     parser.add_argument("-m", "--monitor-port", type=int, default=DEFAULT_MONITOR_PORT,
@@ -188,6 +199,8 @@ def parse_cmd_line():
                         help="Run in debug mode")
     parser.add_argument("--gdb", action="store_true", default=False,
                         help="Run under gdb")
+    parser.add_argument("--strace", action="store_true", default=False,
+                        help="Run under strace")
 
     parser.add_argument("-y", "--dry-run", action="store_true", default=False,
                         help="Only display the S2E command to be run, don't run anything.")
@@ -210,8 +223,10 @@ def parse_cmd_line():
     symbolic_mode = modes.add_parser("sym", help="Symbolic mode")
     symbolic_mode.add_argument("-f", "--config", default=DEFAULT_CONFIG_FILE,
                                help="The S2E configuration file")
-    symbolic_mode.add_argument("-o", "--out-dir",
+                               # XXX path is for docker container
+    symbolic_mode.add_argument("-o", "--out-dir", default=DEFAULT_OUTDIR,
                                help="S2E output directory")
+                               # XXX path is for docker container
     symbolic_mode.add_argument("-t", "--time-out", type=int,
                                help="Timeout (in seconds)")
     symbolic_mode.add_argument("-e", "--env-var", action="append",
@@ -225,36 +240,45 @@ def parse_cmd_line():
     return parser.parse_args()
 
 
-def build_qemu_cmd_line(args):
-    # Construct the docker command line
+def build_docker_cmd_line(args):
     cmd_line = ["docker", "run"]
     cmd_line.extend(["--rm", "-t", "-i",
-                     "-v", "%s:/host" % CHEF_ROOT,
+                     "-v", "%s:%s" % (HOST_CHEF_ROOT, CHEF_ROOT),
+                     "-v", "%s:%s" % (args.data_root, DATA_ROOT),
                      "-p", "%d:%d" % (args.command_port, args.command_port),
                      "-p", "%d:%d" % (args.monitor_port, args.monitor_port)])
-    if args.gdb:
+    if not args.batch or not args.mode == "sym":
         cmd_line.extend(["-p", "5900:5900"])
-    cmd_line.append("dslab/s2e-chef:%s" % DOCKER_VERSION)
+    cmd_line.append("dslab/s2e-chef:%s" % VERSION)
+    cmd_line.extend(build_qemu_cmd_line(args))
+    return cmd_line
 
-    # Construct the qemu path
-    qemu_path = os.path.join(CHEF_DATA_ROOT, "build",
+
+def build_qemu_cmd_line(args):
+    # Qemu path
+    qemu_path = os.path.join(CHEF_ROOT, "build",
                              "%s-%s-%s" % ("i386",
                                            ("release", "debug")[args.debug],
                                            "normal"),
-                             "qemu",
-                             ("i386-softmmu", "i386-s2e-softmmu")[args.mode == "sym"],
-                             "qemu-system-i386")
+                             "opt", "bin",
+                             "qemu-system-i386%s" % ("", "-s2e")[args.mode == "sym"]
+                            )
 
-    # Construct the qemu command line
+    # Base command
     qemu_cmd_line = []
     if args.gdb:
         qemu_cmd_line.extend([GDB_BIN, "--args"])
-    qemu_cmd_line.extend([qemu_path, (S2E_IMAGE_PATH, RAW_IMAGE_PATH)[args.mode == "kvm"],
-                     "-cpu", "pentium",  # Non-Pentium instructions cause spurious concretizations
-                     "-monitor", "tcp::%d,server,nowait" % (args.monitor_port)
-                     ])
+    if args.strace:
+        qemu_cmd_line.extend([STRACE_BIN, "-e", "open"])
+    qemu_cmd_line.append(qemu_path);
+    qemu_cmd_line.append((S2E_IMAGE_PATH, RAW_IMAGE_PATH)[args.mode == "kvm"])
 
-    # Network:
+    # General: CPU and command monitor
+    qemu_cmd_line.extend(["-cpu", "pentium",  # Non-Pentium instructions cause spurious concretizations
+                          "-monitor", "tcp::%d,server,nowait" % (args.monitor_port)
+                         ])
+
+    # Specific: Network, VNC, keyboard, KVM
     if args.net_none:
         qemu_cmd_line.extend(["-net", "none"])  # No networking
     else:
@@ -266,43 +290,34 @@ def build_qemu_cmd_line(args):
                                   "-redir", "tcp:%d::4321" % args.command_port  # Command port forwarding
                                  ])
 
-    # Don't open VNC port if running multiple instances:
     if args.batch and args.mode == "sym":
         qemu_cmd_line.extend(["-vnc", "none"])
     else:
         qemu_cmd_line.extend(["-vnc", ":0"])
 
-    # Set keyboard layout:
     if args.x_forward:
         qemu_cmd_line.extend(["-k", "en-us"]) # Without it, the default key mapping is messed up
 
     if args.mode == "kvm":
         qemu_cmd_line.extend(["-enable-kvm",
-                         "-smp", str(args.cores)  # KVM mode is the only multi-core one
-                         ])
+                              "-smp", str(args.cores)  # KVM mode is the only multi-core one
+                             ])
+
+    # Snapshots (assuming they are stored in slot 1 with "savevm 1")
     if (args.mode == "prep" and args.load) or args.mode == "sym":
-        qemu_cmd_line.extend(["-loadvm", "1"])  # Assumption: snapshot is saved in slot 1 ("savevm 1" in the monitor)
+        qemu_cmd_line.extend(["-loadvm", "1"])
     if args.mode == "sym":
-        qemu_cmd_line.extend(["-s2e-config-file", args.config,
-                         "-s2e-verbose"])
+        qemu_cmd_line.extend(["-s2e-config-file", args.config, "-s2e-verbose"])
         if args.out_dir:
             qemu_cmd_line.extend(["-s2e-output-dir", args.out_dir])
 
-    # Wrap gdb in tmux and open separate socat connection:
-    if args.gdb:
-        cmd_line.extend(["tmux", "new-session"])
-        cmd_line.append(' '.join(qemu_cmd_line))
-        cmd_line.extend([";", "split-window"])
-        cmd_line.append("echo 'socat stdio UNIX-CONNECT:qemu.sock'; bash")
-    else:
-        cmd_line.extend(qemu_cmd_line)
-
-    return cmd_line
+    return qemu_cmd_line
 
 
 def main():
     args = parse_cmd_line()
-    qemu_cmd_line = build_qemu_cmd_line(args)
+    #qemu_cmd_line = build_qemu_cmd_line(args)
+    qemu_cmd_line = build_docker_cmd_line(args) # wrap qemu inside docker
 
     if args.dry_run:
         print " ".join(pipes.quote(arg) for arg in qemu_cmd_line)

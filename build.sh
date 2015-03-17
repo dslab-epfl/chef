@@ -5,7 +5,7 @@
 #
 # Maintainer: Tinu Weber <martin.weber@epfl.ch>
 
-DOCKER_VERSION='v0.4'
+DOCKER_VERSION='v0.5'
 export C_INCLUDE_PATH='/usr/include:/usr/include/x86_64-linux-gnu'
 export CPLUS_INCLUDE_PATH="$C_INCLUDE_PATH:/usr/include/x86_64-linux-gnu/c++/4.8"
 
@@ -290,6 +290,17 @@ libvmi_build()
 
 # QEMU =========================================================================
 
+qemu_install()
+{
+	make install
+	cp "$ARCH-s2e-softmmu/op_helper.bc" \
+		"$BUILDPATH_BASE/opt/share/qemu/op_helper.bc.$ARCH"
+	cp "$ARCH-softmmu/qemu-system-$ARCH" \
+		"$BUILDPATH_BASE/opt/bin/qemu-system-$ARCH"
+	cp "$ARCH-s2e-softmmu/qemu-system-$ARCH" \
+		"$BUILDPATH_BASE/opt/bin/qemu-system-$ARCH-s2e"
+}
+
 qemu_build()
 {
 	qemu_srcpath="$SRCPATH_BASE/qemu"
@@ -331,6 +342,9 @@ qemu_build()
 
 	# Build:
 	track 'Building qemu' make -j$JOBS
+
+	# Install:
+	track 'Installing qemu' qemu_install
 }
 
 # TOOLS ========================================================================
@@ -553,12 +567,12 @@ docker_build()
 		"$HOSTPATH/$RUNNAME" \
 			-b "$HOSTPATH/build/$ARCH-$TARGET-$MODE" \
 			-c "$CHECKED" \
-			$(test $FORCE -eq 0 && printf '-f') \
+			$(test $FORCE -eq 0 && printf '%s' '-f') \
 			-i "$IGNORED" \
 			-j$JOBS \
 			-l "$LLVM_BASE" \
 			-q "$QEMU_FLAGS" \
-			$(test $SILENT -eq 0 && printf '-s') \
+			$(test $SILENT -eq 0 && printf '%s' '-s') \
 			-z \
 			"$ARCH" "$TARGET" "$MODE"
 }
