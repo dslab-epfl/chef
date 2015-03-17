@@ -69,6 +69,7 @@ public:
 
     void initialize();
 private:
+    HighLevelStrategy *createHighLevelStrategy();
     void onThreadCreate(S2EExecutionState *state, OSThread* thread);
     void onThreadExit(S2EExecutionState *state, OSThread* thread);
 

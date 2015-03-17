@@ -35,7 +35,7 @@
 #include "InterpreterAnalyzer.h"
 
 #include <s2e/S2E.h>
-
+#include <s2e/ConfigFile.h>
 #include <s2e/Plugins/CorePlugin.h>
 #include <s2e/Plugins/Opcodes.h>
 
@@ -99,6 +99,23 @@ void InterpreterAnalyzer::initialize() {
 }
 
 
+HighLevelStrategy *InterpreterAnalyzer::createHighLevelStrategy() {
+    std::string strategy_name = s2e()->getConfig()->getString(
+            getConfigKey() + ".hlstrategy", "dfs");
+
+    if (strategy_name == "dfs") {
+        return new SelectorStrategy<DFSSelector<HighLevelStrategy::StateRef> >();
+    } else if (strategy_name == "bfs") {
+        return new SelectorStrategy<BFSSelector<HighLevelStrategy::StateRef> >();
+    } else {
+        s2e()->getWarningsStream() << "Invalid strategy: " << strategy_name << '\n';
+        ::exit(-1);
+        // Should be unreachable...
+        return NULL;
+    }
+}
+
+
 llvm::raw_ostream& InterpreterAnalyzer::getStream(const HighLevelState *hl_state) {
     llvm::raw_ostream &os = s2e()->getMessagesStream();
     if (hl_state) {
@@ -150,7 +167,7 @@ void InterpreterAnalyzer::onThreadCreate(S2EExecutionState *state,
                 sigc::mem_fun(*this, &InterpreterAnalyzer::onInterpreterStructureDetected));
     }
 
-    strategy_.reset(new SelectorStrategy<DFSSelector<HighLevelStrategy::StateRef> >());
+    strategy_.reset(createHighLevelStrategy());
     high_level_executor_.reset(new HighLevelExecutor(*interp_tracer_, *strategy_));
 
     high_level_executor_->onHighLevelStateCreate.connect(
