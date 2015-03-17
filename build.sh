@@ -5,7 +5,7 @@
 #
 # Maintainer: Tinu Weber <martin.weber@epfl.ch>
 
-DOCKER_VERSION='v0.3'
+DOCKER_VERSION='v0.4'
 export C_INCLUDE_PATH='/usr/include:/usr/include/x86_64-linux-gnu'
 export CPLUS_INCLUDE_PATH="$C_INCLUDE_PATH:/usr/include/x86_64-linux-gnu/c++/4.8"
 

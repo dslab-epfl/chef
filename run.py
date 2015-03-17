@@ -253,6 +253,8 @@ def build_qemu_cmd_line(args):
                      "-cpu", "pentium",  # Non-Pentium instructions cause spurious concretizations
                      "-monitor", "tcp::%d,server,nowait" % (args.monitor_port)
                      ])
+
+    # Network:
     if args.net_none:
         qemu_cmd_line.extend(["-net", "none"])  # No networking
     else:
@@ -264,12 +266,14 @@ def build_qemu_cmd_line(args):
                                   "-redir", "tcp:%d::4321" % args.command_port  # Command port forwarding
                                  ])
 
-    if args.batch:
-        if args.gdb:
-            qemu_cmd_line.extend(["-vnc", ":0"])
-        else:
-            qemu_cmd_line.extend(["-vnc", "none"])
-    elif args.x_forward:
+    # Don't open VNC port if running multiple instances:
+    if args.batch and args.mode == "sym":
+        qemu_cmd_line.extend(["-vnc", "none"])
+    else:
+        qemu_cmd_line.extend(["-vnc", ":0"])
+
+    # Set keyboard layout:
+    if args.x_forward:
         qemu_cmd_line.extend(["-k", "en-us"]) # Without it, the default key mapping is messed up
 
     if args.mode == "kvm":
