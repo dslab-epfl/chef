@@ -176,6 +176,7 @@ def kill_me_later(timeout, extra_time=60):
 
 def parse_cmd_line():
     parser = argparse.ArgumentParser(description="High-level interface to S2E.")
+
     host_env = parser.add_mutually_exclusive_group()
     host_env.add_argument("-b", "--batch", action="store_true", default=False,
                           help="Headless (no GUI) mode")
@@ -188,6 +189,12 @@ def parse_cmd_line():
     network.add_argument("-n", "--net-none", action="store_true", default=False,
                          help="Disable networking")
 
+    exe_env = parser.add_mutually_exclusive_group()
+    exe_env.add_argument("--gdb", action="store_true", default=False,
+                         help="Run under gdb")
+    exe_env.add_argument("--strace", action="store_true", default=False,
+                         help="Run under strace")
+
     parser.add_argument("--data-root", default=DEFAULT_HOST_DATA_ROOT,
                         help="location of data root")
     parser.add_argument("-p", "--command-port", type=int, default=DEFAULT_COMMAND_PORT,
@@ -197,11 +204,6 @@ def parse_cmd_line():
 
     parser.add_argument("-d", "--debug", action="store_true", default=False,
                         help="Run in debug mode")
-    parser.add_argument("--gdb", action="store_true", default=False,
-                        help="Run under gdb")
-    parser.add_argument("--strace", action="store_true", default=False,
-                        help="Run under strace")
-
     parser.add_argument("-y", "--dry-run", action="store_true", default=False,
                         help="Only display the S2E command to be run, don't run anything.")
 
@@ -249,6 +251,8 @@ def build_docker_cmd_line(args):
                      "-p", "%d:%d" % (args.monitor_port, args.monitor_port)])
     if not args.batch or not args.mode == "sym":
         cmd_line.extend(["-p", "5900:5900"])
+    if args.mode == "kvm":
+        cmd_line.append("--privileged=true")
     cmd_line.append("dslab/s2e-chef:%s" % VERSION)
     cmd_line.extend(build_qemu_cmd_line(args))
     return cmd_line
@@ -266,6 +270,8 @@ def build_qemu_cmd_line(args):
 
     # Base command
     qemu_cmd_line = []
+    if args.mode == "kvm":
+        qemu_cmd_line.append("sudo") # FIXME use POSIX ACL to circumvent permission issues
     if args.gdb:
         qemu_cmd_line.extend([GDB_BIN, "--args"])
     if args.strace:
