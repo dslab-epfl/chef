@@ -84,7 +84,7 @@ private:
             boost::shared_ptr<CallStackFrame> top,
             bool &schedule_state);
 
-    void stepBasicBlock(boost::shared_ptr<LowLevelState> state, int bb);
+    void stepBasicBlock(LowLevelState *state, int bb);
 
     bool trySchedule();
 
@@ -93,13 +93,15 @@ private:
 
     boost::shared_ptr<HighLevelState> target_hl_state_;
     std::vector<boost::shared_ptr<TopologicNode> > active_cursor_;
-    boost::shared_ptr<LowLevelState> current_ll_state_;
+    LowLevelState *current_ll_state_;
 
     sigc::connection on_stack_frame_push_;
     sigc::connection on_stack_frame_popping_;
     sigc::connection on_basic_block_enter_;
 
     klee::Searcher *old_searcher_;
+
+    unsigned cursor_wbr_counter_;
 
     friend class HighLevelExecutor;
 };

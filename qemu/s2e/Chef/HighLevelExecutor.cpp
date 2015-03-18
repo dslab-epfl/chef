@@ -248,7 +248,7 @@ shared_ptr<LowLevelState> LowLevelState::clone(S2EExecutionState *s2e_state) {
 
     if (!topo_index.empty()) {
         new_state->topo_index = topo_index;
-        new_state->topo_index.back()->states.insert(new_state);
+        new_state->topo_index.back()->states.insert(new_state.get());
     }
     return new_state;
 }
@@ -258,7 +258,7 @@ void LowLevelState::terminate() {
     segment->leaveState(shared_from_this());
 
     if (!topo_index.empty()) {
-        topo_index.back()->states.remove(shared_from_this());
+        topo_index.back()->states.remove(this);
     }
 
     analyzer().tryUpdateSelectedState();
@@ -324,7 +324,7 @@ shared_ptr<LowLevelState> HighLevelExecutor::createState(S2EExecutionState *s2e_
 
     // Bootstrap the topologic index computation
     ll_state->topo_index = hl_state->cursor;
-    ll_state->topo_index.back()->states.insert(ll_state);
+    ll_state->topo_index.back()->states.insert(ll_state.get());
 
     onHighLevelStateCreate.emit(hl_state.get());
 

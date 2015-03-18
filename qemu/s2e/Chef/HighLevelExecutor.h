@@ -118,7 +118,9 @@ private:
 
 
 struct TopologicNode : public boost::enable_shared_from_this<TopologicNode> {
-    typedef llvm::SetVector<boost::shared_ptr<LowLevelState> > StateSet;
+    // XXX: For safetly, we should have used weak_ptrs, but SetVectors don't
+    // allow it.
+    typedef llvm::SetVector<LowLevelState*> StateSet;
 
     TopologicNode(boost::shared_ptr<TopologicNode> p,
             int bb, int ci, bool cb);

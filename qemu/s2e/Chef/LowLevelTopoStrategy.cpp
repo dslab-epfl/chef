@@ -63,6 +63,10 @@ DebugLowLevelScheduler("debug-low-level-scheduler",
         llvm::cl::desc("Print debug info for the low-level Chef scheduler"),
         llvm::cl::init(false));
 
+llvm::cl::opt<unsigned>
+LowLevelCursorWriteBackRate("low-level-cursor-wbr",
+        llvm::cl::desc("The number of consecutive same-state updates before a cursor writeback"),
+        llvm::cl::init(1000));
 }
 
 namespace s2e {
@@ -89,7 +93,7 @@ static bool stepCursor(TopologicIndex &cursor) {
     return true;
 }
 
-static shared_ptr<LowLevelState> findNextState(int path_id, TopologicIndex &cursor,
+static LowLevelState* findNextState(int path_id, TopologicIndex &cursor,
         long int &counter) {
     counter = 0;
     while (!cursor.empty()) {
@@ -104,7 +108,7 @@ static shared_ptr<LowLevelState> findNextState(int path_id, TopologicIndex &curs
         stepCursor(cursor);
         counter++;
     }
-    return shared_ptr<LowLevelState>();
+    return NULL;
 }
 
 static int countAccessibleStates(const TopologicIndex &cursor) {
@@ -121,7 +125,9 @@ static int countAccessibleStates(const TopologicIndex &cursor) {
 
 LowLevelTopoStrategy::LowLevelTopoStrategy(HighLevelExecutor &hl_executor)
     : hl_executor_(hl_executor),
-      call_tracer_(hl_executor.interp_tracer().call_tracer()){
+      call_tracer_(hl_executor.interp_tracer().call_tracer()),
+      current_ll_state_(NULL),
+      cursor_wbr_counter_(0) {
 
     on_stack_frame_push_ = call_tracer_.onStackFramePush.connect(
             sigc::mem_fun(*this, &LowLevelTopoStrategy::onStackFramePush));
@@ -139,7 +145,8 @@ void LowLevelTopoStrategy::updateTargetHighLevelState(
         boost::shared_ptr<HighLevelState> hl_state) {
     assert(hl_state);
 
-    if (target_hl_state_ != hl_state) {
+    if ((target_hl_state_ != hl_state) ||
+            (cursor_wbr_counter_ == LowLevelCursorWriteBackRate)) {
         if (target_hl_state_) {
             if (DebugLowLevelScheduler) {
                 hl_executor_.s2e().getMessagesStream()
@@ -161,6 +168,9 @@ void LowLevelTopoStrategy::updateTargetHighLevelState(
                     << "Accessible states: " << countAccessibleStates(active_cursor_)
                     << '\n';
         }
+        cursor_wbr_counter_ = 0;
+    } else {
+        cursor_wbr_counter_++;
     }
 
     trySchedule();
@@ -179,7 +189,7 @@ LowLevelTopoStrategy::~LowLevelTopoStrategy() {
 void LowLevelTopoStrategy::onStackFramePush(CallStack *stack,
         boost::shared_ptr<CallStackFrame> old_top,
         boost::shared_ptr<CallStackFrame> new_top) {
-    shared_ptr<LowLevelState> state = hl_executor_.getState(stack->s2e_state());
+    LowLevelState *state = hl_executor_.getState(stack->s2e_state()).get();
     assert(!state->topo_index.empty());
 
     // TODO: Move all this stuff in a separate TopologicIndex class
@@ -195,7 +205,7 @@ void LowLevelTopoStrategy::onStackFramePush(CallStack *stack,
 void LowLevelTopoStrategy::onStackFramePopping(CallStack *stack,
         boost::shared_ptr<CallStackFrame> old_top,
         boost::shared_ptr<CallStackFrame> new_top) {
-    shared_ptr<LowLevelState> state = hl_executor_.getState(stack->s2e_state());
+    LowLevelState *state = hl_executor_.getState(stack->s2e_state()).get();
     assert(!state->topo_index.empty());
 
     shared_ptr<TopologicNode> slot = state->topo_index.back();
@@ -220,7 +230,7 @@ void LowLevelTopoStrategy::onStackFramePopping(CallStack *stack,
 void LowLevelTopoStrategy::onBasicBlockEnter(CallStack *stack,
         boost::shared_ptr<CallStackFrame> top,
         bool &schedule_state) {
-    shared_ptr<LowLevelState> state = hl_executor_.getState(stack->s2e_state());
+    LowLevelState *state = hl_executor_.getState(stack->s2e_state()).get();
     assert(!state->topo_index.empty());
 
     int bb = top->bb_index;
@@ -272,7 +282,7 @@ void LowLevelTopoStrategy::onBasicBlockEnter(CallStack *stack,
         bool success = false;
         for (TopologicNode::StateSet::iterator it = state_set.begin(),
                 ie = state_set.end(); it != ie; ++it) {
-            shared_ptr<LowLevelState> other_state = *it;
+            LowLevelState* other_state = *it;
             if (other_state == state) {
                 continue;
             }
@@ -308,7 +318,7 @@ void LowLevelTopoStrategy::onBasicBlockEnter(CallStack *stack,
 }
 
 
-void LowLevelTopoStrategy::stepBasicBlock(shared_ptr<LowLevelState> state,
+void LowLevelTopoStrategy::stepBasicBlock(LowLevelState *state,
         int bb) {
     shared_ptr<TopologicNode> slot = state->topo_index.back();
     shared_ptr<TopologicNode> next_slot;
@@ -335,7 +345,7 @@ void LowLevelTopoStrategy::stepBasicBlock(shared_ptr<LowLevelState> state,
 
 bool LowLevelTopoStrategy::trySchedule() {
     if (!target_hl_state_) {
-        current_ll_state_.reset();
+        current_ll_state_ = NULL;
         hl_executor_.s2e().getWarningsStream()
                 << "LowLevelTopoStrategy: No high-level state registered. "
                 << "Resorting to underlying strategy..." << '\n';
@@ -343,7 +353,7 @@ bool LowLevelTopoStrategy::trySchedule() {
     }
 
     long int counter;
-    shared_ptr<LowLevelState> next_state = findNextState(
+    LowLevelState *next_state = findNextState(
                 target_hl_state_->id(), active_cursor_, counter);
     assert(next_state && "Could not find next state. Perhaps wrong cursor position?");
 
