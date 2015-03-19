@@ -59,15 +59,19 @@ struct CallStackFrame {
     uint64_t call_site;
     uint64_t function;
 
-    // TODO: Maybe this should be stored separately?
-    uint32_t bb_index;
+    // TODO: Maybe this should be stored separately, in a basic block descriptor?
+    int bb_index;
+    int loop_id;
+    int loop_depth;
+    bool is_header;
 
     uint64_t top;
     uint64_t bottom;
 
     CallStackFrame(boost::shared_ptr<CallStackFrame> p,
             uint64_t i, uint64_t cs, uint64_t fn, uint64_t t, uint64_t b)
-        : parent(p), id(i), call_site(cs), function(fn), bb_index(0),
+        : parent(p), id(i), call_site(cs), function(fn),
+          bb_index(0), loop_id(0), loop_depth(0), is_header(false),
           top(t), bottom(b) {
 
     }
@@ -78,6 +82,9 @@ struct CallStackFrame {
           call_site(other.call_site),
           function(other.function),
           bb_index(other.bb_index),
+          loop_id(other.loop_id),
+          loop_depth(other.loop_depth),
+          is_header(other.is_header),
           top(other.top),
           bottom(other.bottom) {
 
@@ -115,7 +122,8 @@ public:
 protected:
     void newFrame(uint64_t call_site, uint64_t function, uint64_t sp);
     void updateFrame(uint64_t sp);
-    void updateBasicBlock(uint32_t bb_index, bool &schedule_state);
+    void updateBasicBlock(int bb_index, int loop_id, int loop_depth, bool is_header,
+            bool &schedule_state);
 
 private:
     typedef std::vector<boost::shared_ptr<CallStackFrame> > FrameVector;

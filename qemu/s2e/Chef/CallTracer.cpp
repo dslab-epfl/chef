@@ -128,10 +128,15 @@ void CallStack::updateFrame(uint64_t sp) {
 }
 
 
-void CallStack::updateBasicBlock(uint32_t bb_index, bool &schedule_state) {
+void CallStack::updateBasicBlock(int bb_index, int loop_id, int loop_depth,
+        bool is_header, bool &schedule_state) {
     assert(!frames_.empty());
 
     frames_.back()->bb_index = bb_index;
+    frames_.back()->loop_id = loop_id;
+    frames_.back()->loop_depth = loop_depth;
+    frames_.back()->is_header = is_header;
+
     analyzer().onBasicBlockEnter.emit(this, frames_.back(), schedule_state);
 }
 
@@ -237,9 +242,17 @@ void CallTracer::onCustomInstruction(S2EExecutionState *state, uint64_t opcode) 
     if (thread->kernel_mode())
         return;
 
-    uint32_t bb_index = (uint32_t)((opcode >> 16) & 0xFFFF);
+    // Decode the BB descriptor
+    uint32_t bb_descriptor = (opcode & 0xFF) | (((opcode >> 16) & 0xFFFF) << 8);
+
+    int bb_index = bb_descriptor & ((1 << 12) - 1);
+    int loop_id = (bb_descriptor >> 12) & ((1 << 8) - 1);
+    int loop_depth = (bb_descriptor >> 20) & ((1 << 3) - 1);
+    bool is_header = (bb_descriptor >> 23) & 0x1;
+
     bool schedule_state = false;
-    getState(state)->updateBasicBlock(bb_index, schedule_state);
+    getState(state)->updateBasicBlock(bb_index, loop_id, loop_depth, is_header,
+            schedule_state);
 
     if (schedule_state) {
         // Skip the current instruction, since we'll throw at the end
