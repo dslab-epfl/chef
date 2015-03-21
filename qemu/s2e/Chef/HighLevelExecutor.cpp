@@ -33,11 +33,11 @@
  */
 
 #include "HighLevelExecutor.h"
-#include <s2e/Chef/InterpreterTracer.h>
-#include <s2e/Chef/HighLevelStrategy.h>
-#include <s2e/Chef/CallTracer.h>
 
-#include <s2e/Chef/LowLevelTopoStrategy.h>
+#include <s2e/Chef/InterpreterTracer.h>
+#include <s2e/Chef/CallTracer.h>
+#include <s2e/Chef/HighLevelStrategy.h>
+#include <s2e/Chef/LowLevelStrategy.h>
 
 #include <boost/shared_ptr.hpp>
 #include <boost/make_shared.hpp>
@@ -284,14 +284,15 @@ void LowLevelState::setAPICState(bool enabled) {
 // HighLevelExecutor ///////////////////////////////////////////////////////////
 
 HighLevelExecutor::HighLevelExecutor(InterpreterTracer &tracer,
-        HighLevelStrategy &strategy)
+        HighLevelStrategyFactory &hl_factory,
+        LowLevelStrategyFactory &ll_factory)
     : StreamAnalyzer<LowLevelState>(tracer.s2e(), tracer.stream()),
-      interp_tracer_(tracer),
-      hl_strategy_(strategy) {
+      interp_tracer_(tracer) {
     on_high_level_pc_update_ = interp_tracer_.onHighLevelPCUpdate.connect(
             sigc::mem_fun(*this, &HighLevelExecutor::onHighLevelPCUpdate));
 
-    ll_strategy_.reset(new LowLevelTopoStrategy(*this));
+    hl_strategy_.reset(hl_factory.createStrategy());
+    ll_strategy_.reset(ll_factory.createStrategy(*this));
 
     s2e().getMessagesStream() << "Constructed high-level executor for tid="
             << interp_tracer_.call_tracer().tracked_tid() << '\n';
@@ -331,10 +332,10 @@ shared_ptr<LowLevelState> HighLevelExecutor::createState(S2EExecutionState *s2e_
     // Add the state to the strategy
     std::vector<shared_ptr<HighLevelState> > statev;
     statev.push_back(hl_state);
-    hl_strategy_.addStates(shared_ptr<HighLevelState>(), statev);
+    hl_strategy_->addStates(shared_ptr<HighLevelState>(), statev);
 
     // Invoke again the strategy
-    selected_state_ = hl_strategy_.selectState();
+    selected_state_ = hl_strategy_->selectState();
     ll_strategy_->updateTargetHighLevelState(selected_state_);
 
     return ll_state;
@@ -376,7 +377,7 @@ bool HighLevelExecutor::doUpdateSelectedState() {
     if (segment->children.empty()) {
         // High-level state terminated
         onHighLevelStateKill.emit(selected_state_.get());
-        hl_strategy_.killState(selected_state_);
+        hl_strategy_->killState(selected_state_);
 
         selected_state_->terminate();
         high_level_states_.erase(selected_state_);
@@ -409,16 +410,16 @@ bool HighLevelExecutor::doUpdateSelectedState() {
         selected_state_->step(stepping_hlpc);
 
         onHighLevelStateFork.emit(selected_state_.get(), fork_list);
-        hl_strategy_.addStates(selected_state_, add_list);
+        hl_strategy_->addStates(selected_state_, add_list);
     } else {
         // Plain step
         selected_state_->step(segment->children.begin()->first);
         onHighLevelStateStep.emit(selected_state_.get());
-        hl_strategy_.updateState(selected_state_);
+        hl_strategy_->updateState(selected_state_);
     }
 
     // Query the strategy for another state
-    selected_state_ = hl_strategy_.selectState();
+    selected_state_ = hl_strategy_->selectState();
     return true;
 }
 

@@ -32,72 +32,75 @@
  * All contributors are listed in the S2E-AUTHORS file.
  */
 
-#ifndef QEMU_S2E_CHEF_LOWLEVELTOPOSTRATEGY_H_
-#define QEMU_S2E_CHEF_LOWLEVELTOPOSTRATEGY_H_
+#include "LowLevelStrategy.h"
 
+#include <s2e/S2EExecutor.h>
+#include <s2e/Chef/HighLevelExecutor.h>
 
 #include <boost/shared_ptr.hpp>
-#include <s2e/Signals/Signals.h>
 
-#include <s2e/Chef/LowLevelStrategy.h>
 
-namespace klee {
-class ExecutionState;
-}
+using boost::shared_ptr;
 
 
 namespace s2e {
 
-class CallTracer;
-class CallStack;
-class CallStackFrame;
-class HighLevelExecutor;
-class HighLevelState;
-class LowLevelState;
-class TopologicNode;
+// LowLevelStrategy ////////////////////////////////////////////////////////////
+
+LowLevelStrategy::LowLevelStrategy(HighLevelExecutor &hl_executor)
+    : hl_executor_(hl_executor) {
+    old_searcher_ = hl_executor_.s2e().getExecutor()->getSearcher();
+    hl_executor_.s2e().getExecutor()->setSearcher(this);
+}
 
 
-class LowLevelTopoStrategy : public LowLevelStrategy {
-public:
-    LowLevelTopoStrategy(HighLevelExecutor &hl_executor);
-    ~LowLevelTopoStrategy();
+LowLevelStrategy::~LowLevelStrategy() {
+    hl_executor_.s2e().getExecutor()->setSearcher(old_searcher_);
+}
 
-    void updateTargetHighLevelState(boost::shared_ptr<HighLevelState> hl_state);
-protected:
-    LowLevelState *selectLowLevelState();
 
-private:
-    void onStackFramePush(CallStack *stack,
-            boost::shared_ptr<CallStackFrame> old_top,
-            boost::shared_ptr<CallStackFrame> new_top);
+klee::ExecutionState &LowLevelStrategy::selectState() {
+    LowLevelState *ll_state = selectLowLevelState();
+    if (!ll_state) {
+        hl_executor_.s2e().getWarningsStream()
+                << "LowLevelStrategy: No high-level state registered. "
+                << "Resorting to underlying strategy..." << '\n';
+        return old_searcher_->selectState();
+    }
 
-    void onStackFramePopping(CallStack *stack,
-            boost::shared_ptr<CallStackFrame> old_top,
-            boost::shared_ptr<CallStackFrame> new_top);
+    return *ll_state->s2e_state();
+}
 
-    void onBasicBlockEnter(CallStack *stack,
-            boost::shared_ptr<CallStackFrame> top,
-            bool &schedule_state);
 
-    void stepBasicBlock(LowLevelState *state, CallStackFrame *frame);
+void LowLevelStrategy::update(klee::ExecutionState *current,
+        const std::set<klee::ExecutionState*> &addedStates,
+        const std::set<klee::ExecutionState*> &removedStates) {
+    old_searcher_->update(current, addedStates, removedStates);
+}
 
-    bool trySchedule();
 
-    CallTracer &call_tracer_;
+bool LowLevelStrategy::empty() {
+    return old_searcher_->empty();
+}
 
-    boost::shared_ptr<HighLevelState> target_hl_state_;
-    std::vector<boost::shared_ptr<TopologicNode> > active_cursor_;
-    LowLevelState *current_ll_state_;
+// LowLevelSproutStrategy //////////////////////////////////////////////////////
 
-    sigc::connection on_stack_frame_push_;
-    sigc::connection on_stack_frame_popping_;
-    sigc::connection on_basic_block_enter_;
+LowLevelSproutStrategy::LowLevelSproutStrategy(HighLevelExecutor &hl_executor)
+    : LowLevelStrategy(hl_executor) {
 
-    unsigned cursor_wbr_counter_;
+}
 
-    friend class HighLevelExecutor;
-};
+void LowLevelSproutStrategy::updateTargetHighLevelState(
+        boost::shared_ptr<HighLevelState> hl_state) {
+    target_hl_state_ = hl_state;
+}
+
+LowLevelState *LowLevelSproutStrategy::selectLowLevelState() {
+    if (!target_hl_state_)
+        return NULL;
+
+    assert(!target_hl_state_->segment->low_level_states.empty());
+    return (*target_hl_state_->segment->low_level_states.begin()).lock().get();
+}
 
 } /* namespace s2e */
-
-#endif /* QEMU_S2E_CHEF_LOWLEVELTOPOSTRATEGY_H_ */

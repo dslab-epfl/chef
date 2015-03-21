@@ -49,6 +49,8 @@
 #include <s2e/Chef/InterpreterTracer.h>
 #include <s2e/Chef/HighLevelExecutor.h>
 #include <s2e/Chef/HighLevelStrategy.h>
+#include <s2e/Chef/LowLevelStrategy.h>
+#include <s2e/Chef/LowLevelTopoStrategy.h>
 
 #include <llvm/Support/Format.h>
 #include <llvm/Support/TimeValue.h>
@@ -66,6 +68,48 @@ static const char *valid_interpreters[] = {
         "phantomjs",
         "js24",
         "lua"
+};
+
+
+class IAHighLevelStrategyFactory : public HighLevelStrategyFactory {
+public:
+    IAHighLevelStrategyFactory(const std::string &config) : config_(config) {
+
+    }
+
+    HighLevelStrategy *createStrategy() {
+        if (config_ == "dfs") {
+           return new SelectorStrategy<DFSSelector<HighLevelStrategy::StateRef> >();
+       } else if (config_ == "bfs") {
+           return new SelectorStrategy<BFSSelector<HighLevelStrategy::StateRef> >();
+       } else {
+           return NULL;
+       }
+    }
+
+private:
+    std::string config_;
+};
+
+
+class IALowLevelStrategyFactory : public LowLevelStrategyFactory {
+public:
+    IALowLevelStrategyFactory(const std::string &config) : config_(config) {
+
+    }
+
+    LowLevelStrategy *createStrategy(HighLevelExecutor &hl_executor) {
+        if (config_ == "topo") {
+            return new LowLevelTopoStrategy(hl_executor);
+        } else if (config_ == "sprout") {
+            return new LowLevelSproutStrategy(hl_executor);
+        } else {
+            return NULL;
+        }
+    }
+
+private:
+    std::string config_;
 };
 
 // InterpreterAnalyzer /////////////////////////////////////////////////////////
@@ -96,23 +140,6 @@ void InterpreterAnalyzer::initialize() {
             sigc::mem_fun(*this, &InterpreterAnalyzer::onThreadCreate));
     os_tracer_->onThreadExit.connect(
             sigc::mem_fun(*this, &InterpreterAnalyzer::onThreadExit));
-}
-
-
-HighLevelStrategy *InterpreterAnalyzer::createHighLevelStrategy() {
-    std::string strategy_name = s2e()->getConfig()->getString(
-            getConfigKey() + ".hlstrategy", "dfs");
-
-    if (strategy_name == "dfs") {
-        return new SelectorStrategy<DFSSelector<HighLevelStrategy::StateRef> >();
-    } else if (strategy_name == "bfs") {
-        return new SelectorStrategy<BFSSelector<HighLevelStrategy::StateRef> >();
-    } else {
-        s2e()->getWarningsStream() << "Invalid strategy: " << strategy_name << '\n';
-        ::exit(-1);
-        // Should be unreachable...
-        return NULL;
-    }
 }
 
 
@@ -167,8 +194,13 @@ void InterpreterAnalyzer::onThreadCreate(S2EExecutionState *state,
                 sigc::mem_fun(*this, &InterpreterAnalyzer::onInterpreterStructureDetected));
     }
 
-    strategy_.reset(createHighLevelStrategy());
-    high_level_executor_.reset(new HighLevelExecutor(*interp_tracer_, *strategy_));
+    IALowLevelStrategyFactory ll_factory(s2e()->getConfig()->getString(
+            getConfigKey() + ".llstrategy", "topo"));
+    IAHighLevelStrategyFactory hl_factory(s2e()->getConfig()->getString(
+            getConfigKey() + ".hlstrategy", "dfs"));
+
+    high_level_executor_.reset(new HighLevelExecutor(*interp_tracer_,
+            hl_factory, ll_factory));
 
     high_level_executor_->onHighLevelStateCreate.connect(
             sigc::mem_fun(*this, &InterpreterAnalyzer::onHighLevelStateCreate));

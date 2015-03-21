@@ -58,6 +58,14 @@ public:
 };
 
 
+class HighLevelStrategyFactory {
+public:
+    virtual ~HighLevelStrategyFactory() { }
+
+    virtual HighLevelStrategy *createStrategy() = 0;
+};
+
+
 class RandomPathStrategy : public HighLevelStrategy {
 public:
     RandomPathStrategy();

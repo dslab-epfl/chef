@@ -124,7 +124,7 @@ static int countAccessibleStates(const TopologicIndex &cursor) {
 // LowLevelTopoStrategy ////////////////////////////////////////////////////////
 
 LowLevelTopoStrategy::LowLevelTopoStrategy(HighLevelExecutor &hl_executor)
-    : hl_executor_(hl_executor),
+    : LowLevelStrategy(hl_executor),
       call_tracer_(hl_executor.interp_tracer().call_tracer()),
       current_ll_state_(NULL),
       cursor_wbr_counter_(0) {
@@ -135,9 +135,6 @@ LowLevelTopoStrategy::LowLevelTopoStrategy(HighLevelExecutor &hl_executor)
             sigc::mem_fun(*this, &LowLevelTopoStrategy::onStackFramePopping));
     on_basic_block_enter_ = call_tracer_.onBasicBlockEnter.connect(
             sigc::mem_fun(*this, &LowLevelTopoStrategy::onBasicBlockEnter));
-
-    old_searcher_ = hl_executor_.s2e().getExecutor()->getSearcher();
-    hl_executor_.s2e().getExecutor()->setSearcher(this);
 }
 
 
@@ -145,8 +142,6 @@ LowLevelTopoStrategy::~LowLevelTopoStrategy() {
     on_stack_frame_push_.disconnect();
     on_stack_frame_popping_.disconnect();
     on_basic_block_enter_.disconnect();
-
-    hl_executor_.s2e().getExecutor()->setSearcher(old_searcher_);
 }
 
 
@@ -158,7 +153,7 @@ void LowLevelTopoStrategy::updateTargetHighLevelState(
             (cursor_wbr_counter_ == LowLevelCursorWriteBackRate)) {
         if (target_hl_state_) {
             if (DebugLowLevelScheduler) {
-                hl_executor_.s2e().getMessagesStream()
+                hl_executor().s2e().getMessagesStream()
                         << "Saving old cursor at " << active_cursor_ << '\n';
             }
 
@@ -171,9 +166,9 @@ void LowLevelTopoStrategy::updateTargetHighLevelState(
         active_cursor_ = target_hl_state_->cursor;
 
         if (DebugLowLevelScheduler) {
-            hl_executor_.s2e().getMessagesStream()
+            hl_executor().s2e().getMessagesStream()
                     << "New cursor at " << active_cursor_ << '\n';
-            hl_executor_.s2e().getMessagesStream()
+            hl_executor().s2e().getMessagesStream()
                     << "Accessible states: " << countAccessibleStates(active_cursor_)
                     << '\n';
         }
@@ -186,10 +181,15 @@ void LowLevelTopoStrategy::updateTargetHighLevelState(
 }
 
 
+LowLevelState *LowLevelTopoStrategy::selectLowLevelState() {
+    return current_ll_state_;
+}
+
+
 void LowLevelTopoStrategy::onStackFramePush(CallStack *stack,
         boost::shared_ptr<CallStackFrame> old_top,
         boost::shared_ptr<CallStackFrame> new_top) {
-    LowLevelState *state = hl_executor_.getState(stack->s2e_state()).get();
+    LowLevelState *state = hl_executor().getState(stack->s2e_state()).get();
     assert(!state->topo_index.empty());
 
     // TODO: Move all this stuff in a separate TopologicIndex class
@@ -205,7 +205,7 @@ void LowLevelTopoStrategy::onStackFramePush(CallStack *stack,
 void LowLevelTopoStrategy::onStackFramePopping(CallStack *stack,
         boost::shared_ptr<CallStackFrame> old_top,
         boost::shared_ptr<CallStackFrame> new_top) {
-    LowLevelState *state = hl_executor_.getState(stack->s2e_state()).get();
+    LowLevelState *state = hl_executor().getState(stack->s2e_state()).get();
     assert(!state->topo_index.empty());
 
     shared_ptr<TopologicNode> slot = state->topo_index.back();
@@ -230,7 +230,7 @@ void LowLevelTopoStrategy::onStackFramePopping(CallStack *stack,
 void LowLevelTopoStrategy::onBasicBlockEnter(CallStack *stack,
         boost::shared_ptr<CallStackFrame> top,
         bool &schedule_state) {
-    LowLevelState *state = hl_executor_.getState(stack->s2e_state()).get();
+    LowLevelState *state = hl_executor().getState(stack->s2e_state()).get();
     assert(!state->topo_index.empty());
 
 #if 0
@@ -246,7 +246,7 @@ void LowLevelTopoStrategy::onBasicBlockEnter(CallStack *stack,
 
     stepBasicBlock(state, top.get());
 
-    if (hl_executor_.interp_tracer().interp_params().interp_loop_function == top->function) {
+    if (hl_executor().interp_tracer().interp_params().interp_loop_function == top->function) {
         // No merging inside the interpretation loop.
         schedule_state = trySchedule();
         return;
@@ -256,7 +256,7 @@ void LowLevelTopoStrategy::onBasicBlockEnter(CallStack *stack,
 
     TopologicNode::StateSet &state_set = state->topo_index.back()->states;
     if (state_set.size() > 1) {
-        hl_executor_.s2e().getMessagesStream(stack->s2e_state())
+        hl_executor().s2e().getMessagesStream(stack->s2e_state())
                 << "Merging opportunity for "
                 << state_set.size() << " states." << '\n';
 
@@ -285,28 +285,28 @@ void LowLevelTopoStrategy::onBasicBlockEnter(CallStack *stack,
                 continue;
             }
 
-            success = hl_executor_.s2e().getExecutor()->merge(
+            success = hl_executor().s2e().getExecutor()->merge(
                     *other_state->s2e_state(),
                     *state->s2e_state());
 
             if (success) {
-                hl_executor_.s2e().getMessagesStream(stack->s2e_state())
+                hl_executor().s2e().getMessagesStream(stack->s2e_state())
                         << "*** MERGE SUCCESSFUL ***" << '\n';
                 break;
             } else {
-                hl_executor_.s2e().getMessagesStream(stack->s2e_state())
+                hl_executor().s2e().getMessagesStream(stack->s2e_state())
                         << "*** MERGE FAIL, moving on ***" << '\n';
             }
         }
         if (success) {
             // We don't call the scheduler on this path because it will
             // be invoked by the code that handles the state termination.
-            hl_executor_.s2e().getExecutor()->terminateStateEarly(
+            hl_executor().s2e().getExecutor()->terminateStateEarly(
                     *state->s2e_state(), "Killed by merge");
             assert(0 && "Unreachable");
         } else {
             trySchedule();
-            hl_executor_.s2e().getExecutor()->yieldState(*state->s2e_state());
+            hl_executor().s2e().getExecutor()->yieldState(*state->s2e_state());
             throw CpuExitException();
         }
     }
@@ -344,7 +344,7 @@ void LowLevelTopoStrategy::stepBasicBlock(LowLevelState *state,
 bool LowLevelTopoStrategy::trySchedule() {
     if (!target_hl_state_) {
         current_ll_state_ = NULL;
-        hl_executor_.s2e().getWarningsStream()
+        hl_executor().s2e().getWarningsStream()
                 << "LowLevelTopoStrategy: No high-level state registered. "
                 << "Resorting to underlying strategy..." << '\n';
         return false;
@@ -363,23 +363,5 @@ bool LowLevelTopoStrategy::trySchedule() {
     return true;
 }
 
-
-klee::ExecutionState &LowLevelTopoStrategy::selectState() {
-    if (!current_ll_state_) {
-        return old_searcher_->selectState();
-    }
-
-    return *current_ll_state_->s2e_state();
-}
-
-void LowLevelTopoStrategy::update(klee::ExecutionState *current,
-            const std::set<klee::ExecutionState*> &addedStates,
-            const std::set<klee::ExecutionState*> &removedStates) {
-    old_searcher_->update(current, addedStates, removedStates);
-}
-
-bool LowLevelTopoStrategy::empty() {
-    return old_searcher_->empty();
-}
 
 } /* namespace s2e */

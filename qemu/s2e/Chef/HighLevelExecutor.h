@@ -56,8 +56,11 @@ class HighLevelStack;
 class LowLevelState;
 class HighLevelState;
 class HighLevelExecutor;
+
 class HighLevelStrategy;
-class LowLevelTopoStrategy;
+class HighLevelStrategyFactory;
+class LowLevelStrategy;
+class LowLevelStrategyFactory;
 
 
 class HighLevelPathSegment;
@@ -217,7 +220,8 @@ public:
 
 public:
     HighLevelExecutor(InterpreterTracer &tracer,
-            HighLevelStrategy &strategy);
+            HighLevelStrategyFactory &hl_factory,
+            LowLevelStrategyFactory &ll_factory);
     virtual ~HighLevelExecutor();
 
     InterpreterTracer &interp_tracer() {
@@ -258,9 +262,9 @@ private:
 
     HighLevelPathTracer path_tracer_;
     InterpreterTracer &interp_tracer_;
-    HighLevelStrategy &hl_strategy_;
 
-    boost::scoped_ptr<LowLevelTopoStrategy> ll_strategy_;
+    boost::scoped_ptr<HighLevelStrategy> hl_strategy_;
+    boost::scoped_ptr<LowLevelStrategy> ll_strategy_;
 
     sigc::connection on_high_level_pc_update_;
 

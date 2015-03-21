@@ -539,6 +539,7 @@ s2eobj-y += s2e/Chef/InterpreterTracer.o
 s2eobj-y += s2e/Chef/InterpreterSemantics.o
 s2eobj-y += s2e/Chef/HighLevelExecutor.o
 s2eobj-y += s2e/Chef/HighLevelStrategy.o
+s2eobj-y += s2e/Chef/LowLevelStrategy.o
 s2eobj-y += s2e/Chef/LowLevelTopoStrategy.o
 
 s2eobj-y += s2e/S2E.o
