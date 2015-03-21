@@ -141,6 +141,15 @@ LowLevelTopoStrategy::LowLevelTopoStrategy(HighLevelExecutor &hl_executor)
 }
 
 
+LowLevelTopoStrategy::~LowLevelTopoStrategy() {
+    on_stack_frame_push_.disconnect();
+    on_stack_frame_popping_.disconnect();
+    on_basic_block_enter_.disconnect();
+
+    hl_executor_.s2e().getExecutor()->setSearcher(old_searcher_);
+}
+
+
 void LowLevelTopoStrategy::updateTargetHighLevelState(
         boost::shared_ptr<HighLevelState> hl_state) {
     assert(hl_state);
@@ -174,15 +183,6 @@ void LowLevelTopoStrategy::updateTargetHighLevelState(
     }
 
     trySchedule();
-}
-
-
-LowLevelTopoStrategy::~LowLevelTopoStrategy() {
-    on_stack_frame_push_.disconnect();
-    on_stack_frame_popping_.disconnect();
-    on_basic_block_enter_.disconnect();
-
-    hl_executor_.s2e().getExecutor()->setSearcher(old_searcher_);
 }
 
 
@@ -233,8 +233,6 @@ void LowLevelTopoStrategy::onBasicBlockEnter(CallStack *stack,
     LowLevelState *state = hl_executor_.getState(stack->s2e_state()).get();
     assert(!state->topo_index.empty());
 
-    int bb = top->bb_index;
-
 #if 0
     static int dbg_counter = 0;
     if (dbg_counter > 100) {
@@ -246,7 +244,7 @@ void LowLevelTopoStrategy::onBasicBlockEnter(CallStack *stack,
     dbg_counter++;
 #endif
 
-    stepBasicBlock(state, bb);
+    stepBasicBlock(state, top.get());
 
     if (hl_executor_.interp_tracer().interp_params().interp_loop_function == top->function) {
         // No merging inside the interpretation loop.
@@ -319,27 +317,27 @@ void LowLevelTopoStrategy::onBasicBlockEnter(CallStack *stack,
 
 
 void LowLevelTopoStrategy::stepBasicBlock(LowLevelState *state,
-        int bb) {
-    shared_ptr<TopologicNode> slot = state->topo_index.back();
+        CallStackFrame *frame) {
+    shared_ptr<TopologicNode> prev_slot = state->topo_index.back();
     shared_ptr<TopologicNode> next_slot;
 
-    if (bb <= state->topo_index.back()->basic_block) {
-        next_slot = state->topo_index.back()->getDown(false);
-        next_slot = next_slot->getNext(bb, 0);
+    if (frame->bb_index <= prev_slot->basic_block) {
+        next_slot = prev_slot->getDown(false);
+        next_slot = next_slot->getNext(frame->bb_index, 0);
         state->topo_index.push_back(next_slot);
     } else {
         while(!state->topo_index.back()->is_call_base) {
-            shared_ptr<TopologicNode> prev = *(state->topo_index.end() - 2);
-            if (bb <= prev->basic_block)
+            shared_ptr<TopologicNode> slot = *(state->topo_index.end() - 2);
+            if (frame->bb_index <= slot->basic_block)
                 break;
             state->topo_index.pop_back();
         }
-        next_slot = state->topo_index.back()->getNext(bb, 0);
+        next_slot = state->topo_index.back()->getNext(frame->bb_index, 0);
         state->topo_index.back() = next_slot;
     }
 
     next_slot->states.insert(state);
-    slot->states.remove(state);
+    prev_slot->states.remove(state);
 }
 
 
