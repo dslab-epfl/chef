@@ -32,6 +32,9 @@ import multiprocessing
 import os
 import signal
 import socket
+import fcntl
+import struct
+import csv
 import sys
 import pipes
 import time
@@ -104,6 +107,25 @@ class Script(object):
 
 class CommandError(Exception):
     pass
+
+
+def get_default_ip():
+    iface = "localhost"
+
+    f = open('/proc/net/route')
+    for i in csv.DictReader(f, delimiter="\t"):
+        if long(i['Destination'], 16) == 0:
+            iface = i['Iface']
+            break
+
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    return socket.inet_ntoa(
+        fcntl.ioctl(
+            s.fileno(),
+            0x8915, # SIOCGIFADDR
+            struct.pack('256s', iface)
+        )[20:24]
+    )
 
 
 def send_command(command, host, port):
@@ -242,6 +264,10 @@ def parse_cmd_line():
     return parser.parse_args()
 
 
+def has_vnc(args):
+    return not (args.batch and arg.mode == "sym")
+
+
 def build_docker_cmd_line(args):
     cmd_line = ["docker", "run"]
     cmd_line.extend(["--rm", "-t", "-i",
@@ -249,7 +275,7 @@ def build_docker_cmd_line(args):
                      "-v", "%s:%s" % (args.data_root, DATA_ROOT),
                      "-p", "%d:%d" % (args.command_port, args.command_port),
                      "-p", "%d:%d" % (args.monitor_port, args.monitor_port)])
-    if not args.batch or not args.mode == "sym":
+    if has_vnc(args):
         cmd_line.extend(["-p", "5900:5900"])
     if args.mode == "kvm":
         cmd_line.append("--privileged=true")
@@ -296,7 +322,7 @@ def build_qemu_cmd_line(args):
                                   "-redir", "tcp:%d::4321" % args.command_port  # Command port forwarding
                                  ])
 
-    if args.batch and args.mode == "sym":
+    if not has_vnc(args):
         qemu_cmd_line.extend(["-vnc", "none"])
     else:
         qemu_cmd_line.extend(["-vnc", ":0"])
@@ -324,6 +350,13 @@ def main():
     args = parse_cmd_line()
     #qemu_cmd_line = build_qemu_cmd_line(args)
     qemu_cmd_line = build_docker_cmd_line(args) # wrap qemu inside docker
+
+    print("Qemu monitor | %5d | `{nc,telnet} {%s,localhost} %d`"
+          % (args.monitor_port, get_default_ip(), args.monitor_port))
+    print("Watchdog     | %5d |" % args.command_port)
+    if has_vnc(args):
+        print("VNC          | %5d | `<vncclient> {%s,localhost}:0`" % (5900, get_default_ip()))
+    print
 
     if args.dry_run:
         print " ".join(pipes.quote(arg) for arg in qemu_cmd_line)
