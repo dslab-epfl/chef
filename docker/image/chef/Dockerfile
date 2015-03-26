@@ -24,7 +24,8 @@ WORKDIR /home/s2e
 RUN groupadd -r s2e -g 433 && \
   useradd -u 431 -r -g s2e -d /home/s2e -s /sbin/nologin -c "S2E image user" s2e
 RUN echo 's2e ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/s2e
-  
+RUN usermod -a -G kvm s2e
+
 RUN chown -R s2e:s2e /home/s2e
 
 USER s2e

@@ -48,7 +48,7 @@ HOST_CHEF_ROOT = os.path.abspath(THIS_DIR)
 HOST_DATA_ROOT = os.path.join("/var", "local", "chef")
 
 # Docker:
-VERSION = "v0.5"
+VERSION = "v0.6"
 CHEF_ROOT = "/chef"
 DATA_ROOT = "/data"
 DATA_VM_DIR = os.path.join(DATA_ROOT, "vm")
@@ -280,7 +280,10 @@ def build_docker_cmd_line(args):
     if args.mode == "kvm":
         cmd_line.append("--privileged=true")
     cmd_line.append("dslab/s2e-chef:%s" % VERSION)
-    cmd_line.extend(build_qemu_cmd_line(args))
+    qemu_cmd_line = build_qemu_cmd_line(args)
+    cmd_line.extend(["/bin/bash", "-c",
+                     "sudo setfacl -m group:kvm:rw /dev/kvm; %s" % ' '.join(qemu_cmd_line)
+                    ])
     return cmd_line
 
 
@@ -296,8 +299,6 @@ def build_qemu_cmd_line(args):
 
     # Base command
     qemu_cmd_line = []
-    if args.mode == "kvm":
-        qemu_cmd_line.append("sudo") # FIXME use POSIX ACL to circumvent permission issues
     if args.gdb:
         qemu_cmd_line.extend([GDB_BIN, "--args"])
     if args.strace:

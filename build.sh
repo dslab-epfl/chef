@@ -5,7 +5,7 @@
 #
 # Maintainer: Tinu Weber <martin.weber@epfl.ch>
 
-DOCKER_VERSION='v0.5'
+DOCKER_VERSION='v0.6'
 export C_INCLUDE_PATH='/usr/include:/usr/include/x86_64-linux-gnu'
 export CPLUS_INCLUDE_PATH="$C_INCLUDE_PATH:/usr/include/x86_64-linux-gnu/c++/4.8"
 
@@ -556,8 +556,6 @@ docker_build()
 		docker_prepare
 	fi
 
-	mkdir -m a=rwx,g+s -p "$BUILDPATH_BASE"
-
 	docker run \
 		--rm \
 		-t \
@@ -729,12 +727,15 @@ main()
 	if [ $DIRECT -eq 0 ]; then
 		# Build:
 		BUILDPATH_BASE="$(readlink -f "$BUILDDIR_BASE")"
-		mkdir -p "$BUILDPATH_BASE"
 		cd "$BUILDPATH_BASE"
 		all_build
 	else
 		# Wrap build in docker:
 		BUILDPATH_BASE="$SRCPATH_BASE/build"
+		mkdir -p "$BUILDPATH_BASE"
+		setfacl -m user:431:rwx "$BUILDPATH_BASE"
+		setfacl -d -m user:431:rwx "$BUILDPATH_BASE"
+		setfacl -d -m user:$(id -u):rwx "$BUILDPATH_BASE"
 		docker_build
 	fi
 }
