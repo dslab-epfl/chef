@@ -265,13 +265,14 @@ def parse_cmd_line():
 
 
 def has_vnc(args):
-    return not (args.batch and arg.mode == "sym")
+    return not (args.batch and args.mode == "sym")
 
 
 def build_docker_cmd_line(args):
-    cmd_line = ["docker", "run"]
-    cmd_line.extend(["--rm", "-t", "-i",
-                     "-v", "%s:%s" % (HOST_CHEF_ROOT, CHEF_ROOT),
+    cmd_line = ["docker", "run", "--rm"]
+    if not args.batch:
+        cmd_line.extend(["-t", "-i"])
+    cmd_line.extend(["-v", "%s:%s" % (HOST_CHEF_ROOT, CHEF_ROOT),
                      "-v", "%s:%s" % (args.data_root, DATA_ROOT),
                      "-p", "%d:%d" % (args.command_port, args.command_port),
                      "-p", "%d:%d" % (args.monitor_port, args.monitor_port)])
@@ -281,9 +282,13 @@ def build_docker_cmd_line(args):
         cmd_line.append("--privileged=true")
     cmd_line.append("dslab/s2e-chef:%s" % VERSION)
     qemu_cmd_line = build_qemu_cmd_line(args)
-    cmd_line.extend(["/bin/bash", "-c",
-                     "sudo setfacl -m group:kvm:rw /dev/kvm; %s" % ' '.join(qemu_cmd_line)
-                    ])
+    if args.mode == "kvm":
+        cmd_line.extend(["/bin/bash", "-c",
+                         "sudo setfacl -m group:kvm:rw /dev/kvm; %s"
+                                                       % ' '.join(qemu_cmd_line)
+                        ])
+    else:
+        cmd_line.extend(qemu_cmd_line)
     return cmd_line
 
 
