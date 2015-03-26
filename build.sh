@@ -727,6 +727,7 @@ main()
 	if [ $DIRECT -eq 0 ]; then
 		# Build:
 		BUILDPATH_BASE="$(readlink -f "$BUILDDIR_BASE")"
+		mkdir -p "$BUILDPATH_BASE"
 		cd "$BUILDPATH_BASE"
 		all_build
 	else
