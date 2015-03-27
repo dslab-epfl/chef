@@ -65,6 +65,7 @@ DEFAULT_OUTDIR = DATA_OUT_DIR
 DEFAULT_HOST_DATA_ROOT = HOST_DATA_ROOT
 DEFAULT_COMMAND_PORT = 1234
 DEFAULT_MONITOR_PORT = 12345
+DEFAULT_VNC_DISPLAY = 0
 DEFAULT_TAP_INTERFACE = "tap0"
 GDB_BIN = "gdb"
 STRACE_BIN = "strace"
@@ -223,6 +224,8 @@ def parse_cmd_line():
                         help="The command port configured for port forwarding")
     parser.add_argument("-m", "--monitor-port", type=int, default=DEFAULT_MONITOR_PORT,
                         help="The port on which the qemu monitor can be accessed")
+    parser.add_argument("-v", "--vnc-display", type=int, default=DEFAULT_VNC_DISPLAY,
+                        help="Display on which VNC can be accessed")
 
     parser.add_argument("-d", "--debug", action="store_true", default=False,
                         help="Run in debug mode")
@@ -264,10 +267,6 @@ def parse_cmd_line():
     return parser.parse_args()
 
 
-def has_vnc(args):
-    return not (args.batch and args.mode == "sym")
-
-
 def build_docker_cmd_line(args):
     cmd_line = ["docker", "run", "--rm"]
     if not args.batch:
@@ -275,9 +274,9 @@ def build_docker_cmd_line(args):
     cmd_line.extend(["-v", "%s:%s" % (HOST_CHEF_ROOT, CHEF_ROOT),
                      "-v", "%s:%s" % (args.data_root, DATA_ROOT),
                      "-p", "%d:%d" % (args.command_port, args.command_port),
-                     "-p", "%d:%d" % (args.monitor_port, args.monitor_port)])
-    if has_vnc(args):
-        cmd_line.extend(["-p", "5900:5900"])
+                     "-p", "%d:%d" % (args.monitor_port, args.monitor_port),
+                     "-p", "%d:%d" % (5900 + args.vnc_display, 5900 + args.vnc_display)
+                     ])
     if args.mode == "kvm":
         cmd_line.append("--privileged=true")
     cmd_line.append("dslab/s2e-chef:%s" % VERSION)
@@ -328,10 +327,7 @@ def build_qemu_cmd_line(args):
                                   "-redir", "tcp:%d::4321" % args.command_port  # Command port forwarding
                                  ])
 
-    if not has_vnc(args):
-        qemu_cmd_line.extend(["-vnc", "none"])
-    else:
-        qemu_cmd_line.extend(["-vnc", ":0"])
+    qemu_cmd_line.extend(["-vnc", ":%d" % (5900 + args.vnc_display)])
 
     if args.x_forward:
         qemu_cmd_line.extend(["-k", "en-us"]) # Without it, the default key mapping is messed up
@@ -357,11 +353,13 @@ def main():
     #qemu_cmd_line = build_qemu_cmd_line(args)
     qemu_cmd_line = build_docker_cmd_line(args) # wrap qemu inside docker
 
-    print("Qemu monitor | %5d | `{nc,telnet} {%s,localhost} %d`"
-          % (args.monitor_port, get_default_ip(), args.monitor_port))
+    print("Service      | Port  | How to connect")
+    print("-------------+-------+---------------------------------------------")
     print("Watchdog     | %5d |" % args.command_port)
-    if has_vnc(args):
-        print("VNC          | %5d | `<vncclient> {%s,localhost}:0`" % (5900, get_default_ip()))
+    print("VNC          | %5d | $vncclient {%s,localhost}:%d"
+          % (5900 + args.vnc_display, get_default_ip(), args.vnc_display))
+    print("Qemu monitor | %5d | {nc,telnet} {%s,localhost} %d"
+          % (args.monitor_port, get_default_ip(), args.monitor_port))
     print
 
     if args.dry_run:
