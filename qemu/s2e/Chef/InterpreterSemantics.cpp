@@ -42,10 +42,6 @@ namespace s2e {
 
 // SpiderMonkeySemantics ///////////////////////////////////////////////////////
 
-SpiderMonkeySemantics::SpiderMonkeySemantics() {
-
-}
-
 bool SpiderMonkeySemantics::decodeInstruction(S2EExecutionState *state,
         uint64_t hlpc, InterpreterInstruction &inst) {
     uint8_t opcode;
@@ -54,6 +50,24 @@ bool SpiderMonkeySemantics::decodeInstruction(S2EExecutionState *state,
     }
 
     inst.opcode = opcode;
+    inst.is_jump = false;
+    inst.is_call = false;
+    return true;
+}
+
+
+// LuaSemantics ////////////////////////////////////////////////////////////////
+
+
+bool LuaSemantics::decodeInstruction(S2EExecutionState *state, uint64_t hlpc,
+        InterpreterInstruction &inst) {
+    uint32_t instruction;
+    if (!state->readMemoryConcrete(hlpc, &instruction, sizeof(instruction),
+            VirtualAddress)) {
+        return false;
+    }
+
+    inst.opcode = instruction & ~((~(uint32_t)0) << 6);
     inst.is_jump = false;
     inst.is_call = false;
     return true;

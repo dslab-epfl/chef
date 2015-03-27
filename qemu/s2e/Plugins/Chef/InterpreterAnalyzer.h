@@ -53,6 +53,7 @@ class S2ESyscallMonitor;
 class InterpreterDetector;
 class InterpreterTracer;
 class InterpreterStructureParams;
+class InterpreterSemantics;
 
 class HighLevelExecutor;
 class HighLevelState;
@@ -94,6 +95,7 @@ private:
     boost::scoped_ptr<CallTracer> call_tracer_;
 
     boost::scoped_ptr<InterpreterDetector> interp_detector_;
+    boost::scoped_ptr<InterpreterSemantics> interp_semantics_;
 
     boost::scoped_ptr<InterpreterTracer> interp_tracer_;
     boost::scoped_ptr<HighLevelStrategy> strategy_;

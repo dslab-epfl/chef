@@ -90,7 +90,16 @@ class UnknownSemantics : public InterpreterSemantics {
 
 class SpiderMonkeySemantics : public InterpreterSemantics {
 public:
-    SpiderMonkeySemantics();
+    SpiderMonkeySemantics() { }
+
+    virtual bool decodeInstruction(S2EExecutionState *state, uint64_t hlpc,
+            InterpreterInstruction &inst);
+};
+
+
+class LuaSemantics : public InterpreterSemantics {
+public:
+    LuaSemantics() { }
 
     virtual bool decodeInstruction(S2EExecutionState *state, uint64_t hlpc,
             InterpreterInstruction &inst);

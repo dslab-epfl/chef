@@ -168,6 +168,14 @@ void InterpreterAnalyzer::onThreadCreate(S2EExecutionState *state,
                 break;
             }
         }
+
+        if (selected_interpreter_ == "lua") {
+            interp_semantics_.reset(new LuaSemantics());
+        } else if (selected_interpreter_ == "js24") {
+            interp_semantics_.reset(new SpiderMonkeySemantics());
+        } else {
+            interp_semantics_.reset(new UnknownSemantics());
+        }
     }
 
     if (thread->name() != selected_interpreter_) {
@@ -265,9 +273,8 @@ void InterpreterAnalyzer::onHighLevelInstructionFetch(S2EExecutionState *state,
         HighLevelStack *hl_stack) {
     uint64_t hlpc = hl_stack->top()->hlpc;
     InterpreterInstruction instruction(hlpc);
-    SpiderMonkeySemantics semantics;
 
-    if (!semantics.decodeInstruction(state, hlpc, instruction)) {
+    if (!interp_semantics_->decodeInstruction(state, hlpc, instruction)) {
         s2e()->getWarningsStream(state)
                 << "Could not decode instruction at HLPC "
                 << llvm::format("0x%x", hlpc) << '\n';
@@ -285,7 +292,7 @@ void InterpreterAnalyzer::onHighLevelStateCreate(HighLevelState *hl_state) {
 
 
 void InterpreterAnalyzer::onHighLevelStateStep(HighLevelState *hl_state) {
-#if 1
+#if 0
     getStream(hl_state) << "State step." << '\n';
 #endif
 }
