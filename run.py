@@ -327,7 +327,7 @@ def build_qemu_cmd_line(args):
                                   "-redir", "tcp:%d::4321" % args.command_port  # Command port forwarding
                                  ])
 
-    qemu_cmd_line.extend(["-vnc", ":%d" % (5900 + args.vnc_display)])
+    qemu_cmd_line.extend(["-vnc", ":%d" % (args.vnc_display)])
 
     if args.x_forward:
         qemu_cmd_line.extend(["-k", "en-us"]) # Without it, the default key mapping is messed up
