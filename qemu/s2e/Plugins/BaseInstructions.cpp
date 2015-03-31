@@ -150,7 +150,7 @@ void BaseInstructions::isSymbolic(S2EExecutionState *state)
     ok &= state->readCpuRegisterConcrete(PARAM2,
                                          &address, sizeof(address));
 
-    ok &= state->readCpuRegisterConcrete(PARAM0,
+    ok &= state->readCpuRegisterConcrete(PARAM3,
                                          &size, sizeof(size));
 
     if(!ok) {
