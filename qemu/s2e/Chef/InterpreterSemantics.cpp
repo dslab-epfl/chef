@@ -73,4 +73,20 @@ bool LuaSemantics::decodeInstruction(S2EExecutionState *state, uint64_t hlpc,
     return true;
 }
 
+
+// CPythonSemantics ////////////////////////////////////////////////////////////
+
+bool CPythonSemantics::decodeInstruction(S2EExecutionState *state, uint64_t hlpc,
+            InterpreterInstruction &inst) {
+    uint8_t opcode;
+    if (!state->readMemoryConcrete(hlpc, &opcode, sizeof(opcode), VirtualAddress)) {
+        return false;
+    }
+
+    inst.opcode = opcode;
+    inst.is_jump = false;
+    inst.is_call = false;
+    return true;
+}
+
 } /* namespace s2e */

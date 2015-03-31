@@ -173,6 +173,8 @@ void InterpreterAnalyzer::onThreadCreate(S2EExecutionState *state,
             interp_semantics_.reset(new LuaSemantics());
         } else if (selected_interpreter_ == "js24") {
             interp_semantics_.reset(new SpiderMonkeySemantics());
+        } else if (selected_interpreter_ == "python") {
+            interp_semantics_.reset(new CPythonSemantics());
         } else {
             interp_semantics_.reset(new UnknownSemantics());
         }

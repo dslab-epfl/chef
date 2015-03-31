@@ -105,6 +105,15 @@ public:
             InterpreterInstruction &inst);
 };
 
+
+class CPythonSemantics : public InterpreterSemantics {
+public:
+    CPythonSemantics() { }
+
+    virtual bool decodeInstruction(S2EExecutionState *state, uint64_t hlpc,
+            InterpreterInstruction &inst);
+};
+
 } /* namespace s2e */
 
 #endif /* QEMU_S2E_CHEF_INTERPRETERSEMANTICS_H_ */
