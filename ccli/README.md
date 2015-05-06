@@ -11,11 +11,8 @@ Roadmap
 ## DESCRIPTION
 
 The chef command line interface is a common interface to a collection of scripts
-that offer a simplified way for using chef, including
-
-* Building chef
-* Creating and managing disk images
-* Interacting with running chef instances, running in multiple configurations
+that offer a simplified way for using chef, including building chef, creating
+and managing disk images, or interacting with running chef instances.
 
 The following commands are available:
 
@@ -30,7 +27,8 @@ Run `ccli COMMAND -h` for more information about a specific command.
 
 * acl
 * docker
-* docker-py
+* docker-py (python module)
+* pylibacl (python module)
 * python3
 * coreutils
 * qemu
