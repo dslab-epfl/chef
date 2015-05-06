@@ -59,7 +59,7 @@ def execute(cmd: [str]):
 
 def set_permissions(path: str):
     try:
-        os.chown(path, 0, grp.getgrnam('kvm').gr_gid)
+        os.chown(path, -1, grp.getgrnam('kvm').gr_gid)
         os.chmod(path, 0o775 if os.path.isdir(path) else 0o664)
 
         # ACL (TODO make it work):
@@ -74,9 +74,13 @@ def set_permissions(path: str):
               file=sys.stderr)
         exit(1)
 
-def check_data_base():
+def init(**kwargs: dict):
     if os.path.isdir(VM_DATA_BASE):
-        return
+        print("%s already exists" % VM_DATA_BASE)
+        exit(1)
+    if os.geteuid() != 0:
+        print("Please run `%s init` as root" % sys.argv[0], file=sys.stderr)
+        exit(1)
     try:
         print("Creating %s" % VM_DATA_BASE)
         os.mkdir(VM_DATA_BASE)
@@ -87,11 +91,6 @@ def check_data_base():
 
 
 def create(vm_name: str, vm_size: int, **kwargs: dict):
-    if os.geteuid() != 0:
-        print("Please run `%s create` as root" % sys.argv[0], file=sys.stderr)
-        exit(1)
-    check_data_base()
-
     vm_path = get_vm_path(vm_name)
     if os.path.exists(vm_path):
         print("[%s] Cannot create machine: Already exists" % vm_name,
@@ -153,8 +152,12 @@ def parse_cli():
     pcmd = p.add_subparsers(help="Subcommand", dest="Subcommand")
     pcmd.required = True
 
+    # init
+    pinit = pcmd.add_parser('init', help="Initialise VM data directory (root only)")
+    pinit.set_defaults(command=init)
+
     # create
-    pcreate = pcmd.add_parser('create', help="Create a new VM  (root only)")
+    pcreate = pcmd.add_parser('create', help="Create a new VM")
     pcreate.set_defaults(command=create)
     pcreate.add_argument('vm_name', help="Machine name")
     pcreate.add_argument('vm_size', help="VM size (in MB)", type=int)
