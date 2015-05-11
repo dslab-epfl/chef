@@ -12,6 +12,8 @@
 #    exit(1)
 #------------------------------------------------------------------------------#
 
+import libccli
+
 import os
 import argparse
 import posix1e
@@ -19,6 +21,7 @@ from posix1e import ACL,Entry
 from docker import Client as DockerClient
 import sys
 import grp
+import psutil
 
 
 DOCKER_NAME = 'dslab/s2e-chef'
@@ -29,32 +32,14 @@ DOCKER_UID = 431
 
 VM_ARCH = 'x86_64'
 VM_DATA_BASE = '/var/lib/chef'
-VM_CORES = 2 # TODO detect number of cores in /proc/cpuinfo
-VM_MEMORY = 4096 # TODO calculate from host's main memory: 1/4, [2G, 4G]
+VM_CORES = psutil.cpu_count()
+VM_MEMORY = min(max(psutil.virtual_memory().total / 4, 2 * 1024), 4 * 1024)
 
-
-class ExecError(Exception):
-    def __init__(self, msg):
-        self.message = msg
-    def __str__(self):
-        return self.message
+CCLI_CMD = sys.argv[0]
 
 
 def get_vm_path(vm_name: str):
     return '%s/%s.raw' % (VM_DATA_BASE, vm_name)
-
-
-def execute(cmd: [str]):
-    pid = os.fork()
-
-    # child:
-    if pid == 0:
-        os.execvp(cmd[0], cmd)
-        raise ExecError('exec(%s) failed' % ' '.join(cmd))
-
-    # parent:
-    (pid, status) = os.waitpid(pid, 0)
-    return status >> 8
 
 
 def set_permissions(path: str):
@@ -74,12 +59,13 @@ def set_permissions(path: str):
               file=sys.stderr)
         exit(1)
 
+
 def init(**kwargs: dict):
     if os.path.isdir(VM_DATA_BASE):
         print("%s already exists" % VM_DATA_BASE)
         exit(1)
     if os.geteuid() != 0:
-        print("Please run `%s init` as root" % sys.argv[0], file=sys.stderr)
+        print("Please run `%s init` as root" % CCLI_CMD, file=sys.stderr)
         exit(1)
     try:
         print("Creating %s" % VM_DATA_BASE)
@@ -91,6 +77,14 @@ def init(**kwargs: dict):
 
 
 def create(vm_name: str, vm_size: int, **kwargs: dict):
+    if not os.path.isdir(VM_DATA_BASE):
+        print("%s not found: chef has not yet been initialised", file=sys.stderr)
+        if libccli.prompt_yes_no('Initialise now?'):
+            libccli.execute(['sudo', '%s' % CCLI_CMD, 'init'])
+        else:
+            print("Not initialising chef, aborting", file=sys.stderr)
+            exit(1)
+
     vm_path = get_vm_path(vm_name)
     if os.path.exists(vm_path):
         print("[%s] Cannot create machine: Already exists" % vm_name,
@@ -105,8 +99,8 @@ def create(vm_name: str, vm_size: int, **kwargs: dict):
         exit(1)
 
     try:
-        execute(['qemu-img', 'create', vm_path, '%d' % vm_size])
-    except ExecError as e:
+        libccli.execute(['qemu-img', 'create', vm_path, '%d' % vm_size])
+    except libccli.ExecError as e:
         print(e, file=sys.stderr)
         exit(1)
 
@@ -116,21 +110,31 @@ def create(vm_name: str, vm_size: int, **kwargs: dict):
 def install(vm_name: str, iso_path: str, **kwargs: dict):
     vm_path = get_vm_path(vm_name)
     if not os.path.exists(vm_path):
-        print("[%s] Machine does not exist; run `%s create` first"
-              % (vm_name, sys.argv[0]), file=sys.stderr)
+        print("Machine [%s] does not exist" % vm_name, file=sys.stderr)
+        if libccli.prompt_yes_no("Create now?", True):
+            vm_size = libccli.prompt_int("VM size in MiB", 10240)
+            create(vm_name, vm_size)
+        else:
+            print("Not installing %s, aborting" % iso_path, file=sys.stderr)
+            exit(1)
+
+    if not os.path.exists(iso_path):
+        print("%s: file not found" % iso_path, file=sys.stderr)
         exit(1)
 
-    execute(['qemu-system-%s' % VM_ARCH,
-             '-enable-kvm',
-             '-cpu', 'host',
-             '-smp', '%d' % VM_CORES,
-             '-m', '%d' % VM_MEMORY,
-             '-vga', 'std',
-             '-net', 'user',
-             '-monitor', 'tcp::1234,server,nowait',
-             '-drive', 'file=%s,if=virtio' % vm_path,
-             '-drive', 'file=%s,media=cdrom,readonly' % iso_path,
-             '-boot', 'order=d'])
+    qemu_cmd = ['qemu-system-%s' % VM_ARCH,
+                '-enable-kvm',
+                '-cpu', 'host',
+                '-smp', '%d' % VM_CORES,
+                '-m', '%d' % VM_MEMORY,
+                '-vga', 'std',
+                '-net', 'user',
+                '-monitor', 'tcp::1234,server,nowait',
+                '-drive', 'file=%s,if=virtio' % vm_path,
+                '-drive', 'file=%s,media=cdrom,readonly' % iso_path,
+                '-boot', 'order=d']
+    print("executing: `%s`" % ' '.join(qemu_cmd))
+    libccli.execute(qemu_cmd)
 
 
 def delete(vm_name: str, **kwargs: dict):

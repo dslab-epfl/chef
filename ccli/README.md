@@ -29,6 +29,7 @@ Run `ccli COMMAND -h` for more information about a specific command.
 * docker
 * docker-py (python module)
 * pylibacl (python module)
+* psutil (python module)
 * python3
 * coreutils
 * qemu
