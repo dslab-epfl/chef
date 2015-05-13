@@ -2,7 +2,13 @@
 
 # TODO: wrap everything in docker
 #------------------------------------------------------------------------------#
-#import docker
+#from docker import Client as DockerClient
+#
+#docker_name = 'dslab/s2e-chef'
+#docker_tag = 'v0.6'
+#docker_image = '%s:%s' % (DOCKER_NAME, DOCKER_TAG)
+#docker_socket = 'unix://var/run/docker.sock'
+#docker_uid = 431
 #
 #c = DockerClient(base_url=DOCKER_SOCKET)
 #try:
@@ -12,179 +18,142 @@
 #    exit(1)
 #------------------------------------------------------------------------------#
 
-import libccli
+# TODO: use ACL
+#------------------------------------------------------------------------------#
+# ACL (TODO make it work):
+#acl = ACL(text="u::rwx,g::rx,o::rx")
+#acl.applyto(path, posix1e.ACL_TYPE_DEFAULT)
+#acl = ACL(text="u:431:rwx,g::rx,o::rx")
+#acl.applyto(path)
+#acl.applyto(path, posix1e.ACL_TYPE_DEFAULT)
+#------------------------------------------------------------------------------#
+
 
 import os
 import argparse
 import posix1e
 from posix1e import ACL,Entry
-from docker import Client as DockerClient
 import sys
-import grp
 import psutil
 
 
-DOCKER_NAME = 'dslab/s2e-chef'
-DOCKER_TAG = 'v0.6'
-DOCKER_IMAGE = '%s:%s' % (DOCKER_NAME, DOCKER_TAG)
-DOCKER_SOCKET = 'unix://var/run/docker.sock'
-DOCKER_UID = 431
-
-VM_ARCH = 'x86_64'
-VM_DATA_BASE = '/var/lib/chef'
-VM_CORES = psutil.cpu_count()
-VM_MEMORY = min(max(psutil.virtual_memory().total / 4, 2 * 1024), 4 * 1024)
-
-CCLI_CMD = sys.argv[0]
+global DATAROOT
+try:
+    DATAROOT
+except NameError:
+    DATAROOT = '/var/lib/chef'
 
 
-def get_vm_path(vm_name: str):
-    return '%s/%s.raw' % (VM_DATA_BASE, vm_name)
+class VM:
+    arch = 'x86_64'
+    cores = psutil.cpu_count()
+    memory = min(max(psutil.virtual_memory().total / 4, 2 * 1024), 4 * 1024)
 
 
-def set_permissions(path: str):
-    try:
-        os.chown(path, -1, grp.getgrnam('kvm').gr_gid)
-        os.chmod(path, 0o775 if os.path.isdir(path) else 0o664)
-
-        # ACL (TODO make it work):
-        #acl = ACL(text="u::rwx,g::rx,o::rx")
-        #acl.applyto(VM_DATA_BASE, posix1e.ACL_TYPE_DEFAULT)
-        #acl = ACL(text="u:431:rwx,g::rx,o::rx")
-        #acl.applyto(VM_DATA_BASE)
-        #acl.applyto(VM_DATA_BASE, posix1e.ACL_TYPE_DEFAULT)
-
-    except PermissionError:
-        print("Cannot modify permissions for %s: Permission denied" % path,
-              file=sys.stderr)
-        exit(1)
+    def __init__(self, name: str):
+        self.name = name
+        self.path = '%s/%s.raw' % (DATAROOT, name)
 
 
-def init(**kwargs: dict):
-    if os.path.isdir(VM_DATA_BASE):
-        print("%s already exists" % VM_DATA_BASE)
-        exit(1)
-    if os.geteuid() != 0:
-        print("Please run `%s init` as root" % CCLI_CMD, file=sys.stderr)
-        exit(1)
-    try:
-        print("Creating %s" % VM_DATA_BASE)
-        os.mkdir(VM_DATA_BASE)
-    except PermissionError:
-        print("Could not create %s: Permission denied" % VM_DATA_BASE)
-        exit(1)
-    set_permissions(VM_DATA_BASE)
+    def exists(self):
+        return os.path.exists(self.path)
 
 
-def create(vm_name: str, vm_size: int, **kwargs: dict):
-    if not os.path.isdir(VM_DATA_BASE):
-        print("%s not found: chef has not yet been initialised", file=sys.stderr)
-        if libccli.prompt_yes_no('Initialise now?'):
-            libccli.execute(['sudo', '%s' % CCLI_CMD, 'init'])
-        else:
-            print("Not initialising chef, aborting", file=sys.stderr)
+    def create(self, size: int, **kwargs: dict):
+        if self.exists():
+            print("Machine [%s] already exists" % self.name, file=sys.stderr)
+            exit(1)
+        if not os.path.isdir(DATAROOT):
+            print("Chef has not been initialised; run `ccli.py init` first",
+                  file=sys.stderr)
             exit(1)
 
-    vm_path = get_vm_path(vm_name)
-    if os.path.exists(vm_path):
-        print("[%s] Cannot create machine: Already exists" % vm_name,
-              file=sys.stderr)
-        exit(1)
-
-    try:
-        open(vm_path, 'a').close()
-    except PermissionError:
-        print("[%s] Cannot create machine: Permission denied" % vm_name,
-              file=sys.stderr)
-        exit(1)
-
-    try:
-        libccli.execute(['qemu-img', 'create', vm_path, '%d' % vm_size])
-    except libccli.ExecError as e:
-        print(e, file=sys.stderr)
-        exit(1)
-
-    set_permissions(vm_path)
-
-
-def install(vm_name: str, iso_path: str, **kwargs: dict):
-    vm_path = get_vm_path(vm_name)
-    if not os.path.exists(vm_path):
-        print("Machine [%s] does not exist" % vm_name, file=sys.stderr)
-        if libccli.prompt_yes_no("Create now?", True):
-            vm_size = libccli.prompt_int("VM size in MiB", 10240)
-            create(vm_name, vm_size)
-        else:
-            print("Not installing %s, aborting" % iso_path, file=sys.stderr)
+        try:
+            open(self.path, 'a').close()
+        except PermissionError:
+            print("Permission denied", file=sys.stderr)
             exit(1)
 
-    if not os.path.exists(iso_path):
-        print("%s: file not found" % iso_path, file=sys.stderr)
-        exit(1)
+        try:
+            libccli.execute(['qemu-img', 'create', self.path, '%d' % size])
+        except libccli.ExecError as e:
+            print(e, file=sys.stderr)
+            exit(1)
 
-    qemu_cmd = ['qemu-system-%s' % VM_ARCH,
-                '-enable-kvm',
-                '-cpu', 'host',
-                '-smp', '%d' % VM_CORES,
-                '-m', '%d' % VM_MEMORY,
-                '-vga', 'std',
-                '-net', 'user',
-                '-monitor', 'tcp::1234,server,nowait',
-                '-drive', 'file=%s,if=virtio' % vm_path,
-                '-drive', 'file=%s,media=cdrom,readonly' % iso_path,
-                '-boot', 'order=d']
-    print("executing: `%s`" % ' '.join(qemu_cmd))
-    libccli.execute(qemu_cmd)
+        libccli.set_permissions(self.path)
 
 
-def delete(vm_name: str, **kwargs: dict):
-    vm_path = get_vm_path(vm_name)
-    if not os.path.exists(vm_path):
-        print("[%s] Machine does not exist" % vm_name)
-        exit(1)
+    def install(self, iso_path: str, **kwargs: dict):
+        if not self.exists():
+            print("Machine [%s] does not exist" % self.name, file=sys.stderr)
+            if libccli.prompt_yes_no("Create now?", True):
+                size = libccli.prompt_int("VM size in MiB", 10240)
+                self.create(size)
+            else:
+                print("Not installing %s, aborting" % iso_path, file=sys.stderr)
+                exit(1)
 
-    try:
-        os.unlink(vm_path)
-    except PermissionError:
-        print("[%s] Cannot delete machine: Permission denied" % vm_name,
-              file=sys.stderr)
-        exit(1)
+        if not os.path.exists(iso_path):
+            print("%s not found" % iso_path, file=sys.stderr)
+            exit(1)
 
-
-def parse_cli():
-    p = argparse.ArgumentParser(description="Handle virtual machines")
-    pcmd = p.add_subparsers(help="Subcommand", dest="Subcommand")
-    pcmd.required = True
-
-    # init
-    pinit = pcmd.add_parser('init', help="Initialise VM data directory (root only)")
-    pinit.set_defaults(command=init)
-
-    # create
-    pcreate = pcmd.add_parser('create', help="Create a new VM")
-    pcreate.set_defaults(command=create)
-    pcreate.add_argument('vm_name', help="Machine name")
-    pcreate.add_argument('vm_size', help="VM size (in MB)", type=int)
-
-    # install
-    pinstall = pcmd.add_parser('install', help="Install an OS to a VM")
-    pinstall.set_defaults(command=install)
-    pinstall.add_argument('vm_name', help="Machine name")
-    pinstall.add_argument('iso_path', help="Path to ISO file containing the OS")
-
-    # delete
-    pdelete = pcmd.add_parser('delete', help="Delete an existing VM")
-    pdelete.set_defaults(command=delete)
-    pdelete.add_argument('vm_name', help="Machine name")
-
-    args = p.parse_args()
-    return vars(args)
+        qemu_cmd = ['qemu-system-%s' % VM.arch,
+                    '-enable-kvm',
+                    '-cpu', 'host',
+                    '-smp', '%d' % VM.cores,
+                    '-m', '%d' % VM.memory,
+                    '-vga', 'std',
+                    '-net', 'user',
+                    '-monitor', 'tcp::1234,server,nowait',
+                    '-drive', 'file=%s,if=virtio' % self.path,
+                    '-drive', 'file=%s,media=cdrom,readonly' % iso_path,
+                    '-boot', 'order=d']
+        print("executing: `%s`" % ' '.join(qemu_cmd))
+        libccli.execute(qemu_cmd)
 
 
-def main():
-    args = parse_cli()
-    args['command'](**args)
+    def delete(self, **kwargs: dict):
+        if not self.exists():
+            print("Machine [%s] does not exist" % self.name)
+            exit(1)
+        try:
+            os.unlink(self.path)
+        except PermissionError:
+            print("Permission denied", file=sys.stderr)
+            exit(1)
+
+
+    @staticmethod
+    def add_parser(p: argparse.ArgumentParser):
+        pcmd = p.add_subparsers(help="Action", dest="Action")
+        pcmd.required = True
+
+        # create
+        pcreate = pcmd.add_parser('create', help="Create a new VM")
+        pcreate.set_defaults(action=VM.create)
+        pcreate.add_argument('name', help="Machine name")
+        pcreate.add_argument('size', help="VM size (in MB)", type=int)
+
+        # install
+        pinstall = pcmd.add_parser('install', help="Install an OS to a VM")
+        pinstall.set_defaults(action=VM.install)
+        pinstall.add_argument('name', help="Machine name")
+        pinstall.add_argument('iso_path', help="Path to ISO file containing the OS")
+
+        # delete
+        pdelete = pcmd.add_parser('delete', help="Delete an existing VM")
+        pdelete.set_defaults(action=VM.delete)
+        pdelete.add_argument('name', help="Machine name")
 
 
 if __name__ == '__main__':
-    main()
+    import libccli
+    p = argparse.ArgumentParser(description="Handle virtual machines")
+    VM.add_parser(p)
+    args = p.parse_args()
+    kwargs = vars(args)
+    vm = VM(kwargs['name'])
+    kwargs['action'](vm, **kwargs)
+else:
+    # XXX find out how to properly build modules in python; this is ugly as hell
+    from ccli import libccli

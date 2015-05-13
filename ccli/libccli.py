@@ -1,7 +1,6 @@
-#!/usr/bin/env python3
-
 import os
 import sys
+import grp
 
 
 class ExecError(Exception):
@@ -19,6 +18,18 @@ def execute(cmd: [str]):
     else:
         (pid, status) = os.waitpid(pid, 0)
         return status >> 8
+
+
+def set_permissions(path: str):
+    try:
+        os.chown(path, -1, grp.getgrnam('kvm').gr_gid)
+        os.chmod(path, 0o775 if os.path.isdir(path) else 0o664)
+
+        # TODO: ACL
+    except PermissionError:
+        print("Cannot modify permissions for %s: Permission denied" % path,
+              file=sys.stderr)
+        exit(1)
 
 
 def prompt_yes_no(msg: str, default: bool = None):
