@@ -1,0 +1,11 @@
+---
+declarations:
+    &v1: [a,b,c]
+    &v2: [d,e,f]
+
+commands:
+    - guest: ls *v1 *v2
+      config: example_config_ls.lua
+
+    - guest: echo hello *v1
+      config: example_config_hello.lua
