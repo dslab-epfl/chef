@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 # TODO: wrap everything in docker
+# http://docker-py.readthedocs.org/en/latest/api/
 #------------------------------------------------------------------------------#
 #from docker import Client as DockerClient
 #
@@ -19,6 +20,7 @@
 #------------------------------------------------------------------------------#
 
 # TODO: use ACL
+# http://pylibacl.k1024.org/module.html
 #------------------------------------------------------------------------------#
 # ACL (TODO make it work):
 #acl = ACL(text="u::rwx,g::rx,o::rx")
