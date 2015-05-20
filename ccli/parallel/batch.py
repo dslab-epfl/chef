@@ -46,7 +46,7 @@ class Batch:
                 flattened += [':::'] + v
             return flattened
 
-        def run(self, path_results: str, variables: dict):
+        def get_cmd_line(self, path_results: str, variables: dict):
             if not os.path.isdir(path_results):
                 os.mkdir(path_results)
 
@@ -57,9 +57,7 @@ class Batch:
                         '--joblog', '%s/log' % path_results]
             line = self.line
             args = self.flatten(self.resolve(self.filter(variables)))
-            cmd = parallel + line + args
-            with open(os.devnull, 'w') as fp:
-                subprocess.call(cmd, stderr=fp, stdout=fp)
+            return parallel + line + args
 
 
     def __init__(self, path: str):
@@ -73,6 +71,15 @@ class Batch:
         for ctoken in yaml.tree['commands']:
             self.commands.append(Batch.Command(ctoken))
 
+    def get_cmd_lines(self, path_results: str):
+        cmd_lines = []
+        i = 1
+        for c in self.commands:
+            cl = c.get_cmd_line('%s/exp%04d' % (path_results,i), self.variables)
+            cmd_lines.append(cl)
+            i = i + 1
+        return cmd_lines
+
     def run(self, path_results: str):
         if os.path.isdir(path_results):
             print("%s: directory already exists" % path_results, file=sys.stderr)
@@ -80,10 +87,10 @@ class Batch:
         else:
             os.mkdir(path_results)
 
-        i = 1
-        for c in self.commands:
-            c.run('%s/exp%04d' % (path_results, i), self.variables)
-            i = i + 1
+        cmd_lines = self.get_cmd_lines(path_results)
+        for c in cmd_lines:
+            with open(os.devnull, 'w') as fp:
+                subprocess.call(c, stderr=fp, stdout=fp)
 
 
 def main():
