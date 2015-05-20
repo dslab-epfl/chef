@@ -53,6 +53,7 @@ class Batch:
             parallel = ['parallel',
                         '--header', ':',
                         '--ungroup',
+                        '--delay', '1',
                         '--results', path_results,
                         '--joblog', '%s/log' % path_results]
             line = self.line
