@@ -7,7 +7,10 @@
 import yaml  # requires the PyYAML package
 import sys
 import os
+import subprocess
 
+
+PATH_RESULTS = 'results'
 
 class Batch:
     class YAML:
@@ -20,17 +23,43 @@ class Batch:
 
     class Command:
         def __init__(self, token: dict):
-            self.line = token['line']
+            self.line = token['line'].split()
             self.config = token['config']
 
-        def resolve(self, variables: dict):
-            used_variables = []
+        def filter(self, variables: dict):
+            used_variables = {}
             for k, v in variables.items():
-                if self.line.find(k) >= 0:
-                    used_variables.append('%s %s' % (k, ' '.join(v)))
+                if '{%s}' % k in self.line:
+                    used_variables[k] = v
+            #return '%s ::: %s' % (self.line, ' ::: '.join(used_variables))
+            return used_variables
 
-            lines = []
-            return '%s ::: %s' % (self.line, ' ::: '.join(used_variables))
+        def resolve(self, variables: dict):
+            resolved = []
+            for k, v in variables.items():
+                resolved.append([k] + v)
+            return resolved
+
+        def flatten(self, variables: list):
+            flattened = []
+            for v in variables:
+                flattened += [':::'] + v
+            return flattened
+
+        def run(self, path_results: str, variables: dict):
+            if not os.path.isdir(path_results):
+                os.mkdir(path_results)
+
+            parallel = ['parallel',
+                        '--header', ':',
+                        '--ungroup',
+                        '--results', path_results,
+                        '--joblog', '%s/log' % path_results]
+            line = self.line
+            args = self.flatten(self.resolve(self.filter(variables)))
+            cmd = parallel + line + args
+            with open(os.devnull, 'w') as fp:
+                subprocess.call(cmd, stderr=fp, stdout=fp)
 
 
     def __init__(self, path: str):
@@ -44,18 +73,30 @@ class Batch:
         for ctoken in yaml.tree['commands']:
             self.commands.append(Batch.Command(ctoken))
 
-    def resolve(self):
-        s = []
+    def run(self, path_results: str):
+        if os.path.isdir(path_results):
+            print("%s: directory already exists" % path_results, file=sys.stderr)
+            exit(1)
+        else:
+            os.mkdir(path_results)
+
+        i = 1
         for c in self.commands:
-            s.append(c.resolve(self.variables))
-        return s
+            c.run('%s/exp%04d' % (path_results, i), self.variables)
+            i = i + 1
 
 
 def main():
-    yaml_path = 'examples.yml' if len(sys.argv) == 1 else sys.argv[1]
+    if len(sys.argv) < 2:
+        print("Usage: %s YAML [OUTDIR]" % sys.argv[0])
+        exit(1)
 
-    b = Batch(yaml_path)
-    print('\n'.join(b.resolve()))
+    path_yaml = sys.argv[1]
+    path_results = PATH_RESULTS if len(sys.argv) < 3 else sys.argv[2]
+
+    b = Batch(path_yaml)
+    b.run(path_results)
+    print("The results have been logged in %s" % path_results)
 
 
 if __name__ == '__main__':
