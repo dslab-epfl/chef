@@ -8,22 +8,6 @@ class Docker:
     DEFAULT_IMAGE = 'dslab/s2e-chef'
     DEFAULT_VERSION = 'v0.6'
 
-    # Default values:
-    WATCHDOG_PORT = 1234
-    MONITOR_PORT = 12345
-    VNC_PORT = 5900
-    HOST_CHEF_ROOT = RUNPATH
-    HOST_DATA_ROOT = '/var/local/chef'
-    CHEF_ROOT = '/chef'
-    CHEF_CONFIG_DIR = os.path.join(CHEF_ROOT, 'config')
-    DATA_ROOT = '/data'
-    DATA_VM_DIR = os.path.join(DATA_ROOT, 'vm')
-    DATA_OUT_DIR = os.path.join(DATA_ROOT, 'expdata')
-
-    # Qemu image:
-    RAW_IMAGE_PATH = os.path.join(DATA_VM_DIR, 'chef_disk.raw')
-    S2E_IMAGE_PATH = os.path.join(DATA_VM_DIR, 'chef_disk.s2e')
-
     def __init__(self, image: str = '%s:%s' % (DEFAULT_IMAGE, DEFAULT_VERSION),
                  ports: {int: int} = {}, shares: {str: str} = {}):
         self.ports = ports
