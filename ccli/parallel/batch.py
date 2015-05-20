@@ -91,7 +91,7 @@ class Batch:
                 subprocess.call(c, stderr=fp, stdout=fp)
 
 
-def main():
+if __name__ == '__main__':
     if len(sys.argv) < 2:
         print("Usage: %s YAML [OUTDIR]" % sys.argv[0], file=sys.stderr)
         exit(1)
@@ -102,7 +102,3 @@ def main():
     b = Batch(path_yaml)
     b.run([], path_results)
     print("The results have been logged in %s" % path_results)
-
-
-if __name__ == '__main__':
-    main()
