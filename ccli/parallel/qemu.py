@@ -11,9 +11,9 @@ class Qemu:
         self.qemu_path = qemu_path
 
 
-    def get_cmd_line(self, image_path: str, ports: {int: int} = {},
-                     network: str = None, vnc_display:int = None,
-                     monitor_port: int = None, kvm:bool = False,
+    def get_cmd_line(self, image_path: str, network: str = None,
+                     ports: {int: int} = {}, vnc_display: int = None,
+                     monitor_port: int = None, kvm : bool = False,
                      cores: int = DEFAULT_CORES, load_id: str = None,
                      args: [str] = []):
         cmd_line = [self.qemu_path, image_path]
@@ -31,7 +31,8 @@ class Qemu:
         if network is None or network == 'none':
             cmd_line.extend(['-net', 'none'])
         else:
-            cmd_line.extend(['-net', 'nic,model=pcnet'])  # The only network device supported by S2E, IIRC
+            # The only network device supported by S2E, IIRC
+            cmd_line.extend(['-net', 'nic,model=pcnet'])
             if network == 'tap':
                 cmd_line.extend(['-net', 'tap,ifname=%s' % DEFAULT_TAP_INTERFACE])
             else:
