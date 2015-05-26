@@ -10,8 +10,6 @@ import os
 import subprocess
 
 
-PATH_RESULTS = 'results'
-
 class Batch:
     class YAML:
         def __init__(self, path: str):
@@ -22,74 +20,53 @@ class Batch:
 
 
     class Command:
-        def __init__(self, token: dict):
+        def __init__(self, token: dict, results_path: str, variables: dict):
             self.line = token['line'].split()
+            self.variables = self.filter(variables)
             self.config = token['config']
+            self.results_path = results_path
 
-        def filter(self, variables: dict):
+        def filter(self, variables: {str: str}):
             used_variables = {}
-            for k, v in variables.items():
+            for k, vs in variables.items():
                 if '{%s}' % k in self.line:
-                    used_variables[k] = v
-            #return '%s ::: %s' % (self.line, ' ::: '.join(used_variables))
+                    used_variables[k] = vs
             return used_variables
 
-        def resolve(self, variables: dict):
-            resolved = []
-            for k, v in variables.items():
-                resolved.append([k] + v)
-            return resolved
+        def substitute(self, line: [str], key: str, values: [str]):
+            lines = []
+            for v in values:
+                l = [w.replace('{%s}' % key, v) for w in line]
+                lines.append(l)
+            return lines
 
-        def flatten(self, variables: list):
-            flattened = []
-            for v in variables:
-                flattened += [':::'] + v
-            return flattened
-
-        def get_cmd_line(self, prefix: [str], path_results: str, variables: dict):
-            if not os.path.isdir(path_results):
-                os.mkdir(path_results)
-
-            parallel = ['parallel',
-                        '--header', ':',
-                        '--ungroup',
-                        '--delay', '1',
-                        '--results', path_results,
-                        '--joblog', '%s/log' % path_results]
-            line = self.line
-            args = self.flatten(self.resolve(self.filter(variables)))
-            return parallel + prefix + line + args
+        def get_cmd_lines(self):
+            cmd_lines = [self.line]
+            for k, vs in self.variables.items():
+                cmd_lines_new = []
+                for c in cmd_lines:
+                    cmd_lines_new.extend(self.substitute(c, k, vs))
+                cmd_lines = cmd_lines_new
+            return cmd_lines
 
 
-    def __init__(self, path: str):
-        if not os.path.isfile(path):
-            print('%s: File not found' % path, file=sys.stderr)
-            exit(1)
-
-        yaml = Batch.YAML(path)
-        self.commands = []
+    def __init__(self, path_yaml: str, path_results: str):
+        if not os.path.isfile(path_yaml):
+            raise Exception("%s: File not found" % path_yaml)
+        yaml = Batch.YAML(path_yaml)
         self.variables = yaml.tree['variables']
-        for ctoken in yaml.tree['commands']:
-            self.commands.append(Batch.Command(ctoken))
+        self.path_results = path_results
+        self.commands = []
+        for ctoken, i in zip(yaml.tree['commands'], range(len(yaml.tree['commands']))):
+            c = Batch.Command(ctoken, '%s/exp%04d' % (self.path_results, i),
+                              self.variables)
+            self.commands.append(c)
 
-    def get_cmd_lines(self, prefix: [str], path_results: str):
+    def get_cmd_lines(self):
         cmd_lines = []
-        for c, i in zip(self.commands, range(len(self.commands))):
-            cl = c.get_cmd_line(prefix, '%s/exp%04d' % (path_results, i), self.variables)
-            cmd_lines.append(cl)
+        for c in self.commands:
+            cmd_lines.extend(c.get_cmd_lines())
         return cmd_lines
-
-    def run(self, prefix: [str], path_results: str):
-        if os.path.isdir(path_results):
-            print("%s: directory already exists" % path_results, file=sys.stderr)
-            exit(1)
-        else:
-            os.mkdir(path_results)
-
-        cmd_lines = self.get_cmd_lines(prefix, path_results)
-        for c in cmd_lines:
-            with open(os.devnull, 'w') as fp:
-                subprocess.call(c, stderr=fp, stdout=fp)
 
 
 if __name__ == '__main__':
@@ -98,8 +75,9 @@ if __name__ == '__main__':
         exit(1)
 
     path_yaml = sys.argv[1]
-    path_results = PATH_RESULTS if len(sys.argv) < 3 else sys.argv[2]
+    path_results = 'batch_results' if len(sys.argv) < 3 else sys.argv[2]
 
-    b = Batch(path_yaml)
-    b.run([], path_results)
-    print("The results have been logged in %s" % path_results)
+    b = Batch(path_yaml, path_results)
+    cmd_lines = b.get_cmd_lines()
+    for c in cmd_lines:
+        print(c)

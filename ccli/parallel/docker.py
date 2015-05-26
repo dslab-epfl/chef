@@ -7,26 +7,34 @@ import subprocess
 class Docker:
     DEFAULT_IMAGE = 'dslab/s2e-chef'
     DEFAULT_VERSION = 'v0.6'
+    DEFAULT_COMMAND = ['/bin/sh']
 
-    def __init__(self, image: str = '%s:%s' % (DEFAULT_IMAGE, DEFAULT_VERSION),
-                 ports: {int: int} = {}, shares: {str: str} = {}):
+    def __init__(self,
+                 image: str = '%s:%s' % (DEFAULT_IMAGE, DEFAULT_VERSION),
+                 command: [str] = DEFAULT_COMMAND,
+                 privileged: bool = False,
+                 batch: bool = False,
+                 ports: {int: int} = {},
+                 shares: {str: str} = {}):
+        self.image = image
+        self.command = command
+        self.privileged = privileged
+        self.batch = batch
         self.ports = ports
         self.shares = shares
-        self.image = image
 
-    def get_cmd_line(self, command: [str], privileged: bool = False,
-                     batch: bool = False):
+    def get_cmd_line(self):
         cmd_line = ['docker', 'run', '--rm']
-        if not batch:
+        if not self.batch:
             cmd_line.extend(['-t', '-i'])
         for g, h in self.shares.items():
             cmd_line.extend(['-v', '%s:%s' % (h, g)])
         for h, g in self.ports.items():
             cmd_line.extend(['-p', '%d:%d' % (h, g)])
-        if privileged:
+        if self.privileged:
             cmd_line.append('--privileged=true')
         cmd_line.append(self.image)
-        cmd_line.extend(command)
+        cmd_line.extend(self.command)
         return cmd_line
 
 
@@ -35,6 +43,5 @@ if __name__ == '__main__':
         print("Usage: %s COMMAND ..." % sys.argv[0], file=sys.stderr)
         exit(1)
     cmd = sys.argv[1:]
-    docker = Docker('%s:%s' % (Docker.DEFAULT_IMAGE, Docker.DEFAULT_VERSION))
-    cmd_line = docker.get_cmd_line(command=cmd, privileged=False, batch=False)
-    subprocess.call(cmd_line)
+    docker = Docker(command=cmd, privileged=False, batch=False)
+    print(docker.get_cmd_line())
