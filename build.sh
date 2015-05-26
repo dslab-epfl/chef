@@ -206,7 +206,7 @@ klee_build()
 	klee_srcpath="$SRCPATH_BASE/klee"
 
 	# Build directory:
-	mkdir -p "$BUILDPATH"
+	test -d "$BUILDPATH" || mkdir "$BUILDPATH"
 	cd "$BUILDPATH"
 
 	# Configure:
@@ -248,7 +248,7 @@ libmemtracer_build()
 	libmemtracer_srcpath="$SRCPATH_BASE/libmemtracer"
 
 	# Build directory:
-	mkdir -p "$BUILDPATH"
+	test -d "$BUILDPATH" || mkdir "$BUILDPATH"
 	cd "$BUILDPATH"
 
 	# Configure:
@@ -271,7 +271,7 @@ libvmi_build()
 	libvmi_srcpath="$SRCPATH_BASE/libvmi"
 
 	# Build directory:
-	mkdir -p "$BUILDPATH"
+	test -d "$BUILDPATH" || mkdir "$BUILDPATH"
 	cd "$BUILDPATH"
 
 	# Configure:
@@ -306,7 +306,7 @@ qemu_build()
 	qemu_srcpath="$SRCPATH_BASE/qemu"
 
 	# Build directory:
-	mkdir -p "$BUILDPATH"
+	test -d "$BUILDPATH" || mkdir "$BUILDPATH"
 	cd "$BUILDPATH"
 
 	# Configure:
@@ -354,7 +354,7 @@ tools_build()
 	tools_srcdir="$SRCPATH_BASE/tools"
 
 	# Build directory:
-	mkdir -p "$BUILDPATH"
+	test -d "$BUILDPATH" || mkdir "$BUILDPATH"
 	cd "$BUILDPATH"
 
 	# Configure:
@@ -381,7 +381,7 @@ guest_build()
 	guest_srcpath="$SRCPATH_BASE/guest"
 
 	# Build directory:
-	mkdir -p "$BUILDPATH"
+	test -d "$BUILDPATH" || mkdir "$BUILDPATH"
 	cd "$BUILDPATH"
 
 	# Configure:
@@ -456,7 +456,7 @@ tests_build()
 	tests_srcpath="$SRCPATH_BASE/testsuite"
 
 	# Build directory:
-	mkdir -p "$BUILDPATH"
+	test -d "$BUILDPATH" || mkdir "$BUILDPATH"
 	cd "$BUILDPATH"
 
 	# Configure:
@@ -727,20 +727,17 @@ main()
 	if [ $DIRECT -eq 0 ]; then
 		# Build:
 		BUILDPATH_BASE="$(readlink -f "$BUILDDIR_BASE")"
-		mkdir -p "$BUILDPATH_BASE"
+		test -d "$BUILDPATH_BASE" || mkdir "$BUILDPATH_BASE"
 		cd "$BUILDPATH_BASE"
 		all_build
 	else
 		# Wrap build in docker:
 		BUILDPATH_BASE="$SRCPATH_BASE/build"
-		mkdir -p "$BUILDPATH_BASE" -m 777
-		setfacl -b -k "$BUILDPATH_BASE"
+		mkdir -p "$BUILDPATH_BASE"
 		setfacl -m user:$(id -u):rwx "$BUILDPATH_BASE"
 		setfacl -m user:431:rwx "$BUILDPATH_BASE"
-		setfacl -m mask:rwx "$BUILDPATH_BASE"
 		setfacl -d -m user:$(id -u):rwx "$BUILDPATH_BASE"
 		setfacl -d -m user:431:rwx "$BUILDPATH_BASE"
-		setfacl -d -m mask:rwx "$BUILDPATH_BASE"
 		docker_build
 	fi
 }
