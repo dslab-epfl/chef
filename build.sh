@@ -733,10 +733,14 @@ main()
 	else
 		# Wrap build in docker:
 		BUILDPATH_BASE="$SRCPATH_BASE/build"
-		mkdir -p "$BUILDPATH_BASE"
+		mkdir -p "$BUILDPATH_BASE" -m 777
+		setfacl -b -k "$BUILDPATH_BASE"
+		setfacl -m user:$(id -u):rwx "$BUILDPATH_BASE"
 		setfacl -m user:431:rwx "$BUILDPATH_BASE"
-		setfacl -d -m user:431:rwx "$BUILDPATH_BASE"
+		setfacl -m mask:rwx "$BUILDPATH_BASE"
 		setfacl -d -m user:$(id -u):rwx "$BUILDPATH_BASE"
+		setfacl -d -m user:431:rwx "$BUILDPATH_BASE"
+		setfacl -d -m mask:rwx "$BUILDPATH_BASE"
 		docker_build
 	fi
 }
