@@ -141,7 +141,7 @@ def send_command(command, host, port):
         response = conn.getresponse()
         if response.status != http.client.OK:
             raise CommandError("Invalid HTTP response received: %d" % response.status)
-    except (socket.error, http.client.HTTPException) as e:
+    except (socket.error, ConnectionRefusedError, http.client.HTTPException) as e:
         raise CommandError(e)
     finally:
         if conn:
@@ -166,12 +166,12 @@ def async_send_command(command, host, port, timeout=COMMAND_SEND_TIMEOUT):
             try:
                 send_command(command, host, port)
             except CommandError as e:
-                print >>sys.stderr, "** Could not send command (%s). Retrying for %d more seconds." % (
-                    e, (command_deadline - now).seconds)
+                print("** Could not send command (%s). Retrying for %d more seconds." % (
+                    e, (command_deadline - now).seconds), file=sys.stderr)
             else:
                 break
         else:
-            print >>sys.stderr, "** Command timeout. Aborting."
+            print("** Command timeout. Aborting.", file=sys.stderr)
             break
     exit(0)
 
@@ -368,7 +368,7 @@ def execute(args, qemu_cmd_line):
         print(' '.join(qemu_cmd_line))
         return
 
-    print ("** Executing %s\n" % ' '.join(qemu_cmd_line), file=sys.stderr)
+    print("** Executing %s\n" % ' '.join(qemu_cmd_line), file=sys.stderr)
 
     environ = dict(os.environ)
 
@@ -406,13 +406,15 @@ def main():
                 run_cmd = ['%s' % sys.argv[0], '--batch']
                 if args.dry_run:
                     run_cmd.extend(['--dry-run'])
+                if args.debug:
+                    run_cmd.extend(['--debug'])
                 run_cmd.extend(['--data-root', args.data_root])
                 run_cmd.extend(['--command-port', str(args.command_port + batch_offset)])
                 run_cmd.extend(['--monitor-port', str(args.monitor_port + batch_offset)])
                 run_cmd.extend(['--vnc-display', str(args.vnc_display + batch_offset)])
                 run_cmd.extend(['sym'])
-                run_cmd.extend(['--config', command.config])
-                run_cmd.extend(['--out-dir', args.out_dir])
+                run_cmd.extend(['--config', os.path.join(DATA_ROOT, command.config)])
+                run_cmd.extend(['--out-dir', os.path.join(DATA_ROOT, args.out_dir, str(batch_offset))])
                 if args.time_out:
                     run_cmd.extend(['--time-out', str(args.time_out)])
                 if args.env_var:
