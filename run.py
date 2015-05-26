@@ -399,10 +399,11 @@ def main():
         batch = Batch(args.batch_file)
         batch_commands = batch.get_commands()
 
-        batch_offset = 0
+        batch_offset = 1
         for command in batch_commands:
             cmd_lines = command.get_cmd_lines()
             for c in cmd_lines:
+                c_out_dir = os.path.join('%04d-%s' % (batch_offset, c[0]))
                 run_cmd = ['%s' % sys.argv[0], '--batch']
                 if args.dry_run:
                     run_cmd.extend(['--dry-run'])
@@ -414,7 +415,7 @@ def main():
                 run_cmd.extend(['--vnc-display', str(args.vnc_display + batch_offset)])
                 run_cmd.extend(['sym'])
                 run_cmd.extend(['--config', os.path.join(DATA_ROOT, command.config)])
-                run_cmd.extend(['--out-dir', os.path.join(DATA_ROOT, args.out_dir, str(batch_offset))])
+                run_cmd.extend(['--out-dir', os.path.join(DATA_ROOT, args.out_dir, c_out_dir)])
                 if args.time_out:
                     run_cmd.extend(['--time-out', str(args.time_out)])
                 if args.env_var:

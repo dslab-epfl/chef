@@ -16,6 +16,7 @@ autom4te.cache
 # IDEA files
 .idea/
 
-# Compiled chef
+# Local chef/data/output directories:
 /build
 /vm
+/expdata
