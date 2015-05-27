@@ -15,6 +15,13 @@ SRCPATH_BASE="$RUNPATH"
 SRCDIR_BASE="$(basename "$SRCPATH_BASE")"
 COMPONENTS='lua stp klee libmemtracer libvmi qemu tools guest gmock tests'
 HOSTPATH='/host'
+RUNARGV="$@"
+
+FATAL_="[\033[31mFATAL\033[0m]"
+FAIL_="[\033[31mFAIL\033[0m]"
+WARN_="[\033[33mWARN\033[0m]"
+_OK__="[\033[32m OK \033[0m]"
+SKIP_="[\033[34mSKIP\033[0m]"
 
 # HELPERS ======================================================================
 # Various helper functions for displaying error/warning/normal messages and
@@ -51,39 +58,44 @@ skip()
 {
 	skip_format="$1"
 	shift
-	printf "[\033[34mSKIP\033[0m] $skip_format\n" "$@"
+	printf "$SKIP_ $skip_format\n" "$@"
 }
 
 warn()
 {
 	warn_format="$1"
 	shift
-	printf "[\033[33mWARN\033[0m] $warn_format\n" "$@">&2
+	printf "$WARN_ $warn_format\n" "$@">&2
+}
+
+important()
+{
+	important_colour=$1
+	important_format="$2"
+	shift 2
+	printf "\033[1;${important_colour}m>>>\033[0m $important_format" "$@"
 }
 
 success()
 {
-	printf "\033[1;32m>>>\033[0m Successfully built S²E-chef in %s.\n" \
-	       "$BUILDPATH_BASE"
+	important 32 "Successfully built S²E-chef in %s.\n" "$BUILDPATH_BASE"
 }
 
 fail()
 {
-	printf "\033[1;31m>>>\033[0m Build failed."
-	if [ $SILENT -eq 0 ]; then
-		confirm " Examine $LOGFILE?" && less "$LOGFILE"
-	else
-		echo
+	important 31 "Build failed.\n"
+	if [ $SILENT -eq 0 ] && ask 31 'yes' "Examine $LOGFILE?"; then
+		less "$LOGFILE"
 	fi
 	exit 2
 }
 
 internal_error()
 {
-	internal_error_format="$1"
+	internal_error_fmt="$1"
 	shift
-	printf "[\033[31mFATAL\033[0m] Internal Error: $internal_error_format\n" \
-	       "$@" >&2
+	printf "$FATAL_ Internal Error: $internal_error_fmt\n" "$@" >&2
+	printf "        Please file a bug report\n" >&2
 	exit 127
 }
 
@@ -97,7 +109,7 @@ check_stamp()
 	elif [ -e "$BUILDPATH" ]; then
 		# Build from last state (if previously failed):
 		if [ -e "$STAMPFILE" ]; then
-			test $CHECK -ne 0 && skip '%s' "$BUILDPATH"
+			test $CHECK -eq 0 || skip '%s' "$BUILDPATH"
 			return 0
 		else
 			note '%s previously failed, rebuilding' "$BUILDPATH"
@@ -114,12 +126,19 @@ set_stamp()
 	touch "$STAMPFILE"
 }
 
-confirm()
+ask()
 {
-	confirm_msg="$1"
-	shift
+	ask_colour=$1
+	ask_default="$2"
+	ask_format="$3"
+	shift 3
+	case "$ask_default" in
+		[Yy]*) ask_sel='[Y/n]';;
+		[Nn]*) ask_sel='[y/N]';;
+		*) internal_error "ask(): invalid default '%s'" "$ask_default" ;;
+	esac
 	while true; do
-		printf "$confirm_msg [Y/n] "
+		important $ask_colour "$ask_format $ask_sel " "$@"
 		read a
 		case "$a" in
 			[Yy]*|'') return 0;;
@@ -140,8 +159,8 @@ track()
 	else
 		"$@" || track_status=1
 	fi
-	test $SILENT -ne 0 || printf "\r[\033[%s\033[0m] %s    \n" \
-		"$(test $track_status -eq 0 && printf "32m OK " || printf "31mFAIL")" \
+	test $SILENT -ne 0 || printf "\r%s %s    \n" \
+		"$(test $track_status -eq 0 && printf "$_OK__" || printf "$FAIL_")" \
 		"$track_msg"
 	test $track_status -eq 0 || fail
 }
@@ -393,7 +412,7 @@ guest_build()
 	case "$ARCH" in
 		i386) guest_cflags='-m32' ;;
 		x86_64) guest_cflags='-m64' ;;
-		*) internal_error 'Unknown architecture: %s' "$ARCH" ;;
+		*) internal_error "guest_build(): invalid architecture '%s'" "$ARCH" ;;
 	esac
 	track 'Building guest tools' make -j$JOBS CFLAGS="$guest_cflags"
 }
@@ -551,28 +570,37 @@ docker_prepare()
 
 docker_build()
 {
-	if ! docker_image_exists "$DOCKERIMG"; then
-		warn '%s: image not found, running with `-p` first ...' "$DOCKERIMG"
-		docker_prepare
-	fi
+	docker_build_repeat=0
+	while [ $docker_build_repeat -eq 0 ]; do
+		docker_build_repeat=1
 
-	docker run \
-		--rm \
-		-t \
-		-i \
-		-v "$SRCPATH_BASE":"$HOSTPATH" \
-		"$DOCKERIMG" \
-		"$HOSTPATH/$RUNNAME" \
-			-b "$HOSTPATH/build/$ARCH-$TARGET-$MODE" \
-			-c "$CHECKED" \
-			$(test $FORCE -eq 0 && printf '%s' '-f') \
-			-i "$IGNORED" \
-			-j$JOBS \
-			-l "$LLVM_BASE" \
-			-q "$QEMU_FLAGS" \
-			$(test $SILENT -eq 0 && printf '%s' '-s') \
-			-z \
-			"$ARCH" "$TARGET" "$MODE"
+		if ! docker_image_exists "$DOCKERIMG"; then
+			warn '%s: image not found, running with `-p` first ...' "$DOCKERIMG"
+			docker_prepare
+		fi
+
+		if ! docker run \
+			--rm \
+			-t \
+			-i \
+			-v "$SRCPATH_BASE":"$HOSTPATH" \
+			"$DOCKERIMG" \
+			"$HOSTPATH/$RUNNAME" \
+				-b "$HOSTPATH/build/$ARCH-$TARGET-$MODE" \
+				-c "$CHECKED" \
+				$(test $FORCE -eq 0 && printf '%s' '-f') \
+				-i "$IGNORED" \
+				-j$JOBS \
+				-l "$LLVM_BASE" \
+				-q "$QEMU_FLAGS" \
+				$(test $SILENT -eq 0 && printf '%s' '-s') \
+				-z \
+				"$ARCH" "$TARGET" "$MODE" \
+			&& ask 31 'no' "Restart?"
+		then
+			docker_build_repeat=0
+		fi
+	done
 }
 
 # MAIN =========================================================================
