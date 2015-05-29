@@ -37,6 +37,7 @@
 #include "klee/data/ExprDeserializer.h"
 #include "klee/data/QueryDeserializer.h"
 #include "klee/data/ExprVisualizer.h"
+#include "klee/util/ExprSMTLIBPrinter.h"
 #include "klee/Solver.h"
 #include "klee/SolverImpl.h"
 #include "klee/SolverFactory.h"
@@ -54,6 +55,8 @@
 #include <sqlite3.h>
 
 #include <fstream>
+#include <sstream>
+#include <libgen.h>
 
 using namespace llvm;
 using namespace klee;
@@ -77,6 +80,10 @@ cl::opt<bool> VisualizeQueries("visualize",
 
 cl::opt<bool> ReplayQueries("replay",
         cl::desc("Re-run the queries through a solver (expensive!)"),
+        cl::init(false));
+
+cl::opt<bool> GenerateSMTLIB("generate-smtlib",
+        cl::desc("Generate and store queries in SMT-LIB format to .smt files"),
         cl::init(false));
 
 }
@@ -246,16 +253,16 @@ int main(int argc, char **argv, char **envp) {
 
     const char *init_sql =
         "DROP TABLE IF EXISTS query_stats;"
-        "CREATE TABLE query_stats ("
-        "query_id INTEGER PRIMARY KEY NOT NULL,"
-        "arrays_refd       INTEGER,"
-        "const_arrays_refd INTEGER,"
-        "node_count        INTEGER,"
-        "max_depth         INTEGER,"
-        "sym_write_count   INTEGER,"
-        "sym_read_count    INTEGER,"
-        "select_count      INTEGER,"
-        "multiplicity      INTEGER"
+        "CREATE TABLE query_stats (\n"
+        " query_id INTEGER PRIMARY KEY NOT NULL,\n"
+        " arrays_refd       INTEGER,\n"
+        " const_arrays_refd INTEGER,\n"
+        " node_count        INTEGER,\n"
+        " max_depth         INTEGER,\n"
+        " sym_write_count   INTEGER,\n"
+        " sym_read_count    INTEGER,\n"
+        " select_count      INTEGER,\n"
+        " multiplicity      INTEGER\n"
         ");";
 
     const char *select_sql =
@@ -287,6 +294,7 @@ int main(int argc, char **argv, char **envp) {
                 << " (" << sqlite3_errmsg(db) << ")" << '\n';
         ::exit(1);
     }
+
 
     scoped_ptr<ExprBuilder> expr_builder(createDefaultExprBuilder());
     ExprDeserializer expr_deserializer(*expr_builder, std::vector<Array*>());
@@ -381,6 +389,25 @@ int main(int argc, char **argv, char **envp) {
                     << " Replayed: " << total_replayed.usec()
                     << " Speedup: " << format("%.1fx", float(total_recorded.usec()) / float(total_replayed.usec()))
                     << '\n';
+        }
+
+        if (GenerateSMTLIB) {
+            int id = sqlite3_column_int64(select_stmt, 0);
+            char *dbfilepath = strdup(InputFileName.c_str());
+            std::stringstream filename;
+            filename << dirname(dbfilepath) << '/'
+                     << std::setfill('0') << std::setw(4) << id << ".smt";
+            free(dbfilepath);
+
+            std::ofstream file;
+            file.open(filename.str().c_str());
+            ExprSMTLIBPrinter printer = ExprSMTLIBPrinter();
+            printer.setOutput(file);
+            printer.setQuery(query);
+            printer.generateOutput();
+            file.close();
+
+            outs() << "Stored query in SMT-LIB format: " << filename.str() << '\n';
         }
     }
     assert(result == SQLITE_DONE);
