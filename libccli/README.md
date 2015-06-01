@@ -16,20 +16,32 @@ and managing disk images, or interacting with running chef instances.
 
 The following commands are available:
 
+* `init`: Initialise chef environment in /var/lib/chef
 * `build`: Build chef inside a docker container
 * `vm`: Manage VMs
 * `run`: Run chef inside a docker container
+* `help`: Display a help message and exit
 
-Run `ccli COMMAND -h` for more information about a specific command.
+Each command has its own command line interface, whose help can usually be
+displayed by passing the `-h` flag.
 
 
 ## DEPENDENCIES
 
-* acl
-* docker
-* docker-py (python module)
-* pylibacl (python module)
-* psutil (python module)
-* python3
-* coreutils
-* qemu
+### Ubuntu
+
+*coming soon*
+
+### Debian GNU/Linux
+
+*coming soon*
+
+### Arch Linux
+
+* `coreutils`
+* `acl`
+* `docker`
+* `python`
+* `python-psutil`
+* `python-pyyaml`
+* `qemu`

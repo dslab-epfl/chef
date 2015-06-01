@@ -11,11 +11,14 @@ export CPLUS_INCLUDE_PATH="$C_INCLUDE_PATH:/usr/include/x86_64-linux-gnu/c++/4.8
 
 RUNNAME="$(basename "$0")"
 RUNPATH="$(readlink -f "$(dirname "$0")")"
-SRCPATH_BASE="$RUNPATH"
+RUNDIR="$(basename "$RUNPATH")"
+SRCPATH_BASE="$(dirname $RUNPATH)"
 SRCDIR_BASE="$(basename "$SRCPATH_BASE")"
 COMPONENTS='lua stp klee libmemtracer libvmi qemu tools guest gmock tests'
 HOSTPATH='/host'
-RUNARGV="$@"
+if [ -z "$INVOKENAME" ]; then
+	INVOKENAME="$RUNNAME"
+fi
 
 FATAL_="[\033[31mFATAL\033[0m]"
 FAIL_="[\033[31mFAIL\033[0m]"
@@ -44,6 +47,7 @@ die_help()
 		shift
 		printf "$die_format\n" "$@" >&2
 	fi
+	usage
 	die 1 "Run \`$0 -h\` for help."
 }
 
@@ -163,6 +167,15 @@ track()
 		"$(test $track_status -eq 0 && printf "$_OK__" || printf "$FAIL_")" \
 		"$track_msg"
 	test $track_status -eq 0 || fail
+}
+
+boolean()
+{
+	if [ $1 -eq 0 ]; then
+		echo 'true'
+	else
+		echo 'false'
+	fi
 }
 
 # LUA ==========================================================================
@@ -585,7 +598,7 @@ docker_build()
 			-i \
 			-v "$SRCPATH_BASE":"$HOSTPATH" \
 			"$DOCKERIMG" \
-			"$HOSTPATH/$RUNNAME" \
+			"$HOSTPATH/$RUNDIR/$RUNNAME" \
 				-b "$HOSTPATH/build/$ARCH-$TARGET-$MODE" \
 				-c "$CHECKED" \
 				$(test $FORCE -eq 0 && printf '%s' '-f') \
@@ -608,45 +621,51 @@ docker_build()
 usage()
 {
 	cat >&2 <<- EOF
-	$RUNNAME: build S²E-chef in a specific configuration.
+	Usage: $INVOKENAME [OPTIONS ...] ARCH TARGET [MODE]
+	       $INVOKENAME -p
+	EOF
+}
 
-	Usage: $0 [OPTIONS ...] ARCH TARGET [MODE]
-	       $0 -p
+help()
+{
+	usage
+
+	cat >&2 <<- EOF
 
 	Architectures:
-	    i386
-	    x86_64
+	  i386
+	  x86_64
 
 	Targets:
-	    release
-	    debug
+	  release
+	  debug
 
 	Modes:
-	    normal [default]
-	    asan
-	    libmemtracer
+	  normal [default]
+	  asan
+	  libmemtracer
 
 	Options:
-	    -b PATH    Build chef in PATH [default=$BUILDDIR_BASE]
-	    -d IMAGE   Docker image to use [default=$DOCKERIMG]
-	    -c COMPS   Force-\`make\` components COMPS
-	               [default='$CHECKED']
-	    -f         Force-rebuild
-	    -h         Display this help
-	    -i COMPS   Ignore components COMPS (has higher priority than -c)
-	               [default='$IGNORED']
-	    -j N       Compile with N jobs [default=$JOBS]
-	    -l PATH    Path to where the native LLVM-3.2 files are installed
-	               [default=$LLVM_BASE]
-	    -p         Pull docker image
-	    -q FLAGS   Additional flags passed to qemu's \`configure\` script
-	    -s         Silent: redirect compilation messages/warnings/errors into log file
-	    -z         Direct mode (build directly on machine, instead inside docker)
+	  -b PATH    Build chef in PATH [default=$BUILDDIR_BASE]
+	  -d IMAGE   Docker image to use [default=$DOCKERIMG]
+	  -c COMPS   Force-\`make\` components COMPS
+	             [default='$CHECKED']
+	  -f         Force-rebuild
+	  -h         Display this help
+	  -i COMPS   Ignore components COMPS (has higher priority than -c)
+	             [default='$IGNORED']
+	  -j N       Compile with N jobs [default=$JOBS]
+	  -l PATH    Path to where the native LLVM-3.2 files are installed
+	             [default=$LLVM_BASE]
+	  -p         Pull docker image
+	  -q FLAGS   Additional flags passed to qemu's \`configure\` script
+	  -s         Silent: redirect compilation messages/warnings/errors into log file
+	  -y         Dry run: print build-related variables and exit
+	  -z         Direct mode (build directly on machine, instead inside docker)
 
 	Components:
-	    $COMPONENTS
+	  $COMPONENTS
 	EOF
-	exit 1
 }
 
 get_options()
@@ -656,6 +675,7 @@ get_options()
 	CHECKED="$COMPONENTS"
 	DIRECT=1
 	DOCKERIMG="dslab/s2e-chef:$DOCKER_VERSION"
+	DRYRUN=1
 	FORCE=1
 	IGNORED='gmock tests'
 	case "$(uname)" in
@@ -669,19 +689,20 @@ get_options()
 	SILENT=1
 
 	# Options:
-	while getopts b:c:d:fhi:j:l:pq:sz opt; do
+	while getopts b:c:d:fhi:j:l:pq:syz opt; do
 		case "$opt" in
 			b) BUILDDIR_BASE="$OPTARG" ;;
 			c) CHECKED="$OPTARG" ;;
 			d) DOCKERIMG="$OPTARG" ;;
 			f) FORCE=0 ;;
-			h) usage ;;
+			h) help; exit 1 ;;
 			i) IGNORED="$OPTARG" ;;
 			j) JOBS="$OPTARG" ;;
 			l) LLVM_BASE="$OPTARG" ;;
 			p) PREPARE=0 ;;
 			q) QEMU_FLAGS="$OPTARG" ;;
 			s) SILENT=0 ;;
+			y) DRYRUN=0 ;;
 			z) DIRECT=0 ;;
 			'?') die_help ;;
 		esac
@@ -749,18 +770,50 @@ main()
 	shift $ARGSHIFT
 	test $# -eq 0 || die_help "trailing arguments: $@"
 
-	LOGFILE="$(readlink -f "$LOGFILE")"
-	rm -f "$LOGFILE"
-
 	if [ $DIRECT -eq 0 ]; then
-		# Build:
 		BUILDPATH_BASE="$(readlink -f "$BUILDDIR_BASE")"
+	else
+		BUILDPATH_BASE="$SRCPATH_BASE/build"
+	fi
+
+	if [ $DRYRUN -eq 0 ]; then
+		cat <<- EOF
+		RUNNAME=$RUNNAME
+		RUNPATH=$RUNPATH
+		SRCPATH_BASE=$SRCPATH_BASE
+		SRCDIR_BASE=$SRCDIR_BASE
+		COMPONENTS='$COMPONENTS'
+		HOSTPATH=$HOSTPATH
+		INVOKENAME='$INVOKENAME'
+		BUILDPATH_BASE=$BUILDPATH_BASE
+		CHECKED='$COMPONENTS'
+		DIRECT=$(boolean $DIRECT)
+		DOCKERIMG=$DOCKERIMG
+		FORCE=$(boolean $FORCE)
+		IGNORED='$IGNORED'
+		JOBS=$JOBS
+		LLVM_BASE=$LLVM_BASE
+		PREPARE=$(boolean $PREPARE)
+		QEMU_FLAGS='$QEMU_FLAGS'
+		SILENT=$(boolean $SILENT)
+		ARCH=$ARCH
+		TARGET=$TARGET
+		MODE=$MODE
+		LLVM_SRC=$LLVM_SRC
+		LLVM_BUILD=$LLVM_BUILD
+		LLVM_NATIVE=$LLVM_NATIVE
+		LLVM_NATIVE_CC=$LLVM_NATIVE_CC
+		LLVM_NATIVE_CXX=$LLVM_NATIVE_CXX
+		LLVM_NATIVE_LIB=$LLVM_NATIVE_LIB
+		EOF
+		exit
+	elif [ $DIRECT -eq 0 ]; then
+		# Build directly:
 		test -d "$BUILDPATH_BASE" || mkdir "$BUILDPATH_BASE"
 		cd "$BUILDPATH_BASE"
 		all_build
 	else
 		# Wrap build in docker:
-		BUILDPATH_BASE="$SRCPATH_BASE/build"
 		mkdir -p "$BUILDPATH_BASE"
 		setfacl -m user:$(id -u):rwx "$BUILDPATH_BASE"
 		setfacl -m user:431:rwx "$BUILDPATH_BASE"

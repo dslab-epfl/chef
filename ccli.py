@@ -3,18 +3,17 @@
 import argparse
 import sys
 import os
-from ccli import vm
-from ccli import libccli
+from libccli.vm import VM as VM
+import libccli.libccli
 
 
 global DATAROOT
-
 RUNPATH = os.path.dirname(os.path.realpath(__file__))
 RUNNAME = sys.argv[0]
 DATAROOT = '/var/lib/chef'
 
 
-def command_init(**kwargs: dict):
+def command_init():
     if os.path.isdir(DATAROOT):
         print("Chef has already been initialised (%s already exists)"
               % DATAROOT, file=sys.stderr)
@@ -31,47 +30,38 @@ def command_init(**kwargs: dict):
     libccli.set_permissions(DATAROOT)
 
 
-def command_vm(**kwargs: dict):
-    v = vm.VM(kwargs['name'])
-    kwargs['action'](v, **kwargs)
+def command_vm():
+    VM.main(sys.argv[1:])
 
 
-def command_run(**kwargs: dict):
-    pass
+def command_run():
+    print("Not yet implemented")
+    exit(1)
 
 
-def command_build(**kwargs: dict):
-    kwargs['REMAINDER'].insert(0, '%s/build.sh' % RUNPATH)
-    libccli.execute(kwargs['REMAINDER'])
+def command_build():
+    os.execve('%s/libccli/build.sh' % RUNPATH,
+              sys.argv[1:],
+              {'INVOKENAME': '%s build' % sys.argv[0]})
 
 
-def add_parser(p: argparse.ArgumentParser):
-    pcmd = p.add_subparsers(help="Command", dest="Command")
-    pcmd.required = True
-
-    # init
-    pinit = pcmd.add_parser('init', help="Initialise chef data directory (root only)")
-    pinit.set_defaults(command=command_init)
-
-    # vm
-    pvm = pcmd.add_parser('vm', help="Handle virtual machines")
-    pvm.set_defaults(command=command_vm)
-    vm.VM.add_parser(pvm)
-
-    # run
-    prun = pcmd.add_parser('run', help="Run chef inside docker")
-    prun.set_defaults(command=command_run)
-    prun.add_argument('REMAINDER', nargs=argparse.REMAINDER)
-
-    # build
-    pbuild = pcmd.add_parser('build', help="Build chef")
-    pbuild.set_defaults(command=command_build)
-    pbuild.add_argument('REMAINDER', nargs=argparse.REMAINDER)
+def command_help():
+    print("%s: Command line interface to chef\n" % sys.argv[0])
+    print("Usage: %s COMMAND [ARGUMENTS ...]\n" % sys.argv[0])
+    print("Commands:")
+    print("  init      Initialise Chef environment in /var/lib/chef")
+    print("  vm        Manage chef virtual machines")
+    print("  build     Build Chef in a given configuration")
+    print("  run       Run Chef in a given mode")
+    exit(1)
 
 
 if __name__ == '__main__':
-    p = argparse.ArgumentParser(description="Command line interface to chef")
-    add_parser(p)
-    args = p.parse_args()
-    kwargs = vars(args)
-    kwargs['command'](**kwargs)
+    command = sys.argv[1] if len(sys.argv) > 1 else 'help'
+    handlers = { 'init': command_init,
+                 'vm': command_vm,
+                 'run': command_run,
+                 'build': command_build,
+                 'help': command_help }
+    handler = handlers.get(command, command_help)
+    handler()

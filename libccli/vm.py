@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 # TODO: wrap everything in docker
 # http://docker-py.readthedocs.org/en/latest/api/
 #------------------------------------------------------------------------------#
@@ -37,13 +35,10 @@ import posix1e
 from posix1e import ACL,Entry
 import sys
 import psutil
+from libccli import libccli
 
 
 global DATAROOT
-try:
-    DATAROOT
-except NameError:
-    DATAROOT = '/var/lib/chef'
 
 
 class VM:
@@ -126,7 +121,9 @@ class VM:
 
 
     @staticmethod
-    def add_parser(p: argparse.ArgumentParser):
+    def main(argv: [str]):
+        p = argparse.ArgumentParser(description="Handle Virtual Machines")
+
         pcmd = p.add_subparsers(help="Action", dest="Action")
         pcmd.required = True
 
@@ -147,15 +144,8 @@ class VM:
         pdelete.set_defaults(action=VM.delete)
         pdelete.add_argument('name', help="Machine name")
 
+        args = p.parse_args(argv[1:])
+        kwargs = vars(args) # make it a dictionary, for easier use
 
-if __name__ == '__main__':
-    import libccli
-    p = argparse.ArgumentParser(description="Handle virtual machines")
-    VM.add_parser(p)
-    args = p.parse_args()
-    kwargs = vars(args)
-    vm = VM(kwargs['name'])
-    kwargs['action'](vm, **kwargs)
-else:
-    # XXX find out how to properly build modules in python; this is ugly as hell
-    from ccli import libccli
+        vm = VM(args['name'])
+        args['action'](vm, **kwargs)

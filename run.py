@@ -38,10 +38,10 @@ import csv
 import sys
 import pipes
 import time
+import subprocess
 
 from datetime import datetime, timedelta
-from batch.chefdockerbatch import ChefDockerBatch
-from batch.batch import Batch
+from ccli.batch import Batch
 
 THIS_DIR = os.path.dirname(__file__)
 
@@ -274,27 +274,27 @@ def parse_cmd_line():
 
 
 def build_docker_cmd_line(args):
-    cmd_line = ["docker", "run", "--rm"]
+    docker_cmd_line = ["docker", "run", "--rm"]
     if not args.batch:
-        cmd_line.extend(["-t", "-i"])
-    cmd_line.extend(["-v", "%s:%s" % (HOST_CHEF_ROOT, CHEF_ROOT),
+        docker_cmd_line.extend(["-t", "-i"])
+    docker_cmd_line.extend(["-v", "%s:%s" % (HOST_CHEF_ROOT, CHEF_ROOT),
                      "-v", "%s:%s" % (args.data_root, DATA_ROOT),
                      "-p", "%d:%d" % (args.command_port, args.command_port),
                      "-p", "%d:%d" % (args.monitor_port, args.monitor_port),
                      "-p", "%d:%d" % (5900 + args.vnc_display, 5900 + args.vnc_display)
                      ])
     if args.mode == "kvm":
-        cmd_line.append("--privileged=true")
-    cmd_line.append("dslab/s2e-chef:%s" % VERSION)
+        docker_cmd_line.append("--privileged=true")
+    docker_cmd_line.append("dslab/s2e-chef:%s" % VERSION)
     qemu_cmd_line = build_qemu_cmd_line(args)
     if args.mode == "kvm":
-        cmd_line.extend(["/bin/bash", "-c",
-                         "sudo setfacl -m group:kvm:rw /dev/kvm; %s"
+        docker_cmd_line.extend(["/bin/bash", "-c",
+                                "sudo setfacl -m group:kvm:rw /dev/kvm; %s"
                                                        % ' '.join(qemu_cmd_line)
-                        ])
+                               ])
     else:
-        cmd_line.extend(qemu_cmd_line)
-    return cmd_line
+        docker_cmd_line.extend(qemu_cmd_line)
+    return docker_cmd_line
 
 
 def build_qemu_cmd_line(args):
@@ -354,7 +354,11 @@ def build_qemu_cmd_line(args):
     return qemu_cmd_line
 
 
-def execute(args, qemu_cmd_line):
+def build_parallel_cmd_line():
+    return ['parallel', '--delay', '1']
+
+
+def execute(args, cmd_line):
     print("Service      | Port  | How to connect")
     print("-------------+-------+---------------------------------------------")
     print("Watchdog     | %5d |" % args.command_port)
@@ -365,10 +369,10 @@ def execute(args, qemu_cmd_line):
     print
 
     if args.dry_run:
-        print(' '.join(qemu_cmd_line))
+        print(' '.join(cmd_line))
         return
 
-    print("** Executing %s\n" % ' '.join(qemu_cmd_line), file=sys.stderr)
+    print("** Executing %s\n" % ' '.join(cmd_line), file=sys.stderr)
 
     environ = dict(os.environ)
 
@@ -388,7 +392,7 @@ def execute(args, qemu_cmd_line):
             async_send_command(Command.from_cmd_args(args.command, args.env_var or []),
                                "localhost", args.command_port)
 
-    os.execvpe(qemu_cmd_line[0], qemu_cmd_line, environ)
+    os.execvpe(cmd_line[0], cmd_line, environ)
 
 
 def main():
@@ -399,11 +403,13 @@ def main():
         batch = Batch(args.batch_file)
         batch_commands = batch.get_commands()
 
+        printable_cmd_lines = ''
+
         batch_offset = 1
         for command in batch_commands:
             cmd_lines = command.get_cmd_lines()
             for c in cmd_lines:
-                c_out_dir = os.path.join('%04d-%s' % (batch_offset, c[0]))
+                c_out_dir = os.path.join('%04d-%s' % (batch_offset, os.path.basename(c[0])))
                 run_cmd = ['%s' % sys.argv[0], '--batch']
                 if args.dry_run:
                     run_cmd.extend(['--dry-run'])
@@ -421,12 +427,15 @@ def main():
                 if args.env_var:
                     run_cmd.extend(['--env-var', args.env_var])
                 run_cmd.extend(c)
-                print(' '.join(run_cmd))
+                printable_cmd_lines += ' '.join(run_cmd) + '\n'
                 batch_offset += 1
+
+        p2 = subprocess.Popen(build_parallel_cmd_line(), shell=False,
+                              stdin=subprocess.PIPE)
+        p2.communicate(bytes(printable_cmd_lines, 'utf-8'))
     else:
-        #qemu_cmd_line = build_qemu_cmd_line(args)
-        qemu_cmd_line = build_docker_cmd_line(args) # wrap qemu inside docker
-        execute(args, qemu_cmd_line)
+        cmd_line = build_docker_cmd_line(args)
+        execute(args, cmd_line)
 
 
 if __name__ == "__main__":
