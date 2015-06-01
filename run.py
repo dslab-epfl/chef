@@ -41,7 +41,7 @@ import time
 import subprocess
 
 from datetime import datetime, timedelta
-from ccli.batch import Batch
+from libccli.batch import Batch
 
 THIS_DIR = os.path.dirname(__file__)
 
@@ -273,7 +273,7 @@ def parse_cmd_line():
     return parser.parse_args()
 
 
-def build_docker_cmd_line(args):
+def build_docker_cmd_line(args, command: [str]):
     docker_cmd_line = ["docker", "run", "--rm"]
     if not args.batch:
         docker_cmd_line.extend(["-t", "-i"])
@@ -286,14 +286,13 @@ def build_docker_cmd_line(args):
     if args.mode == "kvm":
         docker_cmd_line.append("--privileged=true")
     docker_cmd_line.append("dslab/s2e-chef:%s" % VERSION)
-    qemu_cmd_line = build_qemu_cmd_line(args)
     if args.mode == "kvm":
         docker_cmd_line.extend(["/bin/bash", "-c",
                                 "sudo setfacl -m group:kvm:rw /dev/kvm; %s"
-                                                       % ' '.join(qemu_cmd_line)
+                                                             % ' '.join(command)
                                ])
     else:
-        docker_cmd_line.extend(qemu_cmd_line)
+        docker_cmd_line.extend(command)
     return docker_cmd_line
 
 
@@ -358,6 +357,10 @@ def build_parallel_cmd_line():
     return ['parallel', '--delay', '1']
 
 
+def build_smtlib_dump_cmd_line(out_path: str):
+    return ['echo', 'dummy SMT-Lib dump to %s' % out_path]
+
+
 def execute(args, cmd_line):
     print("Service      | Port  | How to connect")
     print("-------------+-------+---------------------------------------------")
@@ -399,17 +402,20 @@ def main():
     args = parse_cmd_line()
 
     # batch-execute multiple commands:
-    if args.mode == 'sym' and args.batch_file is not None:
+    if args.mode == 'sym' and args.batch_file:
         batch = Batch(args.batch_file)
         batch_commands = batch.get_commands()
 
         printable_cmd_lines = ''
+        out_dirs = []
 
         batch_offset = 1
         for command in batch_commands:
             cmd_lines = command.get_cmd_lines()
             for c in cmd_lines:
                 c_out_dir = os.path.join('%04d-%s' % (batch_offset, os.path.basename(c[0])))
+                c_out_path = os.path.join(DATA_ROOT, args.out_dir, c_out_dir)
+                out_dirs.append(c_out_path)
                 run_cmd = ['%s' % sys.argv[0], '--batch']
                 if args.dry_run:
                     run_cmd.extend(['--dry-run'])
@@ -421,7 +427,7 @@ def main():
                 run_cmd.extend(['--vnc-display', str(args.vnc_display + batch_offset)])
                 run_cmd.extend(['sym'])
                 run_cmd.extend(['--config', os.path.join(DATA_ROOT, command.config)])
-                run_cmd.extend(['--out-dir', os.path.join(DATA_ROOT, args.out_dir, c_out_dir)])
+                run_cmd.extend(['--out-dir', c_out_path])
                 if args.time_out:
                     run_cmd.extend(['--time-out', str(args.time_out)])
                 if args.env_var:
@@ -433,8 +439,10 @@ def main():
         p2 = subprocess.Popen(build_parallel_cmd_line(), shell=False,
                               stdin=subprocess.PIPE)
         p2.communicate(bytes(printable_cmd_lines, 'utf-8'))
+        cmd_line = build_docker_cmd_line(args, build_smtlib_dump_cmd_line(out_dirs))
+        os.execvp(cmd_line[0], cmd_line)
     else:
-        cmd_line = build_docker_cmd_line(args)
+        cmd_line = build_docker_cmd_line(args, build_qemu_cmd_line(args))
         execute(args, cmd_line)
 
 
