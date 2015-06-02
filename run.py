@@ -357,10 +357,6 @@ def build_parallel_cmd_line():
     return ['parallel', '--delay', '1']
 
 
-def build_smtlib_dump_cmd_line(out_path: str):
-    return ['echo', 'dummy SMT-Lib dump to %s' % out_path]
-
-
 def execute(args, cmd_line):
     print("Service      | Port  | How to connect")
     print("-------------+-------+---------------------------------------------")
@@ -439,8 +435,6 @@ def main():
         p2 = subprocess.Popen(build_parallel_cmd_line(), shell=False,
                               stdin=subprocess.PIPE)
         p2.communicate(bytes(printable_cmd_lines, 'utf-8'))
-        cmd_line = build_docker_cmd_line(args, build_smtlib_dump_cmd_line(out_dirs))
-        os.execvp(cmd_line[0], cmd_line)
     else:
         cmd_line = build_docker_cmd_line(args, build_qemu_cmd_line(args))
         execute(args, cmd_line)

@@ -47,7 +47,7 @@ die_help()
 		shift
 		printf "$die_format\n" "$@" >&2
 	fi
-	usage
+	usage >&2
 	die 1 "Run \`$0 -h\` for help."
 }
 
@@ -620,7 +620,7 @@ docker_build()
 
 usage()
 {
-	cat >&2 <<- EOF
+	cat <<- EOF
 	Usage: $INVOKENAME [OPTIONS ...] ARCH TARGET [MODE]
 	       $INVOKENAME -p
 	EOF
@@ -630,7 +630,7 @@ help()
 {
 	usage
 
-	cat >&2 <<- EOF
+	cat <<- EOF
 
 	Architectures:
 	  i386

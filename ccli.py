@@ -13,6 +13,12 @@ RUNNAME = sys.argv[0]
 DATAROOT = '/var/lib/chef'
 
 
+def shell_command(name: str):
+    os.execve('%s/libccli/%s.sh' % (RUNPATH, name),
+              sys.argv[1:],
+              {'INVOKENAME': '%s %s' % (sys.argv[0], name)})
+
+
 def command_init():
     if os.path.isdir(DATAROOT):
         print("Chef has already been initialised (%s already exists)"
@@ -39,20 +45,23 @@ def command_run():
     exit(1)
 
 
+def command_smtlibdump():
+    shell_command('smtlibdump')
+
+
 def command_build():
-    os.execve('%s/libccli/build.sh' % RUNPATH,
-              sys.argv[1:],
-              {'INVOKENAME': '%s build' % sys.argv[0]})
+    shell_command('build')
 
 
 def command_help():
     print("%s: Command line interface to chef\n" % sys.argv[0])
     print("Usage: %s COMMAND [ARGUMENTS ...]\n" % sys.argv[0])
     print("Commands:")
-    print("  init      Initialise Chef environment in /var/lib/chef")
-    print("  vm        Manage chef virtual machines")
-    print("  build     Build Chef in a given configuration")
-    print("  run       Run Chef in a given mode")
+    print("  init        Initialise Chef environment in %s" % DATAROOT)
+    print("  vm          Manage chef virtual machines")
+    print("  build       Build Chef in a given configuration")
+    print("  run         Run Chef in a given mode")
+    print("  smtlibdump  Dump collected queries in SMT-Lib format")
     exit(1)
 
 
@@ -62,6 +71,7 @@ if __name__ == '__main__':
                  'vm': command_vm,
                  'run': command_run,
                  'build': command_build,
+                 'smtlibdump': command_smtlibdump,
                  'help': command_help }
     handler = handlers.get(command, command_help)
     handler()
