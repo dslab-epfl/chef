@@ -85,6 +85,9 @@ cl::opt<bool> ReplayQueries("replay",
 cl::opt<bool> GenerateSMTLIB("generate-smtlib",
         cl::desc("Generate and store queries in SMT-LIB format to .smt files"),
         cl::init(false));
+cl::opt<std::string> SMTLIBOutPath("smtlib-out-path",
+        cl::desc("Output path for SMT-Lib dumps"),
+        cl::init(""));
 
 }
 
@@ -393,11 +396,15 @@ int main(int argc, char **argv, char **envp) {
 
         if (GenerateSMTLIB) {
             int id = sqlite3_column_int64(select_stmt, 0);
-            char *dbfilepath = strdup(InputFileName.c_str());
             std::stringstream filename;
-            filename << dirname(dbfilepath) << '/'
-                     << std::setfill('0') << std::setw(4) << id << ".smt";
-            free(dbfilepath);
+            if (SMTLIBOutPath.length() == 0) {
+                char *dbfilepath = strdup(InputFileName.c_str());
+                filename << dirname(dbfilepath) << '/';
+                free(dbfilepath);
+            } else {
+                filename << SMTLIBOutPath << '/';
+            }
+            filename << std::setfill('0') << std::setw(4) << id << ".smt";
 
             std::ofstream file;
             file.open(filename.str().c_str());
@@ -407,7 +414,7 @@ int main(int argc, char **argv, char **envp) {
             printer.generateOutput();
             file.close();
 
-            outs() << "Stored query in SMT-LIB format: " << filename.str() << '\n';
+            outs() << "Stored query " << id << " in SMT-LIB format\n";
         }
     }
     assert(result == SQLITE_DONE);
