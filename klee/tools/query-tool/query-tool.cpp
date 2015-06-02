@@ -395,7 +395,9 @@ int main(int argc, char **argv, char **envp) {
         }
 
         if (GenerateSMTLIB) {
-            int id = sqlite3_column_int64(select_stmt, 0);
+            int64_t id = sqlite3_column_int64(select_stmt, 0);
+            int64_t recorded_usec = sqlite3_column_int64(select_stmt, 4);
+
             std::stringstream filename;
             if (SMTLIBOutPath.length() == 0) {
                 char *dbfilepath = strdup(InputFileName.c_str());
@@ -409,12 +411,11 @@ int main(int argc, char **argv, char **envp) {
             std::ofstream file;
             file.open(filename.str().c_str());
             ExprSMTLIBPrinter printer = ExprSMTLIBPrinter();
+            file << "; " << recorded_usec << " µsec\n";
             printer.setOutput(file);
             printer.setQuery(query);
             printer.generateOutput();
             file.close();
-
-            outs() << "Stored query " << id << " in SMT-LIB format\n";
         }
     }
     assert(result == SQLITE_DONE);
