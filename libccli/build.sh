@@ -48,7 +48,7 @@ die_help()
 		printf "$die_format\n" "$@" >&2
 	fi
 	usage >&2
-	die 1 "Run \`$0 -h\` for help."
+	die 1 'Run `%s -h` for help.' "$INVOKENAME"
 }
 
 note()

@@ -22,13 +22,16 @@ fi
 dump()
 {
 	case "$RELEASE" in
-		'release') KLEE_BUILD_DIR='Release+Asserts' ;;
-		'debug') KLEE_BUILD_DIR='Debug+Asserts' ;;
+		'release') RELEASE_NAME='Release+Asserts' ;;
+		'debug') RELEASE_NAME='Debug+Asserts' ;;
 		*) die_internal 'dump(): Invalid release: %s' "$RELEASE" ;;
 	esac
 
-	KLEE_ROOT="$BUILD_PATH/$ARCH-$RELEASE-$MODE/klee"
-	TOOL_BIN="$KLEE_ROOT/$KLEE_BUILD_DIR/bin/query-tool"
+	TOOL_BIN="$BUILD_PATH/$BUILD/klee/$RELEASE_NAME/bin/query-tool"
+
+	if [ ! -e "$TOOL_BIN" ]; then
+		die 2 '%s not found' "$TOOL_BIN"
+	fi
 
 	"$TOOL_BIN" \
 		-end-solver="$SOLVER" \
@@ -132,7 +135,13 @@ die_help()
 		printf "$die_help_format\n" "$@" >&2
 	fi
 	usage >&2
-	die 1 'Run with `-h` for help.'
+	die 1 'Run `%s -h` for help.' "$INVOKENAME"
+}
+
+die_internal()
+{
+	printf "Internal error: "
+	die "$@"
 }
 
 usage()
@@ -216,6 +225,10 @@ get_options()
 	esac
 	DUMP_PATH="$(readlink -f "$DUMP_PATH")"
 	BUILD_PATH="$(readlink -f "$BUILD_PATH")"
+	BUILD="$ARCH-$RELEASE-$MODE"
+	if [ ! -d "$BUILD_PATH/$BUILD" ]; then
+		die 2 '%s: build does not exist in %s' "$BUILD" "$BUILD_PATH"
+	fi
 	ARGSHIFT=$(($OPTIND - 1))
 }
 
@@ -226,6 +239,9 @@ get_db_path()
 		die_help 'Missing database path'
 	fi
 	DB_FILE="$(readlink -f "$DB_FILE")"
+	if [ ! -e "$DB_FILE" ]; then
+		die 2 '%s: database does not exist' "$DB_FILE"
+	fi
 	DB_NAME="$(basename "$DB_FILE")"
 	DB_PATH="$(dirname "$DB_FILE")"
 	DB_DIR="$(basename "$DB_PATH")"

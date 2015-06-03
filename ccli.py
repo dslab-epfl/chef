@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+#
+# ccli - Chef Command Line Interface
 
 import argparse
 import sys
@@ -13,10 +15,20 @@ INVOKENAME = os.path.basename(RUNNAME)
 DATAROOT = '/var/lib/chef'
 
 
-def shell_command(name: str):
-    os.execve('%s/libccli/%s.sh' % (RUNPATH, name),
+# HANDLERS =====================================================================
+
+def external_command(name: str, type: str):
+    os.execve('%s/libccli/%s.%s' % (RUNPATH, name, type),
               sys.argv[1:],
               {'INVOKENAME': '%s %s' % (INVOKENAME, name)})
+
+
+def python_command(name: str):
+    external_command(name, 'py')
+
+
+def shell_command(name: str):
+    external_command(name, 'sh')
 
 
 def command_init():
@@ -41,27 +53,16 @@ def command_vm():
     VM.main(sys.argv[1:])
 
 
-def command_run():
-    print("Not yet implemented")
-    exit(1)
+# MAIN =========================================================================
+
+def usage(file=sys.stdout):
+    print("Usage: %s COMMAND [ARGUMENTS ...]" % INVOKENAME, file=file)
 
 
-def command_smtlibdump():
-    shell_command('smtlibdump')
-
-
-def command_docker():
-    shell_command('docker')
-
-
-def command_build():
-    shell_command('build')
-
-
-def command_help():
+def help():
     print("%s: Command line interface to chef\n" % INVOKENAME)
-    print("Usage: %s COMMAND [ARGUMENTS ...]\n" % INVOKENAME)
-    print("Commands:")
+    usage()
+    print("\nCommands:")
     print("  init        Initialise Chef environment in %s" % DATAROOT)
     print("  vm          Manage chef virtual machines")
     print("  build       Build Chef in a given configuration")
@@ -71,14 +72,33 @@ def command_help():
     exit(1)
 
 
+def die_help(msg: str):
+    print(msg, file=sys.stderr)
+    usage(file=sys.stderr)
+    print("Run `%s help` for help." % INVOKENAME, file=sys.stderr)
+    exit(1)
+
+
 if __name__ == '__main__':
-    command = sys.argv[1] if len(sys.argv) > 1 else 'help'
-    handlers = { 'init': command_init,
-                 'vm': command_vm,
-                 'run': command_run,
-                 'build': command_build,
-                 'smtlibdump': command_smtlibdump,
-                 'docker': command_docker,
-                 'help': command_help }
-    handler = handlers.get(command, command_help)
-    handler()
+    if len(sys.argv) < 2:
+        die_help("missing command")
+    else:
+        command = sys.argv[1]
+
+    handlers = {'init'      : {'type':'MODULE',  'function':command_init},
+                'vm'        : {'type':'MODULE',  'function':command_vm  },
+                'run'       : {'type':'PYTHON',                         },
+                'build'     : {'type':'SHELL',                          },
+                'smtlibdump': {'type':'SHELL',                          },
+                'docker'    : {'type':'SHELL',                          },
+                'help'      : {'type':'BUILTIN', 'function':help        }}
+    handler = handlers.get(command, {'type':'INVALID'})
+
+    if handler['type'] == 'SHELL':
+        shell_command(command)
+    elif handler['type'] == 'PYTHON':
+        python_command(command)
+    elif handler['type'] == 'INVALID':
+        die_help("Unknown command: %s" % command)
+    else:
+        handler['function']()

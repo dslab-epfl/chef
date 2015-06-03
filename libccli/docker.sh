@@ -41,7 +41,7 @@ die()
 usage()
 {
 	cat <<- EOF
-	Usage: $INVOKENAME [OPTIONS ...] COMMAND
+	Usage: $INVOKENAME [OPTIONS ...] SUBCOMMAND
 	EOF
 }
 
@@ -66,7 +66,7 @@ die_help()
 		printf "$die_help_format\n" "$@" >&2
 	fi
 	usage >&2
-	die 1 'Run with `-h` for help.'
+	die 1 'Run `%s -h` for help.' "$INVOKENAME"
 }
 
 internal_error()
