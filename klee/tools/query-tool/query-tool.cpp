@@ -57,6 +57,7 @@
 #include <fstream>
 #include <sstream>
 #include <libgen.h>
+#include <cstdio>
 
 using namespace llvm;
 using namespace klee;
@@ -85,6 +86,11 @@ cl::opt<bool> ReplayQueries("replay",
 cl::opt<bool> GenerateSMTLIB("generate-smtlib",
         cl::desc("Generate and store queries in SMT-LIB format to .smt files"),
         cl::init(false));
+
+cl::opt<bool> SMTLIBMonolithic("smtlib-monolithic",
+        cl::desc("Store generated queries' SMT-LIB format in a single .smt file (default=false)"),
+        cl::init(false));
+
 cl::opt<std::string> SMTLIBOutPath("smtlib-out-path",
         cl::desc("Output path for SMT-Lib dumps"),
         cl::init(""));
@@ -298,7 +304,6 @@ int main(int argc, char **argv, char **envp) {
         ::exit(1);
     }
 
-
     scoped_ptr<ExprBuilder> expr_builder(createDefaultExprBuilder());
     ExprDeserializer expr_deserializer(*expr_builder, std::vector<Array*>());
     QueryDeserializer query_deserializer(expr_deserializer);
@@ -310,6 +315,25 @@ int main(int argc, char **argv, char **envp) {
 
     TimeValue total_recorded(TimeValue::ZeroTime);
     TimeValue total_replayed(TimeValue::ZeroTime);
+
+    char *smtlib_dump_dir, *smtlib_dump_file;
+    if (GenerateSMTLIB) {
+        std::stringstream dump_path;
+        if (SMTLIBOutPath.length() == 0) {
+            char *dbfilepath = strdup(InputFileName.c_str());
+            dump_path << dirname(dbfilepath) << '/';
+            free(dbfilepath);
+        } else {
+            dump_path << SMTLIBOutPath << '/';
+        }
+        smtlib_dump_dir = strdup(dump_path.str().c_str());
+        if (SMTLIBMonolithic) {
+            dump_path << "dump.smt";
+            smtlib_dump_file = strdup(dump_path.str().c_str());
+            if (remove(smtlib_dump_file) != 0)
+                std::cerr << "Warning: could not delete " << smtlib_dump_file << '\n';
+        }
+    }
 
     while ((result = sqlite3_step(select_stmt)) == SQLITE_ROW) {
         Query query;
@@ -395,23 +419,24 @@ int main(int argc, char **argv, char **envp) {
         }
 
         if (GenerateSMTLIB) {
-            int64_t id = sqlite3_column_int64(select_stmt, 0);
+            int id = sqlite3_column_int64(select_stmt, 0);
             int64_t recorded_usec = sqlite3_column_int64(select_stmt, 4);
 
-            std::stringstream filename;
-            if (SMTLIBOutPath.length() == 0) {
-                char *dbfilepath = strdup(InputFileName.c_str());
-                filename << dirname(dbfilepath) << '/';
-                free(dbfilepath);
-            } else {
-                filename << SMTLIBOutPath << '/';
-            }
-            filename << std::setfill('0') << std::setw(4) << id << ".smt";
-
             std::ofstream file;
-            file.open(filename.str().c_str());
-            ExprSMTLIBPrinter printer = ExprSMTLIBPrinter();
+            if (SMTLIBMonolithic) {
+                file.open(smtlib_dump_file, std::ios_base::out | std::ios_base::app);
+                std::cout << "   Appending to " << smtlib_dump_file << '\n';
+            } else {
+                std::stringstream dump_path;
+                dump_path << smtlib_dump_dir << std::setfill('0') << std::setw(4) << id << ".smt";
+                smtlib_dump_file = strdup(dump_path.str().c_str());
+                file.open(smtlib_dump_file);
+                std::cout << "   Writing to " << smtlib_dump_file << '\n';
+                free(smtlib_dump_file);
+            }
             file << "; " << recorded_usec << " µsec\n";
+
+            ExprSMTLIBPrinter printer = ExprSMTLIBPrinter();
             printer.setOutput(file);
             printer.setQuery(query);
             printer.generateOutput();
@@ -426,5 +451,9 @@ int main(int argc, char **argv, char **envp) {
     assert(result == SQLITE_OK);
     result = sqlite3_close(db);
     assert(result == SQLITE_OK);
+
+    if (GenerateSMTLIB && SMTLIBMonolithic)
+        free(smtlib_dump_file);
+
     return 0;
 }
