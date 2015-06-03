@@ -41,7 +41,6 @@ import time
 import subprocess
 
 from datetime import datetime, timedelta
-from libccli.batch import Batch
 
 THIS_DIR = os.path.dirname(__file__)
 
@@ -224,6 +223,8 @@ def parse_cmd_line():
 
     parser.add_argument("--data-root", default=DEFAULT_HOST_DATA_ROOT,
                         help="location of data root")
+    parser.add_argument('--vm-root', default=None,
+                        help="location of VM (default: $DATA_ROOT/vm)")
     parser.add_argument("-p", "--command-port", type=int, default=DEFAULT_COMMAND_PORT,
                         help="The command port configured for port forwarding")
     parser.add_argument("-m", "--monitor-port", type=int, default=DEFAULT_MONITOR_PORT,
@@ -277,12 +278,19 @@ def build_docker_cmd_line(args, command: [str]):
     docker_cmd_line = ["docker", "run", "--rm"]
     if not args.batch:
         docker_cmd_line.extend(["-t", "-i"])
+    if args.vm_root:
+        docker_cmd_line.extend(['-v', '%s:%s/vm' % (args.vm_root, DATA_ROOT)])
     docker_cmd_line.extend(["-v", "%s:%s" % (HOST_CHEF_ROOT, CHEF_ROOT),
                      "-v", "%s:%s" % (args.data_root, DATA_ROOT),
                      "-p", "%d:%d" % (args.command_port, args.command_port),
                      "-p", "%d:%d" % (args.monitor_port, args.monitor_port),
                      "-p", "%d:%d" % (5900 + args.vnc_display, 5900 + args.vnc_display)
                      ])
+    if args.mode == 'sym':
+        lua_path = os.environ.get('LUA_PATH', None)
+        docker_cmd_line.extend(['-e', 'LUA_PATH=%s%s' %
+                                (os.path.join(os.path.dirname(args.config), '?.lua'),
+                                 (';%s' % lua_path, '')[lua_path is None])])
     if args.mode == "kvm":
         docker_cmd_line.append("--privileged=true")
     docker_cmd_line.append("dslab/s2e-chef:%s" % VERSION)
@@ -399,6 +407,7 @@ def main():
 
     # batch-execute multiple commands:
     if args.mode == 'sym' and args.batch_file:
+        from libccli.batch import Batch
         batch = Batch(args.batch_file)
         batch_commands = batch.get_commands()
 
