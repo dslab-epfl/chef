@@ -3,7 +3,6 @@
 import argparse
 import sys
 import os
-from libccli.vm import VM as VM
 import libccli.libccli
 
 
@@ -38,6 +37,7 @@ def command_init():
 
 
 def command_vm():
+    from libccli.vm import VM as VM
     VM.main(sys.argv[1:])
 
 
@@ -59,8 +59,8 @@ def command_build():
 
 
 def command_help():
-    print("%s: Command line interface to chef\n" % sys.argv[0])
-    print("Usage: %s COMMAND [ARGUMENTS ...]\n" % sys.argv[0])
+    print("%s: Command line interface to chef\n" % INVOKENAME)
+    print("Usage: %s COMMAND [ARGUMENTS ...]\n" % INVOKENAME)
     print("Commands:")
     print("  init        Initialise Chef environment in %s" % DATAROOT)
     print("  vm          Manage chef virtual machines")
