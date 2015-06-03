@@ -50,6 +50,10 @@ def command_smtlibdump():
     shell_command('smtlibdump')
 
 
+def command_docker():
+    shell_command('docker')
+
+
 def command_build():
     shell_command('build')
 
@@ -63,6 +67,7 @@ def command_help():
     print("  build       Build Chef in a given configuration")
     print("  run         Run Chef in a given mode")
     print("  smtlibdump  Dump collected queries in SMT-Lib format")
+    print("  docker      Run docker container (useful for debugging/tinkering)")
     exit(1)
 
 
@@ -73,6 +78,7 @@ if __name__ == '__main__':
                  'run': command_run,
                  'build': command_build,
                  'smtlibdump': command_smtlibdump,
+                 'docker': command_docker,
                  'help': command_help }
     handler = handlers.get(command, command_help)
     handler()
