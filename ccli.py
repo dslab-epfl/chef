@@ -18,9 +18,9 @@ DATAROOT = '/var/lib/chef'
 # HANDLERS =====================================================================
 
 def external_command(name: str, type: str):
-    os.execve('%s/libccli/%s.%s' % (RUNPATH, name, type),
-              sys.argv[1:],
-              {'INVOKENAME': '%s %s' % (INVOKENAME, name)})
+    env = os.environ
+    env['INVOKENAME'] = '%s %s' % (INVOKENAME, name)
+    os.execve('%s/libccli/%s.%s' % (RUNPATH, name, type), sys.argv[1:], env)
 
 
 def python_command(name: str):

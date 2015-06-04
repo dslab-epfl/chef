@@ -686,7 +686,7 @@ get_options()
 	LLVM_BASE='/opt/s2e/llvm'
 	PREPARE=1
 	QEMU_FLAGS=''
-	SILENT=1
+	SILENT=${CCLI_SILENT_BUILD:=1}
 
 	# Options:
 	while getopts b:c:d:fhi:j:l:pq:syz opt; do
@@ -795,7 +795,7 @@ main()
 		LLVM_BASE=$LLVM_BASE
 		PREPARE=$(boolean $PREPARE)
 		QEMU_FLAGS='$QEMU_FLAGS'
-		SILENT=$(boolean $SILENT)
+		SILENT=$(boolean $SILENT) (CCLI_SILENT_BUILD=$(boolean $CCLI_SILENT_BUILD))
 		ARCH=$ARCH
 		TARGET=$TARGET
 		MODE=$MODE
