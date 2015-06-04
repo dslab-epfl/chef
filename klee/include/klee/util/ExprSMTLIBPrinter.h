@@ -294,6 +294,10 @@ namespace klee {
 			//Map of enabled SMTLIB Options
 			std::map<SMTLIBboolOptions,bool> smtlibBoolOptions;
 
+			//Map of cached expressions
+			std::map<ref<Expr>,int> expressionMap;
+			std::string sanitizedVarName(const std::string& varName);
+
 			///This sets queryAssert to be the boolean negation of the original Query
 			void mangleQuery();
 

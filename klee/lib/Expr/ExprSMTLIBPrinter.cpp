@@ -7,6 +7,7 @@
 //
 //===----------------------------------------------------------------------===//
 #include <iostream>
+#include <algorithm>
 
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
@@ -174,7 +175,6 @@ namespace klee
             printCastToSort(e,expectedSort);
             return;
         }
-
 
         switch(e->getKind())
         {
@@ -414,7 +414,7 @@ namespace klee
         else
         {
             //The base case of the recursion
-            *p << root->name;
+            *p << sanitizedVarName(root->name);
         }
 
     }
@@ -472,7 +472,7 @@ namespace klee
                 continue;
             }
 
-            *o << "(declare-fun " << (*it)->name << " () "
+            *o << "(declare-fun " << sanitizedVarName((*it)->name) << " () "
                     "(Array (_ BitVec " << (*it)->getDomain() << ") "
                     "(_ BitVec " << (*it)->getRange() << ") ) )" << endl;
         }
@@ -504,7 +504,7 @@ namespace klee
                         p->pushIndent();
                         printSeperator();
 
-                        *p << "(select " << array->name << " (_ bv" << byteIndex << " " << array->getDomain() << ") )";
+                        *p << "(select " << sanitizedVarName(array->name) << " (_ bv" << byteIndex << " " << array->getDomain() << ") )";
                         printSeperator();
                         printConstant((*ce));
 
@@ -575,7 +575,7 @@ namespace klee
                 //Loop over the array indices
                 for(unsigned int index=0; index < theArray->size; ++index)
                 {
-                    *o << "(get-value ( (select " << (**it).name <<
+                    *o << "(get-value ( (select " << sanitizedVarName((*it)->name) <<
                             " (_ bv" << index << " " << theArray->getDomain() << ") ) ) )" << endl;
                 }
 
@@ -920,6 +920,13 @@ namespace klee
         }
     }
 
+    std::string ExprSMTLIBPrinter::sanitizedVarName(const std::string& varName)
+    {
+        std::string sanitizedVarName = varName;
+        std::replace(sanitizedVarName.begin(), sanitizedVarName.end(), '#', '_');
+        std::replace(sanitizedVarName.begin(), sanitizedVarName.end(), '.', '_');
+        return sanitizedVarName;
+    }
 }
 
 

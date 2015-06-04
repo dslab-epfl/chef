@@ -95,6 +95,10 @@ cl::opt<std::string> SMTLIBOutPath("smtlib-out-path",
         cl::desc("Output path for SMT-Lib dumps"),
         cl::init(""));
 
+cl::opt<int> SMTLIBDumpLimit("smtlib-dump-limit",
+        cl::desc("Stop generating SMT-LIB dumps after a number of files"),
+        cl::init(0));
+
 }
 
 
@@ -310,6 +314,9 @@ int main(int argc, char **argv, char **envp) {
     scoped_ptr<ExprBuilder> expr_builder(createDefaultExprBuilder());
     ExprDeserializer expr_deserializer(*expr_builder, std::vector<Array*>());
     QueryDeserializer query_deserializer(expr_deserializer);
+    ExprSMTLIBPrinter printer;
+    printer.setConstantDisplayMode(ExprSMTLIBPrinter::DECIMAL);
+    printer.setLogic(ExprSMTLIBPrinter::QF_ABV);
 
     // Solvers used for replay
     DefaultSolverFactory solver_factory(NULL);
@@ -338,7 +345,8 @@ int main(int argc, char **argv, char **envp) {
         }
     }
 
-    while ((result = sqlite3_step(select_stmt)) == SQLITE_ROW) {
+    for (int i = 0; (result = sqlite3_step(select_stmt)) == SQLITE_ROW
+            && SMTLIBDumpLimit > 0 && i < SMTLIBDumpLimit; ++i) {
         Query query;
 
         QueryType query_type = static_cast<QueryType>(
@@ -428,25 +436,25 @@ int main(int argc, char **argv, char **envp) {
             std::ofstream file;
             if (SMTLIBMonolithic) {
                 file.open(smtlib_dump_file, std::ios_base::out | std::ios_base::app);
-                std::cout << "   Appending to " << smtlib_dump_file << '\n';
+                outs() << "   Appending to " << smtlib_dump_file << '\n';
             } else {
                 std::stringstream dump_path;
                 dump_path << smtlib_dump_dir << std::setfill('0') << std::setw(4) << id << ".smt";
                 smtlib_dump_file = strdup(dump_path.str().c_str());
                 file.open(smtlib_dump_file);
-                std::cout << "   Writing to " << smtlib_dump_file << '\n';
+                outs() << "   Writing to " << smtlib_dump_file << '\n';
                 free(smtlib_dump_file);
             }
             file << "; " << recorded_usec << " µsec\n";
 
-            ExprSMTLIBPrinter printer = ExprSMTLIBPrinter();
             printer.setOutput(file);
             printer.setQuery(query);
             printer.generateOutput();
             file.close();
         }
     }
-    assert(result == SQLITE_DONE);
+    if (SMTLIBDumpLimit == 0)
+        assert(result == SQLITE_DONE);
 
     result = sqlite3_finalize(select_stmt);
     assert(result == SQLITE_OK);
