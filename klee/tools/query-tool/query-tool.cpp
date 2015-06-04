@@ -287,8 +287,11 @@ int main(int argc, char **argv, char **envp) {
             "(?1,       ?2,          ?3,               ?4,         ?5,        ?6,              ?7,             ?8,           ?9)";
 
     result = sqlite3_exec(db, init_sql, NULL, NULL, &err_msg);
-    assert(result == SQLITE_OK);
-
+    if (result != SQLITE_OK) {
+        errs() << "Could not execute SQL statement: " << init_sql
+                << " (" << err_msg << ")\n";
+        ::exit(1);
+    }
     sqlite3_stmt *select_stmt;
     sqlite3_stmt *insert_stmt;
     result = sqlite3_prepare_v2(db, select_sql, -1, &select_stmt, NULL);
