@@ -17,14 +17,7 @@ autom4te.cache
 .idea/
 
 # Files that are supposed to be elsewhere, but are here during development:
-
-# Build/Run "results":
 /build
-/vm
-/expdata
-
-# Ctag:
+/data
+/third
 tags
-
-# SMT-Lib dumps:
-*.smt
