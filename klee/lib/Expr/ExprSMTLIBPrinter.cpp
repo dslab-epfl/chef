@@ -79,9 +79,9 @@ namespace klee
         haveConstantArray=false;
 
         /* Clear the PRODUCE_MODELS option if it was automatically set.
-                 * We need to do this because the next query might not need the
-                 * (get-value) SMT-LIBv2 command.
-                 */
+         * We need to do this because the next query might not need the
+         * (get-value) SMT-LIBv2 command.
+         */
         if(arraysToCallGetValueOn !=NULL)
             setSMTLIBboolOption(PRODUCE_MODELS,OPTION_DEFAULT);
 
@@ -126,10 +126,10 @@ namespace klee
         std::string value;
 
         /* SMTLIBv2 deduces the bit-width (should be 8-bits in our case)
-                 * from the length of the string (e.g. zero is #b00000000). LLVM
-                 * doesn't know about this so we need to pad the printed output
-                 * with the appropriate number of zeros (zeroPad)
-                 */
+         * from the length of the string (e.g. zero is #b00000000). LLVM
+         * doesn't know about this so we need to pad the printed output
+         * with the appropriate number of zeros (zeroPad)
+         */
         unsigned int zeroPad=0;
 
         switch(cdm)
@@ -211,9 +211,9 @@ namespace klee
 
         case Expr::Eq:
             /* The "=" operator is special in that it can take any sort but we must
-                                 * enforce that both arguments are the same type. We do this a lazy way
-                                 * by enforcing the second argument is of the same type as the first.
-                                 */
+             * enforce that both arguments are the same type. We do this a lazy way
+             * by enforcing the second argument is of the same type as the first.
+             */
             printSortArgsExpr(e,getSort(e->getKid(0)));
 
             return;
@@ -223,9 +223,9 @@ namespace klee
         case Expr::Xor:
         case Expr::Not:
             /* These operators have a bitvector version and a bool version.
-                                 * For these operators only (e.g. wouldn't apply to bvult) if the expected sort the
-                                 * expression is T then that implies the arguments are also of type T.
-                                 */
+             * For these operators only (e.g. wouldn't apply to bvult) if the expected sort the
+             * expression is T then that implies the arguments are also of type T.
+             */
             printLogicalOrBitVectorExpr(e,expectedSort);
 
             return;
@@ -233,8 +233,8 @@ namespace klee
 
         default:
             /* The remaining operators (Add,Sub...,Ult,Ule,..)
-                                 * Expect SORT_BITVECTOR arguments
-                                 */
+             * Expect SORT_BITVECTOR arguments
+             */
             printSortArgsExpr(e,SORT_BITVECTOR);
             return;
         }
@@ -280,19 +280,19 @@ namespace klee
     void ExprSMTLIBPrinter::printCastExpr(const ref<CastExpr>& e)
     {
         /* sign_extend and zero_extend behave slightly unusually in SMTLIBv2
-                 * instead of specifying of what bit-width we would like to extend to
-                 * we specify how many bits to add to the child expression
-                 *
-                 * e.g
-                 * ((_ sign_extend 64) (_ bv5 32))
-                 *
-                 * gives a (_ BitVec 96) instead of (_ BitVec 64)
-                 *
-                 * So we must work out how many bits we need to add.
-                 *
-                 * (e->width) is the desired number of bits
-                 * (e->src->getWidth()) is the number of bits in the child
-                 */
+         * instead of specifying of what bit-width we would like to extend to
+         * we specify how many bits to add to the child expression
+         *
+         * e.g
+         * ((_ sign_extend 64) (_ bv5 32))
+         *
+         * gives a (_ BitVec 96) instead of (_ BitVec 64)
+         *
+         * So we must work out how many bits we need to add.
+         *
+         * (e->width) is the desired number of bits
+         * (e->src->getWidth()) is the number of bits in the child
+         */
         unsigned int numExtraBits= (e->width) - (e->src->getWidth());
 
         *p << "((_ " << getSMTLIBKeyword(e) << " " <<
@@ -319,9 +319,9 @@ namespace klee
         printSeperator();
 
         /* The "=" operators allows both sorts. We assume
-                 * that the second argument sort should be forced to be the same sort as the
-                 * first argument
-                 */
+         * that the second argument sort should be forced to be the same sort as the
+         * first argument
+         */
         SMTLIB_SORT s = getSort(e->getKid(0));
 
         printExpression(e->getKid(0),s);
@@ -358,9 +358,9 @@ namespace klee
         case Expr::SRem: return "bvsrem";
 
 
-            /* And, Xor, Not and Or are not handled here because there different versions
-                         * for different sorts. See printLogicalOrBitVectorExpr()
-                         */
+        /* And, Xor, Not and Or are not handled here because there different versions
+         * for different sorts. See printLogicalOrBitVectorExpr()
+         */
 
 
         case Expr::Shl: return "bvshl";
@@ -369,7 +369,7 @@ namespace klee
 
         case Expr::Eq: return "=";
 
-            //Not Equal does not exist directly in SMTLIBv2
+        //Not Equal does not exist directly in SMTLIBv2
 
         case Expr::Ult: return "bvult";
         case Expr::Ule: return "bvule";
@@ -492,9 +492,9 @@ namespace klee
                 int byteIndex=0;
                 if(array->isConstantArray())
                 {
-                    /*loop over elements in the array and generate an assert statement
-                                          for each one
-                                         */
+                    /* loop over elements in the array and generate an assert statement
+                     * for each one
+                     */
                     for(vector< ref<ConstantExpr> >::const_iterator ce= array->constantValues.begin();
                     ce != array->constantValues.end(); ce++, byteIndex++)
                     {
@@ -561,8 +561,8 @@ namespace klee
         *o << "(check-sat)" << endl;
 
         /* If we has arrays to find the values of then we'll
-                 * ask the solver for the value of each bitvector in each array
-                 */
+         * ask the solver for the value of each bitvector in each array
+         */
         if(arraysToCallGetValueOn!=NULL && !arraysToCallGetValueOn->empty())
         {
 
@@ -653,10 +653,11 @@ namespace klee
 
     void ExprSMTLIBPrinter::printSeperator()
     {
-        if(humanReadable)
+        if(humanReadable) {
             p->breakLineI();
-        else
+        } else {
             p->write(" ");
+        }
     }
 
     void ExprSMTLIBPrinter::printNotice()
@@ -704,16 +705,16 @@ namespace klee
     ExprSMTLIBPrinter::SMTLIB_SORT ExprSMTLIBPrinter::getSort(const ref<Expr>& e)
     {
         /* We could handle every operator in a large switch statement,
-                 * but this seems more elegant.
-                 */
+         * but this seems more elegant.
+         */
 
         if(e->getKind() == Expr::Extract)
         {
             /* This is a special corner case. In most cases if a node in the expression tree
-                         * is of width 1 it should be considered as SORT_BOOL. However it is possible to
-                         * perform an extract operation on a SORT_BITVECTOR and produce a SORT_BITVECTOR of length 1.
-                         * The ((_ extract i j) () ) operation in SMTLIBv2 always produces SORT_BITVECTOR
-                         */
+             * is of width 1 it should be considered as SORT_BOOL. However it is possible to
+             * perform an extract operation on a SORT_BITVECTOR and produce a SORT_BITVECTOR of length 1.
+             * The ((_ extract i j) () ) operation in SMTLIBv2 always produces SORT_BITVECTOR
+             */
             return SORT_BITVECTOR;
         }
         else
@@ -725,8 +726,7 @@ namespace klee
         switch(sort)
         {
         case SORT_BITVECTOR:
-            if(humanReadable)
-            {
+            if(humanReadable) {
                 p->breakLineI(); *p << ";Performing implicit bool to bitvector cast"; p->breakLine();
             }
             //We assume the e is a bool that we need to cast to a bitvector sort.
@@ -736,30 +736,30 @@ namespace klee
             *p << "(_ bv0 1)" ; p->popIndent(); printSeperator(); //printing the "false" bitvector
             *p << ")";
             break;
-                        case SORT_BOOL:
+        case SORT_BOOL:
+        {
+            /* We make the assumption (might be wrong) that any bitvector whos unsigned decimal value is
+             * is zero is interpreted as "false", otherwise it is true.
+             *
+             * This may not be the interpretation we actually want!
+             */
+            Expr::Width bitWidth=e->getWidth();
+            if(humanReadable)
             {
-                /* We make the assumption (might be wrong) that any bitvector whos unsigned decimal value is
-                                 * is zero is interpreted as "false", otherwise it is true.
-                                 *
-                                 * This may not be the interpretation we actually want!
-                                 */
-                Expr::Width bitWidth=e->getWidth();
-                if(humanReadable)
-                {
-                    p->breakLineI(); *p << ";Performing implicit bitvector to bool cast"; p->breakLine();
-                }
-                *p << "(bvugt"; p->pushIndent(); printSeperator();
-                // We assume is e is a bitvector
-                printExpression(e,SORT_BITVECTOR); printSeperator();
-                *p << "(_ bv0 " << bitWidth << ")"; p->popIndent(); printSeperator(); //Zero bitvector of required width
-                *p << ")";
-
-                if(bitWidth!=Expr::Bool)
-                    std::cerr << "ExprSMTLIBPrinter : Warning. Casting a bitvector (length " << bitWidth << ") to bool!" << std::endl;
-
+                p->breakLineI(); *p << ";Performing implicit bitvector to bool cast"; p->breakLine();
             }
+            *p << "(bvugt"; p->pushIndent(); printSeperator();
+            // We assume is e is a bitvector
+            printExpression(e,SORT_BITVECTOR); printSeperator();
+            *p << "(_ bv0 " << bitWidth << ")"; p->popIndent(); printSeperator(); //Zero bitvector of required width
+            *p << ")";
+
+            if(bitWidth!=Expr::Bool)
+                std::cerr << "ExprSMTLIBPrinter : Warning. Casting a bitvector (length " << bitWidth << ") to bool!" << std::endl;
+
             break;
-                        default:
+        }
+        default:
             assert(0 && "Unsupported cast!");
         }
     }
@@ -776,8 +776,8 @@ namespace klee
         printExpression(e->getKid(0),SORT_BOOL);
 
         /* This operator is special in that the remaining children
-                         * can be of any sort.
-                         */
+         * can be of any sort.
+         */
 
         //if true
         printSeperator();
@@ -813,8 +813,8 @@ namespace klee
     void ExprSMTLIBPrinter::printLogicalOrBitVectorExpr(const ref<Expr>& e, ExprSMTLIBPrinter::SMTLIB_SORT s)
     {
         /* For these operators it is the case that the expected sort is the same as the sorts
-                 * of the arguments.
-                 */
+         * of the arguments.
+         */
 
         *p << "(";
         switch(e->getKind())
@@ -898,10 +898,10 @@ namespace klee
             setSMTLIBboolOption(PRODUCE_MODELS,OPTION_TRUE);
 
         /* There is a risk that users will ask about array values that aren't
-                 * even in the query. We should add them to the usedArrays list and hope
-                 * that the solver knows what to do when we ask for the values of arrays
-                 * that don't feature in our query!
-                 */
+         * even in the query. We should add them to the usedArrays list and hope
+         * that the solver knows what to do when we ask for the values of arrays
+         * that don't feature in our query!
+         */
         for(vector<const Array*>::const_iterator i = a.begin(); i!= a.end() ; ++i)
         {
             usedArrays.insert(*i);
