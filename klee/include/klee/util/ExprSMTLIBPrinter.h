@@ -294,8 +294,7 @@ namespace klee {
 			//Map of enabled SMTLIB Options
 			std::map<SMTLIBboolOptions,bool> smtlibBoolOptions;
 
-			//Map of cached expressions
-			std::map<ref<Expr>,int> expressionMap;
+			// Compact SMT-LIBv2 dumps (methods)
 			std::string sanitizedVarName(const std::string& varName);
 			unsigned int printExpressionLet(const ref<Expr>& p,
 			                                const ref<Expr>& e,
@@ -303,7 +302,11 @@ namespace klee {
 			                                unsigned int paren_indent);
 			void printExpressionRaw(const ref<Expr>& e,
 			                        ExprSMTLIBPrinter::SMTLIB_SORT expectedSort);
+
+			// Compact SMT-LIBv2 dumps (variables)
+			std::map<ref<Expr>,int> expressionMap;
 			int expressionSerial;
+			bool compact;
 
 			///This sets queryAssert to be the boolean negation of the original Query
 			void mangleQuery();

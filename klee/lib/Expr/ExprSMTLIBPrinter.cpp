@@ -25,17 +25,15 @@ namespace ExprSMTLIBOptions
                                clEnumValN(klee::ExprSMTLIBPrinter::DECIMAL, "dec","Use decimal form (e.g. (_ bv45 8) )"),
                                clEnumValEnd
                                ),
-             llvm::cl::init(klee::ExprSMTLIBPrinter::DECIMAL)
-
-
-             );
+             llvm::cl::init(klee::ExprSMTLIBPrinter::DECIMAL));
 
     llvm::cl::opt<bool> humanReadableSMTLIB("smtlib-human-readable",
                                             llvm::cl::desc("Enables generated SMT-LIBv2 files to be human readable (default=off)"),
-                                            llvm::cl::init(false)
+                                            llvm::cl::init(false));
 
-
-                                            );
+    llvm::cl::opt<bool> compactSMTLIB("smtlib-compact",
+                                      llvm::cl::desc("Make compact SMT-LIBv2 queries (default=off)"),
+                                      llvm::cl::init(false));
 
 }
 
@@ -45,9 +43,12 @@ namespace klee
 
     ExprSMTLIBPrinter::ExprSMTLIBPrinter() :
             usedArrays(), o(NULL), query(NULL), p(NULL), haveConstantArray(false), logicToUse(QF_AUFBV),
-            humanReadable(ExprSMTLIBOptions::humanReadableSMTLIB), smtlibBoolOptions(), arraysToCallGetValueOn(NULL)
+            humanReadable(ExprSMTLIBOptions::humanReadableSMTLIB), smtlibBoolOptions(), arraysToCallGetValueOn(NULL),
+            compact(ExprSMTLIBOptions::compactSMTLIB)
     {
         setConstantDisplayMode(ExprSMTLIBOptions::argConstantDisplayMode);
+        std::cerr << "human = " << humanReadable << '\n';
+        std::cerr << "compact = " << compact << " (compactSMTLIB = " << ExprSMTLIBOptions::compactSMTLIB << ")\n";
     }
 
     ExprSMTLIBPrinter::~ExprSMTLIBPrinter()
@@ -86,6 +87,7 @@ namespace klee
             setSMTLIBboolOption(PRODUCE_MODELS,OPTION_DEFAULT);
 
         arraysToCallGetValueOn=NULL;
+        expressionMap.clear();
         expressionSerial = 0;
     }
 
@@ -166,7 +168,6 @@ namespace klee
         }
     }
 
-#ifdef SMTLIB_PRINTER_COMPACT
     unsigned int ExprSMTLIBPrinter::printExpressionLet(const ref<Expr>& parent,
                                                        const ref<Expr>& e,
                                                        ExprSMTLIBPrinter::SMTLIB_SORT expectedSort,
@@ -175,8 +176,11 @@ namespace klee
         unsigned int paren_indent_local = 0;
 
         // check for expressions that don't need a (let) statement
-        if (e->getKind() == Expr::Constant)
+        if (e->getKind() == Expr::Constant) {
+            if (parent.isNull())
+                printConstant(cast<ConstantExpr>(e));
             return paren_indent_local;
+        }
         if (expressionMap.find(e) != expressionMap.end())
             return paren_indent_local;
 
@@ -196,12 +200,12 @@ namespace klee
                 *p << ')';
             }
         } else {
-            // print this expression's (let) statement
+            // store expression and print `let` statement
             expressionMap[e] = expressionSerial++;
             *p << "(let";
             p->pushIndent();
             printSeperator();
-            *p << "((ID_" << std::setw(5) << std::setfill('0') << expressionSerial << ' ';
+            *p << "((ID_" << std::setw(5) << std::setfill('0') << expressionMap[e] << ' ';
             printExpressionRaw(e, expectedSort);
             *p << "))";
             printSeperator();
@@ -220,7 +224,12 @@ namespace klee
             *p << ' ';
             printUpdatesAndArray(re->updates.head, re->updates.root);
             *p << ' ';
-            printExpressionLet(ref<Expr>(), re->index, SORT_BITVECTOR);
+            if (re->index->getKind() != Expr::Constant) {
+                // TODO this happens, so handle it!
+                std::cerr << "Reading to non-constant expression" << std::endl;
+            } else {
+                printConstant(cast<ConstantExpr>(re->index));
+            }
             break;
         }
         default:
@@ -230,12 +239,11 @@ namespace klee
                 if (kid->getKind() == Expr::Constant)
                     printConstant(cast<ConstantExpr>(kid));
                 else
-                    *p << "ID_" << std::setw(5) << std::setfill('0') << expressionMap[e];
+                    *p << "ID_" << std::setw(5) << std::setfill('0') << expressionMap[kid];
             }
         }
         *p << ')';
     }
-#endif // def SMTLIB_PRINTER_COMPACT
 
     void ExprSMTLIBPrinter::printExpression(const ref<Expr>& e, ExprSMTLIBPrinter::SMTLIB_SORT expectedSort)
     {
@@ -606,11 +614,10 @@ namespace klee
             printSeperator();
 
             //recurse into Expression
-#ifdef SMTLIB_PRINTER_COMPACT
-            printExpressionLet(ref<Expr>(), query->constraints.toExpr(*i), SORT_BOOL);
-#else
-            printExpression(query->constraints.toExpr(*i),SORT_BOOL);
-#endif
+            if (compact)
+                printExpressionLet(ref<Expr>(), query->constraints.toExpr(*i), SORT_BOOL);
+            else
+                printExpression(query->constraints.toExpr(*i),SORT_BOOL);
 
             p->popIndent();
             printSeperator();
@@ -767,11 +774,10 @@ namespace klee
         p->pushIndent();
         printSeperator();
 
-#ifdef SMTLIB_PRINTER_COMPACT
-        printExpressionLet(ref<Expr>(), queryAssert, SORT_BOOL);
-#else
-        printExpression(queryAssert,SORT_BOOL);
-#endif
+        if (compact)
+            printExpressionLet(ref<Expr>(), queryAssert, SORT_BOOL);
+        else
+            printExpression(queryAssert,SORT_BOOL);
 
         p->popIndent();
         printSeperator();
