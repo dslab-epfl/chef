@@ -86,8 +86,7 @@ namespace klee
             setSMTLIBboolOption(PRODUCE_MODELS,OPTION_DEFAULT);
 
         arraysToCallGetValueOn=NULL;
-
-
+        expressionSerial = 0;
     }
 
     bool ExprSMTLIBPrinter::isHumanReadable()
@@ -166,6 +165,77 @@ namespace klee
             std::cerr << "ExprSMTLIBPrinter::printConstant() : Unexpected Constant display mode" << std::endl;
         }
     }
+
+#ifdef SMTLIB_PRINTER_COMPACT
+    unsigned int ExprSMTLIBPrinter::printExpressionLet(const ref<Expr>& parent,
+                                                       const ref<Expr>& e,
+                                                       ExprSMTLIBPrinter::SMTLIB_SORT expectedSort,
+                                                       unsigned int paren_indent = 0)
+    {
+        unsigned int paren_indent_local = 0;
+
+        // check for expressions that don't need a (let) statement
+        if (e->getKind() == Expr::Constant)
+            return paren_indent_local;
+        if (expressionMap.find(e) != expressionMap.end())
+            return paren_indent_local;
+
+        // print (let) statements for children first
+        for (unsigned int i = 0; i < e->getNumKids(); ++i) {
+            ref<Expr> kid = e->getKid(i);
+            paren_indent_local += printExpressionLet(e, kid, SORT_BOOL,
+                                                     paren_indent + paren_indent_local);
+        }
+
+        if (parent.isNull()) {
+            // close statement if this is the parent
+            printExpressionRaw(e, expectedSort);
+            for (unsigned int i = 0; i < paren_indent + paren_indent_local; ++i) {
+                p->popIndent();
+                printSeperator();
+                *p << ')';
+            }
+        } else {
+            // print this expression's (let) statement
+            expressionMap[e] = expressionSerial++;
+            *p << "(let";
+            p->pushIndent();
+            printSeperator();
+            *p << "((ID_" << std::setw(5) << std::setfill('0') << expressionSerial << ' ';
+            printExpressionRaw(e, expectedSort);
+            *p << "))";
+            printSeperator();
+            ++paren_indent_local;
+        }
+        return paren_indent_local;
+    }
+
+    void ExprSMTLIBPrinter::printExpressionRaw(const ref<Expr>& e,
+                                               ExprSMTLIBPrinter::SMTLIB_SORT expectedSort)
+    {
+        *p << '(' << getSMTLIBKeyword(e);
+        switch (e->getKind()) {
+        case Expr::Read: {
+            const ref<ReadExpr> re = cast<ReadExpr>(e);
+            *p << ' ';
+            printUpdatesAndArray(re->updates.head, re->updates.root);
+            *p << ' ';
+            printExpressionLet(ref<Expr>(), re->index, SORT_BITVECTOR);
+            break;
+        }
+        default:
+            for (unsigned int i = 0; i < e->getNumKids(); ++i) {
+                *p << ' ';
+                ref<Expr> kid = e->getKid(i);
+                if (kid->getKind() == Expr::Constant)
+                    printConstant(cast<ConstantExpr>(kid));
+                else
+                    *p << "ID_" << std::setw(5) << std::setfill('0') << expressionMap[e];
+            }
+        }
+        *p << ')';
+    }
+#endif // def SMTLIB_PRINTER_COMPACT
 
     void ExprSMTLIBPrinter::printExpression(const ref<Expr>& e, ExprSMTLIBPrinter::SMTLIB_SORT expectedSort)
     {
@@ -536,7 +606,11 @@ namespace klee
             printSeperator();
 
             //recurse into Expression
+#ifdef SMTLIB_PRINTER_COMPACT
+            printExpressionLet(ref<Expr>(), query->constraints.toExpr(*i), SORT_BOOL);
+#else
             printExpression(query->constraints.toExpr(*i),SORT_BOOL);
+#endif
 
             p->popIndent();
             printSeperator();
@@ -693,7 +767,11 @@ namespace klee
         p->pushIndent();
         printSeperator();
 
+#ifdef SMTLIB_PRINTER_COMPACT
+        printExpressionLet(ref<Expr>(), queryAssert, SORT_BOOL);
+#else
         printExpression(queryAssert,SORT_BOOL);
+#endif
 
         p->popIndent();
         printSeperator();

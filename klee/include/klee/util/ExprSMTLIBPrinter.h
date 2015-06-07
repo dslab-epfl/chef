@@ -297,6 +297,13 @@ namespace klee {
 			//Map of cached expressions
 			std::map<ref<Expr>,int> expressionMap;
 			std::string sanitizedVarName(const std::string& varName);
+			unsigned int printExpressionLet(const ref<Expr>& p,
+			                                const ref<Expr>& e,
+			                                ExprSMTLIBPrinter::SMTLIB_SORT expectedSort,
+			                                unsigned int paren_indent);
+			void printExpressionRaw(const ref<Expr>& e,
+			                        ExprSMTLIBPrinter::SMTLIB_SORT expectedSort);
+			int expressionSerial;
 
 			///This sets queryAssert to be the boolean negation of the original Query
 			void mangleQuery();
