@@ -295,13 +295,16 @@ namespace klee {
 			std::map<SMTLIBboolOptions,bool> smtlibBoolOptions;
 
 			// Compact SMT-LIBv2 dumps (methods)
-			std::string sanitizedVarName(const std::string& varName);
-			unsigned int printExpressionLet(const ref<Expr>& p,
-			                                const ref<Expr>& e,
-			                                ExprSMTLIBPrinter::SMTLIB_SORT expectedSort,
-			                                unsigned int paren_indent);
 			void printExpressionRaw(const ref<Expr>& e,
 			                        ExprSMTLIBPrinter::SMTLIB_SORT expectedSort);
+			unsigned int printExpressionLet(const ref<Expr>& p,
+			                                const ref<Expr>& e,
+			                                ExprSMTLIBPrinter::SMTLIB_SORT expectedSort);
+			unsigned int printCastToSortLet(const ref<Expr>& e,
+			                                ExprSMTLIBPrinter::SMTLIB_SORT sort);
+			void printSMTLIBID(const ref<Expr>& e);
+			const char* getSMTLIBID(const ref<Expr>& e);
+			std::string getSanitizedVarName(const std::string& varName);
 
 			// Compact SMT-LIBv2 dumps (variables)
 			std::map<ref<Expr>,int> expressionMap;

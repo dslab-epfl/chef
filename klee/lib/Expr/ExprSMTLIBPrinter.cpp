@@ -47,8 +47,6 @@ namespace klee
             compact(ExprSMTLIBOptions::compactSMTLIB)
     {
         setConstantDisplayMode(ExprSMTLIBOptions::argConstantDisplayMode);
-        std::cerr << "human = " << humanReadable << '\n';
-        std::cerr << "compact = " << compact << " (compactSMTLIB = " << ExprSMTLIBOptions::compactSMTLIB << ")\n";
     }
 
     ExprSMTLIBPrinter::~ExprSMTLIBPrinter()
@@ -168,68 +166,151 @@ namespace klee
         }
     }
 
+    unsigned int ExprSMTLIBPrinter::printCastToSortLet(const ref<Expr>& e,
+                                                       ExprSMTLIBPrinter::SMTLIB_SORT sort)
+    {
+        unsigned int paren_indent = 0;
+        std::string comment;
+
+        assert((sort == SORT_BOOL || sort == SORT_BITVECTOR) && "Unsupported cast!");
+        paren_indent += printExpressionLet(e, e, sort == SORT_BOOL ? SORT_BITVECTOR : SORT_BOOL);
+
+        *p << "(let";
+        p->pushIndent();
+        ++paren_indent;
+        printSeperator();
+
+        *p << "((";
+        switch (sort) {
+        case SORT_BITVECTOR:
+            *p << "ite ";
+            printSMTLIBID(e);
+            *p << " (_ bv1 1) (_ bv0 1)";
+            comment = "Performing implicit bool to bitvector cast";
+            break;
+        case SORT_BOOL:
+            *p << "buvgt ";
+            printSMTLIBID(e);
+            *p << " (_ bv0 " << e->getWidth() << ')';
+            comment = "Performing implicit bitvector to bool cast";
+            if(e->getWidth() != Expr::Bool) {
+                std::cerr << "ExprSMTLIBPrinter : Warning. ";
+                std::cerr << "Casting a bitvector (length " << e->getWidth() << ") to bool!\n";
+            }
+            break;
+        default:
+            assert(0 && "Unsupported cast!");
+        }
+        *p << "))";
+        if (humanReadable)
+            *p << " ;" << comment;
+
+        printSeperator();
+        return paren_indent;
+    }
+
     unsigned int ExprSMTLIBPrinter::printExpressionLet(const ref<Expr>& parent,
                                                        const ref<Expr>& e,
-                                                       ExprSMTLIBPrinter::SMTLIB_SORT expectedSort,
-                                                       unsigned int paren_indent = 0)
+                                                       ExprSMTLIBPrinter::SMTLIB_SORT expectedSort)
     {
-        unsigned int paren_indent_local = 0;
+        unsigned int paren_indent = 0;
+        ExprSMTLIBPrinter::SMTLIB_SORT nextExpectedSort = expectedSort;
 
-        // check for expressions that don't need a (let) statement
-        if (e->getKind() == Expr::Constant) {
+        // check if a casting might be necessary
+        if (getSort(e) != expectedSort)
+            paren_indent += printCastToSortLet(e, expectedSort);
+
+        // check for expressions that have already been defined:
+        if (expressionMap.find(e) != expressionMap.end())
+            return paren_indent;
+
+        switch (e->getKind()) {
+        case Expr::Constant:
             if (parent.isNull())
                 printConstant(cast<ConstantExpr>(e));
-            return paren_indent_local;
+            return paren_indent;
+        case Expr::Read:
+            paren_indent += printExpressionLet(e, cast<ReadExpr>(e)->index, nextExpectedSort);
+            if (e->getNumKids() != 1)
+                std::cerr << "ExprSMTLIBPrinter::printExpressionLet() : Read expression with "
+                          << e->getNumKids() << " kids\n";
+            break;
+        case Expr::Eq:
+            nextExpectedSort = getSort(e->getKid(0));
+            break;
+        case Expr::NotOptimized:
+        case Expr::Extract:
+        case Expr::SExt:
+        case Expr::ZExt:
+        case Expr::Ne:
+        case Expr::Select:
+        case Expr::And:
+        case Expr::Or:
+        case Expr::Xor:
+        case Expr::Not:
+            break;
+        default:
+            nextExpectedSort = SORT_BITVECTOR;
         }
-        if (expressionMap.find(e) != expressionMap.end())
-            return paren_indent_local;
 
         // print (let) statements for children first
         for (unsigned int i = 0; i < e->getNumKids(); ++i) {
             ref<Expr> kid = e->getKid(i);
-            paren_indent_local += printExpressionLet(e, kid, SORT_BOOL,
-                                                     paren_indent + paren_indent_local);
+            paren_indent += printExpressionLet(e, kid, nextExpectedSort);
         }
 
         if (parent.isNull()) {
-            // close statement if this is the parent
-            printExpressionRaw(e, expectedSort);
-            for (unsigned int i = 0; i < paren_indent + paren_indent_local; ++i) {
+            // close all statements, as this is the parent
+            printExpressionRaw(e, nextExpectedSort);
+            for (unsigned int i = 0; i < paren_indent; ++i) {
                 p->popIndent();
                 printSeperator();
                 *p << ')';
             }
+            expressionMap.clear(); // XXX (correct, but ugly)
         } else {
-            // store expression and print `let` statement
+            // cache expression and print `let` statement
             expressionMap[e] = expressionSerial++;
             *p << "(let";
             p->pushIndent();
+            ++paren_indent;
             printSeperator();
-            *p << "((ID_" << std::setw(5) << std::setfill('0') << expressionMap[e] << ' ';
-            printExpressionRaw(e, expectedSort);
+
+            *p << "((";
+            printSMTLIBID(e);
+            *p << ' ';
+            printExpressionRaw(e, nextExpectedSort);
             *p << "))";
+
             printSeperator();
-            ++paren_indent_local;
         }
-        return paren_indent_local;
+        return paren_indent;
     }
 
     void ExprSMTLIBPrinter::printExpressionRaw(const ref<Expr>& e,
                                                ExprSMTLIBPrinter::SMTLIB_SORT expectedSort)
     {
-        *p << '(' << getSMTLIBKeyword(e);
+        *p << '(';
+
+        // sign_extend/zero_extend:
+        if (e->getKind() == Expr::SExt || e->getKind() == Expr::ZExt) {
+            ref<CastExpr> ce = cast<CastExpr>(e);
+            unsigned int numExtraBits= (ce->width) - (ce->src->getWidth());
+            *p << "(_ " << getSMTLIBKeyword(ce) << ' ' << numExtraBits << ')';
+        } else {
+            *p << getSMTLIBKeyword(e);
+        }
+
         switch (e->getKind()) {
         case Expr::Read: {
             const ref<ReadExpr> re = cast<ReadExpr>(e);
             *p << ' ';
             printUpdatesAndArray(re->updates.head, re->updates.root);
             *p << ' ';
-            if (re->index->getKind() != Expr::Constant) {
-                // TODO this happens, so handle it!
-                std::cerr << "Reading to non-constant expression" << std::endl;
-            } else {
+            if (re->index->getKind() == Expr::Constant)
                 printConstant(cast<ConstantExpr>(re->index));
-            }
+            else
+                *p << getSMTLIBID(re->index);
             break;
         }
         default:
@@ -239,9 +320,10 @@ namespace klee
                 if (kid->getKind() == Expr::Constant)
                     printConstant(cast<ConstantExpr>(kid));
                 else
-                    *p << "ID_" << std::setw(5) << std::setfill('0') << expressionMap[kid];
+                    *p << getSMTLIBID(kid);
             }
         }
+
         *p << ')';
     }
 
@@ -414,6 +496,24 @@ namespace klee
         *p << ")";
     }
 
+    void ExprSMTLIBPrinter::printSMTLIBID(const ref<Expr>& e)
+    {
+        if (e->getKind() == Expr::Constant)
+            printConstant(cast<ConstantExpr>(e));
+        else
+            *p << getSMTLIBID(e);
+    }
+
+    const char* ExprSMTLIBPrinter::getSMTLIBID(const ref<Expr>& e)
+    {
+        if (expressionMap.find(e) == expressionMap.end()) {
+            std::cerr << "ExprSMTLIBPrinter::getSMTLIBID() : ID not found in expression cache" << std::endl;
+            return "<error>";
+        }
+        std::stringstream s;
+        s << "ID_" << std::setw(5) << std::setfill('0') << expressionMap[e];
+        return s.str().c_str();
+    }
 
     const char* ExprSMTLIBPrinter::getSMTLIBKeyword(const ref<Expr>& e)
     {
@@ -492,7 +592,7 @@ namespace klee
         else
         {
             //The base case of the recursion
-            *p << sanitizedVarName(root->name);
+            *p << getSanitizedVarName(root->name);
         }
 
     }
@@ -550,7 +650,7 @@ namespace klee
                 continue;
             }
 
-            *o << "(declare-fun " << sanitizedVarName((*it)->name) << " () "
+            *o << "(declare-fun " << getSanitizedVarName((*it)->name) << " () "
                     "(Array (_ BitVec " << (*it)->getDomain() << ") "
                     "(_ BitVec " << (*it)->getRange() << ") ) )" << endl;
         }
@@ -582,7 +682,7 @@ namespace klee
                         p->pushIndent();
                         printSeperator();
 
-                        *p << "(select " << sanitizedVarName(array->name) << " (_ bv" << byteIndex << " " << array->getDomain() << ") )";
+                        *p << "(select " << getSanitizedVarName(array->name) << " (_ bv" << byteIndex << " " << array->getDomain() << ") )";
                         printSeperator();
                         printConstant((*ce));
 
@@ -656,7 +756,7 @@ namespace klee
                 //Loop over the array indices
                 for(unsigned int index=0; index < theArray->size; ++index)
                 {
-                    *o << "(get-value ( (select " << sanitizedVarName((*it)->name) <<
+                    *o << "(get-value ( (select " << getSanitizedVarName((*it)->name) <<
                             " (_ bv" << index << " " << theArray->getDomain() << ") ) ) )" << endl;
                 }
 
@@ -1004,7 +1104,7 @@ namespace klee
         }
     }
 
-    std::string ExprSMTLIBPrinter::sanitizedVarName(const std::string& varName)
+    std::string ExprSMTLIBPrinter::getSanitizedVarName(const std::string& varName)
     {
         std::string sanitizedVarName = varName;
         std::replace(sanitizedVarName.begin(), sanitizedVarName.end(), '#', '_');
