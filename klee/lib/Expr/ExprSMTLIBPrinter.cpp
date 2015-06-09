@@ -355,13 +355,13 @@ namespace klee
             *p << ((expectedSort == SORT_BITVECTOR) ? "bvand" : "and");
             break;
         case Expr::Or:
-            *p << ((expectedSort == SORT_BOOL) ? "bvor" : "or");
+            *p << ((expectedSort == SORT_BITVECTOR) ? "bvor" : "or");
             break;
         case Expr::Not:
-            *p << ((expectedSort == SORT_BOOL) ? "bvnot" : "not");
+            *p << ((expectedSort == SORT_BITVECTOR) ? "bvnot" : "not");
             break;
         case Expr::Xor:
-            *p << ((expectedSort == SORT_BOOL) ? "bvxor" : "xor");
+            *p << ((expectedSort == SORT_BITVECTOR) ? "bvxor" : "xor");
             break;
         default:
             *p << getSMTLIBKeyword(e);
