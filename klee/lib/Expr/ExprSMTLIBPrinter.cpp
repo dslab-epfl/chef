@@ -204,11 +204,12 @@ namespace klee
         case SORT_BITVECTOR:
             *p << "ite ";
             printSMTLIBID(e);
-            *p << " (_ bv1 1) (_ bv0 1)";
+            *p << " (_ bv1 1)"; // "true" bitvector
+            *p << " (_ bv0 1)"; // "false" bitvector
             comment = "Performing implicit bool to bitvector cast";
             break;
         case SORT_BOOL:
-            *p << "buvgt ";
+            *p << "buvgt ";     // assuming |bitvector| > 0  <=>  true
             printSMTLIBID(e);
             *p << " (_ bv0 " << e->getWidth() << ')';
             comment = "Performing implicit bitvector to bool cast";
@@ -283,22 +284,17 @@ namespace klee
         std::vector<ref<CastExpr> > ces(e->getNumKids());
         for (unsigned int i = 0; i < e->getNumKids(); ++i) {
             ref<Expr> kid = e->getKid(i);
-            if (getSort(kid) != nextExpectedSort) {
-                paren_indent += printCastToSortLet(e, kid, nextExpectedSort, ces[i]);
-                if (!ces[i].isNull()) {
-                    std::cerr << "Casting expression [" << getSMTLIBKeyword(kid) << "] "
-                              << "(ID = " << (kid->getKind() == Expr::Constant
-                                              ? "constant"
-                                              : getSMTLIBID(kid))
-                              << ") "
-                              << (nextExpectedSort == SORT_BOOL
-                                  ? "from vector to bool"
-                                  : "from bool to vector")
-                              << '\n';
-                }
-            } else {
-                paren_indent += printExpressionLet(e, kid, nextExpectedSort);
-            }
+            ExprSMTLIBPrinter::SMTLIB_SORT kid_sort = nextExpectedSort;
+
+            // special case: if-then-else expects boolean as first child
+            if (e->getKind() == Expr::Select && i == 0)
+                kid_sort = SORT_BOOL;
+
+            // if sort does not match, wrap in cast, otherwise print directly
+            if (getSort(kid) != kid_sort)
+                paren_indent += printCastToSortLet(e, kid, kid_sort, ces[i]);
+            else
+                paren_indent += printExpressionLet(e, kid, kid_sort);
         }
 
         if (parent.isNull()) {
