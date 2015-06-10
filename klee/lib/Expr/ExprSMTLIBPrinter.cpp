@@ -187,19 +187,21 @@ namespace klee
             ce = ze;
 
         // expression children
-        paren_indent += printExpressionLet(e, e, sort == SORT_BOOL ? SORT_BITVECTOR : SORT_BOOL);
+        paren_indent += printExpressionLet(ze, e, sort == SORT_BOOL ? SORT_BITVECTOR : SORT_BOOL);
 
         // expression itself
-        *p << "(let";
-        p->pushIndent();
-        ++paren_indent;
-        printSeperator();
+        if (!parent.isNull()) {
+            *p << "(let";
+            p->pushIndent();
+            ++paren_indent;
+            printSeperator();
 
-        // cast `let`
-        *p << "((";
-        printSMTLIBID(ze);
+            *p << "((";
+            printSMTLIBID(ze);
+            *p << ' ';
+        }
 
-        *p << " (";
+        *p << '(';
         switch (sort) {
         case SORT_BITVECTOR:
             *p << "ite ";
@@ -209,7 +211,7 @@ namespace klee
             comment = "Performing implicit bool to bitvector cast";
             break;
         case SORT_BOOL:
-            *p << "buvgt ";     // assuming |bitvector| > 0  <=>  true
+            *p << "bvugt ";     // assuming |bitvector| > 0  <=>  true
             printSMTLIBID(e);
             *p << " (_ bv0 " << e->getWidth() << ')';
             comment = "Performing implicit bitvector to bool cast";
@@ -223,7 +225,15 @@ namespace klee
         }
         *p << ')';
 
-        *p << "))";
+        if (!parent.isNull()) {
+            *p << "))";
+        } else {
+            for (unsigned int i = 0; i < paren_indent; ++i) {
+                p->popIndent();
+                printSeperator();
+                *p << ')';
+            }
+        }
 
         if (humanReadable)
             *p << " ;" << comment;
