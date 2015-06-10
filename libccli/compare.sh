@@ -28,6 +28,7 @@ compare()
 	compare_wrong=0
 	compare_array=''
 
+	# List output comparison
 	printf "query| orig  | comp\n"
 	echo   '-----+-------+------'
 	for i in $(seq $RANGE_OFFSET $(($RANGE_OFFSET + $RANGE_LENGTH - 1))); do
@@ -45,29 +46,35 @@ compare()
 		           "$SRCPATH_ROOT/data/compactdump/$(printf "%04d" $i).smt")" \
 		           || { compact='invld'; compact_colour="\033[31m"; }
 
+		# keep track
 		if [ "$original" != "$compact" ]; then
 			compare_wrong=$(($compare_wrong + 1))
 			compare_array="$compare_array $i"
 		fi
+
+		# display
 		printf "%4d | $original_colour%5s | $compact_colour%5s\033[0m\n" \
 			$i "$original" "$compact"
 	done 2>/dev/null
 	echo '-----+-------+------'
 
+	# Summary
 	if [ $compare_wrong -eq 0 ]; then
 		success "queries passed (%d)\n" $RANGE_LENGTH
 	else
 		fail "queries failed (%d):%s\n" $compare_wrong "$compare_array"
-		if [ $compare_wrong -eq 1 ]; then
-			success "original:\n"
-			"$SOLVER_BIN" \
-				$SOLVER_ARGS \
-				"$SRCPATH_ROOT/data/smtlibdump/$( printf "%04d" $i).smt"
-			fail "compact:\n"
-			"$SOLVER_BIN" \
-				$SOLVER_ARGS \
-				"$SRCPATH_ROOT/data/compactdump/$( printf "%04d" $i).smt"
-		fi
+	fi
+
+	# Detailed output (if single)
+	if [ $compare_wrong -eq 1 ] || [ $RANGE_LENGTH -eq 1 ]; then
+		success "original:\n"
+		"$SOLVER_BIN" \
+			$SOLVER_ARGS \
+			"$SRCPATH_ROOT/data/smtlibdump/$( printf "%04d" $i).smt"
+		fail "compact:\n"
+		"$SOLVER_BIN" \
+			$SOLVER_ARGS \
+			"$SRCPATH_ROOT/data/compactdump/$( printf "%04d" $i).smt"
 	fi
 }
 
