@@ -264,7 +264,6 @@ klee_build()
 			--with-llvmobj="$LLVM_BUILD" \
 			--target=x86_64 \
 			--enable-exceptions \
-			--with-runtime="$ASSERTS" \
 			--with-stp="$BUILDPATH_BASE/stp" \
 			CC="$LLVM_NATIVE_CC" \
 			CXX="$LLVM_NATIVE_CXX" \
