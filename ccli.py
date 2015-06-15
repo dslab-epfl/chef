@@ -68,6 +68,8 @@ def help():
     print("  build       Build Chef in a given configuration")
     print("  run         Run Chef in a given mode")
     print("  smtlibdump  Dump collected queries in SMT-Lib format")
+    print("  compare     Compare two query dumps on logic equality")
+    print("  smtlib-sort Sort query dumps by 'interesting'")
     print("  docker      Run docker container (useful for debugging/tinkering)")
     exit(1)
 
@@ -85,14 +87,15 @@ if __name__ == '__main__':
     else:
         command = sys.argv[1]
 
-    handlers = {'init'      : {'type':'MODULE',  'function':command_init},
-                'vm'        : {'type':'MODULE',  'function':command_vm  },
-                'run'       : {'type':'PYTHON'                          },
-                'build'     : {'type':'SHELL'                           },
-                'smtlibdump': {'type':'SHELL'                           },
-                'docker'    : {'type':'SHELL'                           },
-                'compare'   : {'type':'SHELL'                           },
-                'help'      : {'type':'BUILTIN', 'function':help        }}
+    handlers = {'init'       : {'type':'MODULE',  'function':command_init},
+                'vm'         : {'type':'MODULE',  'function':command_vm  },
+                'run'        : {'type':'PYTHON'                          },
+                'build'      : {'type':'SHELL'                           },
+                'smtlibdump' : {'type':'SHELL'                           },
+                'docker'     : {'type':'SHELL'                           },
+                'compare'    : {'type':'SHELL'                           },
+                'smtlib-sort': {'type':'SHELL'                           },
+                'help'       : {'type':'BUILTIN', 'function':help        }}
     handler = handlers.get(command, {'type':'INVALID'})
 
     if handler['type'] == 'SHELL':

@@ -1,4 +1,7 @@
-# Shell script utilities shared by most scripts
+# Shell script utilities shared by most ccli scripts
+# Include with:
+#
+#     . "$(readlink -f "$(dirname "$0")")/utils.sh"
 #
 # Maintainer: Tinu Weber <martin.weber@epfl.ch>
 
