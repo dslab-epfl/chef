@@ -45,12 +45,18 @@
 #include <cpu.h>
 #include <s2e/s2e_qemu.h>
 
+#include <llvm/Support/TimeValue.h>
+
 extern "C" {
 typedef struct TranslationBlock TranslationBlock;
 struct QEMUTimer;
 struct Monitor;
 struct QDict;
 struct QObject;
+}
+
+namespace klee {
+struct Query;
 }
 
 namespace s2e {
@@ -313,7 +319,13 @@ public:
                 QDict * /* result */>
           onMonitorEvent;
 
-
+    /**
+     * Fired when a solver query completed.
+     */
+    sigc::signal<void,
+                 const klee::Query&,
+                 llvm::sys::TimeValue>
+          onSolverQuery;
 };
 
 } // namespace s2e

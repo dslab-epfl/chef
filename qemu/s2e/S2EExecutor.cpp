@@ -77,6 +77,7 @@ uint64_t helper_set_cc_op_eflags(void);
 #include "S2EExecutor.h"
 #include <s2e/s2e_config.h>
 #include <s2e/S2E.h>
+#include <s2e/S2ESolverFactory.h>
 #include <s2e/S2EExecutionState.h>
 #include <s2e/Utils.h>
 #include <s2e/Plugins/CorePlugin.h>
@@ -618,7 +619,7 @@ void S2EExecutor::handleGetValue(klee::Executor* executor,
 S2EExecutor::S2EExecutor(S2E* s2e, TCGLLVMContext *tcgLLVMContext,
                     const InterpreterOptions &opts,
                             InterpreterHandler *ie)
-        : Executor(opts, ie, new DefaultSolverFactory(ie),
+        : Executor(opts, ie, new S2ESolverFactory(s2e, ie),
                 tcgLLVMContext->getExecutionEngine()),
           m_s2e(s2e), m_tcgLLVMContext(tcgLLVMContext),
           m_executeAlwaysKlee(false), m_forkProcTerminateCurrentState(false),
