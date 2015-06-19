@@ -78,6 +78,7 @@ uint64_t helper_set_cc_op_eflags(void);
 #include <s2e/s2e_config.h>
 #include <s2e/S2E.h>
 #include <s2e/S2ESolverFactory.h>
+#include <s2e/S2EEventLogger.h>
 #include <s2e/S2EExecutionState.h>
 #include <s2e/Utils.h>
 #include <s2e/Plugins/CorePlugin.h>
@@ -113,7 +114,6 @@ uint64_t helper_set_cc_op_eflags(void);
 #include <klee/TimerStatIncrementer.h>
 #include <klee/Solver.h>
 #include <klee/SolverFactory.h>
-#include <klee/data/EventLogger.h>
 
 #include <llvm/Support/TimeValue.h>
 
@@ -625,7 +625,7 @@ S2EExecutor::S2EExecutor(S2E* s2e, TCGLLVMContext *tcgLLVMContext,
                     const InterpreterOptions &opts,
                             InterpreterHandler *ie)
         : Executor(opts, ie, new S2ESolverFactory(s2e, ie),
-                new EventLogger(s2e->getDataStore()),
+                new S2EEventLogger(s2e->getDataStore()),
                 tcgLLVMContext->getExecutionEngine()),
           m_s2e(s2e), m_tcgLLVMContext(tcgLLVMContext),
           m_executeAlwaysKlee(false), m_forkProcTerminateCurrentState(false),
