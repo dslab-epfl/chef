@@ -65,8 +65,6 @@ namespace klee {
 
 class STPSolverImpl : public SolverImpl {
 private:
-  /// The solver we are part of, for access to public information.
-  STPSolver *solver;
   VC vc;
   STPBuilder *builder;
   double timeout;
@@ -99,8 +97,7 @@ static void stp_error_handler(const char* err_msg) {
 }
 
 STPSolverImpl::STPSolverImpl(STPSolver *_solver, bool _useForkedSTP)
-  : solver(_solver),
-    vc(vc_createValidityChecker()),
+  : vc(vc_createValidityChecker()),
     builder(new STPBuilder(vc)),
     timeout(0.0),
     useForkedSTP(_useForkedSTP)
