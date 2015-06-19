@@ -185,7 +185,9 @@ void InterpreterTracer::onConcreteDataMemoryAccess(S2EExecutionState *state,
     // which happens before the task's privilege level is updated.
     // See op_helper.c, function do_interrupt_protected.
     if (address >= 0xc0000000) {
+#if 0
         s2e().getWarningsStream(state) << "Spurious kernel-space memory access from userland. Skipping." << '\n';
+#endif
         return;
     }
 
