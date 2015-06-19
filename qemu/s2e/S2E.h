@@ -45,6 +45,8 @@
 #include <map>
 #include <llvm/Support/raw_ostream.h>
 
+#include <sqlite3.h>
+
 #include "s2e_config.h"
 #include "Plugin.h"
 #include "Synchronization.h"
@@ -105,6 +107,7 @@ protected:
     ActivePluginsMap m_activePluginsMap;
 
     std::string m_outputDirectory;
+    sqlite3 *m_dataStore;
 
     llvm::raw_ostream*   m_infoFileRaw;
     llvm::raw_ostream*   m_debugFileRaw;
@@ -138,6 +141,7 @@ protected:
 
     /* forked indicates whether the current S2E process was forked from a parent S2E process */
     void initOutputDirectory(const std::string& outputDirectory, int verbose, bool forked);
+    void initDataCollectionDB();
 
     void initKleeOptions();
     void initExecutor();
@@ -180,6 +184,10 @@ public:
 
     /** Create output file in an output directory */
     llvm::raw_ostream* openOutputFile(const std::string &filename);
+
+    sqlite3 *getDataStore() const {
+        return m_dataStore;
+    }
 
     /** Get info stream (used only by KLEE internals) */
     llvm::raw_ostream& getInfoStream(const S2EExecutionState* state = 0) const {

@@ -1,11 +1,13 @@
 #include "KleeExecutor.h"
 #include "klee/SolverFactory.h"
+#include "klee/data/EventLogger.h"
 
 using namespace klee;
 
 KleeExecutor::KleeExecutor(const InterpreterOptions &opts, InterpreterHandler *ie)
         : Executor(opts, ie,
-                new DefaultSolverFactory(ie))
+		   new DefaultSolverFactory(ie),
+		   new EventLogger(ie->getDataStore()))
 {
 }
 

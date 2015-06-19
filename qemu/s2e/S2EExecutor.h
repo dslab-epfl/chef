@@ -80,6 +80,8 @@ public:
     /* klee-related function */
     void processTestCase(const klee::ExecutionState &state,
                          const char *err, const char *suffix);
+
+    sqlite3 *getDataStore();
 };
 
 

@@ -23,6 +23,7 @@
 #include "SpecialFunctionHandler.h"
 #include "klee/StatsTracker.h"
 #include "klee/SolverFactory.h"
+#include "klee/data/EventLogger.h"
 #include "TimingSolver.h"
 #include "klee/UserSearcher.h"
 #include "klee/SolverStats.h"
@@ -266,7 +267,7 @@ void Executor::initializeSolver()
 }
 
 Executor::Executor(const InterpreterOptions &opts, InterpreterHandler *ih,
-        SolverFactory *solver_factory,
+        SolverFactory *solver_factory, EventLogger *event_logger,
         ExecutionEngine *engine)
   : Interpreter(opts),
     kmodule(0),
@@ -275,6 +276,7 @@ Executor::Executor(const InterpreterOptions &opts, InterpreterHandler *ih,
     externalDispatcher(new ExternalDispatcher(engine)),
     solverFactory(solver_factory),
     statsTracker(0),
+    eventLogger(event_logger),
     pathWriter(0),
     symPathWriter(0),
     specialFunctionHandler(0),
@@ -345,6 +347,7 @@ Executor::~Executor() {
   if (statsTracker)
     delete statsTracker;
   delete solverFactory;
+  delete eventLogger;
   delete solver;
   delete kmodule;
 }
@@ -805,6 +808,8 @@ Executor::concolicFork(ExecutionState &current, ref<Expr> condition, bool isInte
     falseState->ptreeNode = res.first;
     trueState->ptreeNode = res.second;
 
+    eventLogger->logStateEvent(&current, branchedState, EVENT_KLEE_FORK, 1);
+
     return StatePair(trueState, falseState);
 }
 
@@ -1091,13 +1096,20 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
       return StatePair(0, 0);
     }
 
+    eventLogger->logStateEvent(&current,
+            (&current == trueState) ? falseState : trueState,
+                    EVENT_KLEE_FORK, 1);
+
     return StatePair(trueState, falseState);
   }
 }
 
 bool Executor::merge(ExecutionState &base, ExecutionState &other)
 {
-    return base.merge(other);
+    bool result = base.merge(other);
+    eventLogger->logEvent(&base,
+            result ? EVENT_KLEE_MERGE : EVENT_KLEE_FAILED_MERGE, 1);
+    return result;
 }
 
 void Executor::addConstraint(ExecutionState &state, ref<Expr> condition) {

@@ -69,6 +69,7 @@ namespace klee {
   class TreeStreamWriter;
   class BitfieldSimplifier;
   class SolverFactory;
+  class EventLogger;
   template<class T> class ref;
 
   /// \todo Add a context object to keep track of data only live
@@ -109,6 +110,7 @@ protected:
   MemoryManager *memory;
   std::set<ExecutionState*> states;
   StatsTracker *statsTracker;
+  EventLogger *eventLogger;
   TreeStreamWriter *pathWriter, *symPathWriter;
   SpecialFunctionHandler *specialFunctionHandler;
   std::vector<TimerInfo*> timers;
@@ -395,7 +397,7 @@ protected:
 
 public:
   Executor(const InterpreterOptions &opts, InterpreterHandler *ie,
-           SolverFactory *solver_factory,
+           SolverFactory *solver_factory, EventLogger *event_logger,
            llvm::ExecutionEngine *engine = NULL);
   virtual ~Executor();
 
@@ -538,6 +540,10 @@ public:
 
   const std::set<ExecutionState*> &getRemovedStates() {
     return removedStates;
+  }
+
+  EventLogger *getEventLogger() const {
+      return eventLogger;
   }
 
   Solver *getSolver() const;

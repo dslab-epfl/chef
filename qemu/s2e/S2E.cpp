@@ -229,6 +229,7 @@ S2E::S2E(int argc, char** argv, TCGLLVMContext *tcgLLVMContext,
     /* Open output directory. Do it at the very beginning so that
        other init* functions can use it. */
     initOutputDirectory(outputDirectory, verbose, false);
+    initDataCollectionDB();
 
     /* Copy the config file into the output directory */
     {
@@ -493,6 +494,25 @@ void S2E::initOutputDirectory(const string& outputDirectory, int verbose, bool f
 
     klee::klee_message_stream = m_messageStream;
     klee::klee_warning_stream = m_warningStream;
+}
+
+void S2E::initDataCollectionDB() {
+    static const char *initialize_sql =
+            "PRAGMA foreign_keys = ON;"
+            "PRAGMA synchronous = OFF;"
+            ;
+
+    std::string db_name = getOutputFilename("collected_data.db3");
+    int result;
+
+    if (sqlite3_open(db_name.c_str(), &m_dataStore) != SQLITE_OK) {
+        llvm::errs() << "Could not open SQLite file: " << db_name
+                << " (" << sqlite3_errmsg(m_dataStore) << ")" << '\n';
+        ::exit(1);
+    }
+
+    result = sqlite3_exec(m_dataStore, initialize_sql, NULL, NULL, NULL);
+    assert(result == SQLITE_OK);
 }
 
 void S2E::initKleeOptions()

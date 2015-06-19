@@ -14,12 +14,15 @@
 #include <map>
 #include <set>
 
+#include <sqlite3.h>
+
 struct KTest;
 
 namespace llvm {
 class Function;
 class Module;
 class FunctionPassManager;
+class raw_ostream;
 }
 
 namespace klee {
@@ -42,6 +45,8 @@ public:
   virtual void processTestCase(const ExecutionState &state,
                                const char *err, 
                                const char *suffix) = 0;
+
+  virtual sqlite3 *getDataStore() = 0;
 };
 
 class Interpreter {

@@ -234,6 +234,8 @@ public:
                        const char *errorMessage, 
                        const char *errorSuffix);
 
+  sqlite3 *getDataStore();
+
   std::string getOutputFilename(const std::string &filename);
   llvm::raw_ostream *openOutputFile(const std::string &filename);
   std::string getTestFilename(const std::string &suffix, unsigned id);
@@ -504,6 +506,12 @@ void KleeHandler::processTestCase(const ExecutionState &state,
       delete f;
     }
   }
+}
+
+
+sqlite3 *KleeHandler::getDataStore() {
+    assert(0 && "Not implemented");
+    return NULL;
 }
 
   // load a .path file

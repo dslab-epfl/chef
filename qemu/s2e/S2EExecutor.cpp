@@ -113,6 +113,7 @@ uint64_t helper_set_cc_op_eflags(void);
 #include <klee/TimerStatIncrementer.h>
 #include <klee/Solver.h>
 #include <klee/SolverFactory.h>
+#include <klee/data/EventLogger.h>
 
 #include <llvm/Support/TimeValue.h>
 
@@ -418,6 +419,10 @@ void S2EHandler::processTestCase(const klee::ExecutionState &state,
     //Use onTestCaseGeneration event instead.
 }
 
+sqlite3 *S2EHandler::getDataStore() {
+    return m_s2e->getDataStore();
+}
+
 void S2EExecutor::handlerTraceMemoryAccess(Executor* executor,
                                      ExecutionState* state,
                                      klee::KInstruction* target,
@@ -620,6 +625,7 @@ S2EExecutor::S2EExecutor(S2E* s2e, TCGLLVMContext *tcgLLVMContext,
                     const InterpreterOptions &opts,
                             InterpreterHandler *ie)
         : Executor(opts, ie, new S2ESolverFactory(s2e, ie),
+                new EventLogger(s2e->getDataStore()),
                 tcgLLVMContext->getExecutionEngine()),
           m_s2e(s2e), m_tcgLLVMContext(tcgLLVMContext),
           m_executeAlwaysKlee(false), m_forkProcTerminateCurrentState(false),
@@ -1349,6 +1355,8 @@ void S2EExecutor::doStateSwitch(S2EExecutionState* oldState,
                                             newState->m_cpuSystemState;
 
     if(oldState) {
+        eventLogger->logEvent(oldState, EVENT_KLEE_STATE_LEAVE, 1);
+
         if(oldState->m_runningConcrete)
             switchToSymbolic(oldState);
 
@@ -1430,6 +1438,8 @@ void S2EExecutor::doStateSwitch(S2EExecutionState* oldState,
          */
         CPUArchState *cpu_state = env;
         s2e_phys_section_check(cpu_state);
+
+        eventLogger->logEvent(newState, EVENT_KLEE_STATE_RESUME, 1);
     }
 
 
@@ -2241,6 +2251,8 @@ void S2EExecutor::terminateState(ExecutionState &s)
 {
     S2EExecutionState& state = static_cast<S2EExecutionState&>(s);
     m_s2e->getCorePlugin()->onStateKill.emit(&state);
+
+    eventLogger->logEvent(&s, EVENT_KLEE_STATE_KILLED, 1);
 
     terminateStateAtFork(state);
     state.zombify();
