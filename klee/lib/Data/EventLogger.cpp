@@ -79,7 +79,6 @@ EventLogger::EventLogger(sqlite3 *db)
     : db_(db),
       event_insert_stmt_(NULL) {
     char *err_msg;
-    int result;
 
     if (sqlite3_exec(db_, events_init_sql, NULL, NULL, &err_msg) != SQLITE_OK) {
         llvm::errs() << "Could not initialize event table ("
