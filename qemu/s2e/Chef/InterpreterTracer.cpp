@@ -150,11 +150,11 @@ void InterpreterTracer::pushHighLevelFrame(CallStack *call_stack,
 
     onHighLevelFramePush.emit(call_stack->s2e_state(), hl_stack);
 
-#if 1
-    s2e().getMessagesStream(call_stack->s2e_state())
-            << "Enter high-level frame. Stack size: "
-            << hl_stack->frames_.size() << '\n';
-#endif
+    if (DebugInstructions) {
+        s2e().getMessagesStream(call_stack->s2e_state())
+                << "Enter high-level frame. Stack size: "
+                << hl_stack->frames_.size() << '\n';
+    }
 }
 
 
@@ -165,11 +165,11 @@ void InterpreterTracer::popHighLevelFrame(CallStack *call_stack,
 
     hl_stack->frames_.pop_back();
 
-#if 1
-    s2e().getMessagesStream(call_stack->s2e_state())
-            << "Leaving high-level frame. Stack size: "
-            << hl_stack->frames_.size() << '\n';
-#endif
+    if (DebugInstructions) {
+        s2e().getMessagesStream(call_stack->s2e_state())
+                << "Leaving high-level frame. Stack size: "
+                << hl_stack->frames_.size() << '\n';
+    }
 }
 
 
