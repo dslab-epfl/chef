@@ -296,14 +296,17 @@ namespace klee {
 
 			// Compact SMT-LIBv2 dumps (methods)
 			void printExpressionRaw(const ref<Expr>& e,
-			                        ExprSMTLIBPrinter::SMTLIB_SORT expectedSort);
+			                        ExprSMTLIBPrinter::SMTLIB_SORT expectedSort,
+			                        const std::vector<ref<CastExpr> >& ces);
 			unsigned int printExpressionLet(const ref<Expr>& p,
 			                                const ref<Expr>& e,
 			                                ExprSMTLIBPrinter::SMTLIB_SORT expectedSort);
-			unsigned int printCastToSortLet(const ref<Expr>& e,
-			                                ExprSMTLIBPrinter::SMTLIB_SORT sort);
+			unsigned int printCastToSortLet(const ref<Expr>& parent,
+			                                const ref<Expr>& e,
+			                                ExprSMTLIBPrinter::SMTLIB_SORT sort,
+			                                ref<CastExpr>& ce);
 			void printSMTLIBID(const ref<Expr>& e);
-			const char* getSMTLIBID(const ref<Expr>& e);
+			std::string getSMTLIBID(const ref<Expr>& e);
 			std::string getSanitizedVarName(const std::string& varName);
 
 			// Compact SMT-LIBv2 dumps (variables)

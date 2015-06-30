@@ -139,8 +139,9 @@ namespace klee
 
             zeroPad = e->getWidth() - value.length();
 
-            for(unsigned int count=0; count < zeroPad; count++)
+            for(unsigned int count=0; count < zeroPad; count++) {
                 *p << "0";
+            }
 
             *p << value ;
             break;
@@ -150,8 +151,9 @@ namespace klee
             *p << "#x";
 
             zeroPad =  (e->getWidth() / 4) - value.length();
-            for(unsigned int count=0; count < zeroPad; count++)
+            for(unsigned int count=0; count < zeroPad; count++) {
                 *p << "0";
+            }
 
             *p << value ;
             break;
@@ -166,21 +168,38 @@ namespace klee
         }
     }
 
-    unsigned int ExprSMTLIBPrinter::printCastToSortLet(const ref<Expr>& e,
-                                                       ExprSMTLIBPrinter::SMTLIB_SORT sort)
+    unsigned int ExprSMTLIBPrinter::printCastToSortLet(const ref<Expr>& parent,
+                                                       const ref<Expr>& e,
+                                                       ExprSMTLIBPrinter::SMTLIB_SORT sort,
+                                                       ref<CastExpr>& ce)
     {
         unsigned int paren_indent = 0;
         std::string comment;
 
         assert((sort == SORT_BOOL || sort == SORT_BITVECTOR) && "Unsupported cast!");
+
+        // we need a CastExpr object, just for the reference
+        ref<klee::ZExtExpr> ze(new ZExtExpr(e, 0 /* unused dummy value */));
+        if (expressionMap.find(ze) != expressionMap.end())
+            return 0;
+        expressionMap[ze] = expressionSerial++;
+        if (ce.isNull())
+            ce = ze;
+
+        // expression children
         paren_indent += printExpressionLet(e, e, sort == SORT_BOOL ? SORT_BITVECTOR : SORT_BOOL);
 
+        // expression itself
         *p << "(let";
         p->pushIndent();
         ++paren_indent;
         printSeperator();
 
+        // cast `let`
         *p << "((";
+        printSMTLIBID(ze);
+
+        *p << " (";
         switch (sort) {
         case SORT_BITVECTOR:
             *p << "ite ";
@@ -201,7 +220,10 @@ namespace klee
         default:
             assert(0 && "Unsupported cast!");
         }
+        *p << ')';
+
         *p << "))";
+
         if (humanReadable)
             *p << " ;" << comment;
 
@@ -216,21 +238,23 @@ namespace klee
         unsigned int paren_indent = 0;
         ExprSMTLIBPrinter::SMTLIB_SORT nextExpectedSort = expectedSort;
 
-        // check if a casting might be necessary
-        if (getSort(e) != expectedSort)
-            paren_indent += printCastToSortLet(e, expectedSort);
+        // special case: if root expression, no parent has inserted sort-casting
+        if (parent.isNull() && getSort(e) != expectedSort) {
+            ref<CastExpr> ce = ref<CastExpr>();
+            paren_indent += printCastToSortLet(parent, e, expectedSort, ce);
+        }
 
-        // check for expressions that have already been defined:
+        // if expression is cached, we don't reprint this one:
         if (expressionMap.find(e) != expressionMap.end())
             return paren_indent;
 
+        // expression-specific (pre-children)
         switch (e->getKind()) {
         case Expr::Constant:
             if (parent.isNull())
                 printConstant(cast<ConstantExpr>(e));
             return paren_indent;
         case Expr::Read:
-            paren_indent += printExpressionLet(e, cast<ReadExpr>(e)->index, nextExpectedSort);
             if (e->getNumKids() != 1)
                 std::cerr << "ExprSMTLIBPrinter::printExpressionLet() : Read expression with "
                           << e->getNumKids() << " kids\n";
@@ -238,8 +262,10 @@ namespace klee
         case Expr::Eq:
             nextExpectedSort = getSort(e->getKid(0));
             break;
-        case Expr::NotOptimized:
         case Expr::Extract:
+            nextExpectedSort = SORT_BITVECTOR;
+            break;
+        case Expr::NotOptimized:
         case Expr::SExt:
         case Expr::ZExt:
         case Expr::Ne:
@@ -254,14 +280,30 @@ namespace klee
         }
 
         // print (let) statements for children first
+        std::vector<ref<CastExpr> > ces(e->getNumKids());
         for (unsigned int i = 0; i < e->getNumKids(); ++i) {
             ref<Expr> kid = e->getKid(i);
-            paren_indent += printExpressionLet(e, kid, nextExpectedSort);
+            if (getSort(kid) != nextExpectedSort) {
+                paren_indent += printCastToSortLet(e, kid, nextExpectedSort, ces[i]);
+                if (!ces[i].isNull()) {
+                    std::cerr << "Casting expression [" << getSMTLIBKeyword(kid) << "] "
+                              << "(ID = " << (kid->getKind() == Expr::Constant
+                                              ? "constant"
+                                              : getSMTLIBID(kid))
+                              << ") "
+                              << (nextExpectedSort == SORT_BOOL
+                                  ? "from vector to bool"
+                                  : "from bool to vector")
+                              << '\n';
+                }
+            } else {
+                paren_indent += printExpressionLet(e, kid, nextExpectedSort);
+            }
         }
 
         if (parent.isNull()) {
             // close all statements, as this is the parent
-            printExpressionRaw(e, nextExpectedSort);
+            printExpressionRaw(e, nextExpectedSort, ces);
             for (unsigned int i = 0; i < paren_indent; ++i) {
                 p->popIndent();
                 printSeperator();
@@ -279,7 +321,7 @@ namespace klee
             *p << "((";
             printSMTLIBID(e);
             *p << ' ';
-            printExpressionRaw(e, nextExpectedSort);
+            printExpressionRaw(e, nextExpectedSort, ces);
             *p << "))";
 
             printSeperator();
@@ -288,39 +330,61 @@ namespace klee
     }
 
     void ExprSMTLIBPrinter::printExpressionRaw(const ref<Expr>& e,
-                                               ExprSMTLIBPrinter::SMTLIB_SORT expectedSort)
+                                               ExprSMTLIBPrinter::SMTLIB_SORT expectedSort,
+                                               const std::vector<ref<CastExpr> >& ces)
     {
         *p << '(';
 
         // sign_extend/zero_extend:
-        if (e->getKind() == Expr::SExt || e->getKind() == Expr::ZExt) {
+        switch (e->getKind()) {
+        case Expr::SExt:
+        case Expr::ZExt:
+        {
             ref<CastExpr> ce = cast<CastExpr>(e);
-            unsigned int numExtraBits= (ce->width) - (ce->src->getWidth());
+            unsigned int numExtraBits = ce->width - ce->src->getWidth();
             *p << "(_ " << getSMTLIBKeyword(ce) << ' ' << numExtraBits << ')';
-        } else {
+            break;
+        }
+        case Expr::Extract:
+        {
+            ref<ExtractExpr> ee = cast<ExtractExpr>(e);
+            unsigned int lowIndex = ee->offset;
+            unsigned int highIndex = lowIndex + ee->width - 1;
+            *p << "(_ " << getSMTLIBKeyword(ee) << ' ' << highIndex << ' ' << lowIndex << ')';
+            break;
+        }
+
+        // for some reason, And/Or/Xor/Not are not handled by getSMTLIBKeyword
+        case Expr::And:
+            *p << ((expectedSort == SORT_BITVECTOR) ? "bvand" : "and");
+            break;
+        case Expr::Or:
+            *p << ((expectedSort == SORT_BOOL) ? "bvor" : "or");
+            break;
+        case Expr::Not:
+            *p << ((expectedSort == SORT_BOOL) ? "bvnot" : "not");
+            break;
+        case Expr::Xor:
+            *p << ((expectedSort == SORT_BOOL) ? "bvxor" : "xor");
+            break;
+        default:
             *p << getSMTLIBKeyword(e);
         }
 
+        // expression-specific (post-children)
         switch (e->getKind()) {
         case Expr::Read: {
             const ref<ReadExpr> re = cast<ReadExpr>(e);
             *p << ' ';
             printUpdatesAndArray(re->updates.head, re->updates.root);
             *p << ' ';
-            if (re->index->getKind() == Expr::Constant)
-                printConstant(cast<ConstantExpr>(re->index));
-            else
-                *p << getSMTLIBID(re->index);
+            printSMTLIBID(ces[0].isNull() ? re->index : cast<Expr>(ces[0]));
             break;
         }
         default:
             for (unsigned int i = 0; i < e->getNumKids(); ++i) {
                 *p << ' ';
-                ref<Expr> kid = e->getKid(i);
-                if (kid->getKind() == Expr::Constant)
-                    printConstant(cast<ConstantExpr>(kid));
-                else
-                    *p << getSMTLIBID(kid);
+                printSMTLIBID(ces[i].isNull() ? e->getKid(i) : cast<Expr>(ces[i]));
             }
         }
 
@@ -498,21 +562,22 @@ namespace klee
 
     void ExprSMTLIBPrinter::printSMTLIBID(const ref<Expr>& e)
     {
-        if (e->getKind() == Expr::Constant)
+        if (e->getKind() == Expr::Constant) {
             printConstant(cast<ConstantExpr>(e));
-        else
+        } else {
             *p << getSMTLIBID(e);
+        }
     }
 
-    const char* ExprSMTLIBPrinter::getSMTLIBID(const ref<Expr>& e)
+    std::string ExprSMTLIBPrinter::getSMTLIBID(const ref<Expr>& e)
     {
         if (expressionMap.find(e) == expressionMap.end()) {
             std::cerr << "ExprSMTLIBPrinter::getSMTLIBID() : ID not found in expression cache" << std::endl;
-            return "<error>";
+            return "<ID_error>";
         }
-        std::stringstream s;
-        s << "ID_" << std::setw(5) << std::setfill('0') << expressionMap[e];
-        return s.str().c_str();
+        std::stringstream ss;
+        ss << "ID_" << std::setw(5) << std::setfill('0') << expressionMap[e];
+        return ss.str();
     }
 
     const char* ExprSMTLIBPrinter::getSMTLIBKeyword(const ref<Expr>& e)
