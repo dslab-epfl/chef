@@ -54,10 +54,7 @@
 
 #include <sqlite3.h>
 
-#include <fstream>
 #include <sstream>
-#include <libgen.h>
-#include <cstdio>
 
 using namespace llvm;
 using namespace klee;
@@ -83,21 +80,28 @@ cl::opt<bool> ReplayQueries("replay",
         cl::desc("Re-run the queries through a solver (expensive!)"),
         cl::init(false));
 
-cl::opt<bool> GenerateSMTLIB("generate-smtlib",
-        cl::desc("Generate and store queries in SMT-LIB format to .smt files"),
+cl::opt<bool> ComputeQueryStats("compute-query-stats",
+        cl::desc("Compute query statistics (somewhat expensive)"),
         cl::init(false));
 
-cl::opt<bool> SMTLIBMonolithic("smtlib-monolithic",
-        cl::desc("Store generated queries' SMT-LIB format in a single .smt file (default=false)"),
-        cl::init(false));
+enum SMTLIBOutputMode {
+    SMTLIB_OUT_NONE,
+    SMTLIB_OUT_SINGLE_FILE,
+    SMTLIB_OUT_SEPARATE_FILES
+};
 
-cl::opt<std::string> SMTLIBOutPath("smtlib-out-path",
+cl::opt<SMTLIBOutputMode> DumpSMTLIB("dump-smtlib",
+        cl::desc("Dump the queries in SMTLIB format"),
+        cl::values(
+                clEnumValN(SMTLIB_OUT_NONE, "none", "No SMTLIB dumping"),
+                clEnumValN(SMTLIB_OUT_SINGLE_FILE, "single", "Dump in single SMTLIB file"),
+                clEnumValN(SMTLIB_OUT_SEPARATE_FILES, "separate", "Dump in one SMTLIB file per query"),
+                clEnumValEnd),
+        cl::init(SMTLIB_OUT_NONE));
+
+cl::opt<std::string> DumpSMTLIBPath("dump-smtlib-path",
         cl::desc("Output path for SMT-Lib dumps"),
         cl::init(""));
-
-cl::opt<int> SMTLIBDumpLimit("smtlib-dump-limit",
-        cl::desc("Stop generating SMT-LIB dumps after a number of files"),
-        cl::init(0));
 
 }
 
@@ -251,19 +255,38 @@ enum QueryType {
 };
 
 
-int main(int argc, char **argv, char **envp) {
-    GOOGLE_PROTOBUF_VERIFY_VERSION;
-    cl::ParseCommandLineOptions(argc, argv, "Query analysis");
+// QueryListener ///////////////////////////////////////////////////////////////
 
-    sqlite3 *db;
-    int result;
-    char *err_msg;
-    if (sqlite3_open(InputFileName.c_str(), &db) != SQLITE_OK) {
-        errs() << "Could not open SQLite DB: " << InputFileName <<
-                " (" << sqlite3_errmsg(db) << ")" << '\n';
-        ::exit(1);
-    }
 
+class QueryListener {
+public:
+    virtual ~QueryListener() {}
+
+    virtual void onQueryDecoded(const Query &query, int64_t qid,
+            QueryType qtype, Solver::Validity rec_validity,
+            int64_t rec_time_usec) = 0;
+};
+
+
+// QueryStatsRecorder //////////////////////////////////////////////////////////
+
+class QueryStatsRecorder : public QueryListener {
+public:
+    QueryStatsRecorder(sqlite3 *db);
+    virtual ~QueryStatsRecorder();
+
+    virtual void onQueryDecoded(const Query &query, int64_t qid,
+            QueryType qtype, Solver::Validity rec_validity,
+            int64_t rec_time_usec);
+
+private:
+    sqlite3 *db_;
+    sqlite3_stmt *insert_stmt_;
+};
+
+
+QueryStatsRecorder::QueryStatsRecorder(sqlite3 *db)
+    : db_(db) {
     const char *init_sql =
         "DROP TABLE IF EXISTS query_stats;"
         "CREATE TABLE query_stats (\n"
@@ -278,63 +301,338 @@ int main(int argc, char **argv, char **envp) {
         " multiplicity      INTEGER\n"
         ");";
 
+    const char *insert_sql =
+        "INSERT INTO query_stats "
+        "(query_id, arrays_refd, const_arrays_refd, node_count, max_depth, sym_write_count, sym_read_count, select_count, multiplicity)"
+        "VALUES"
+        "(?1,       ?2,          ?3,               ?4,         ?5,        ?6,              ?7,             ?8,           ?9)";
+
+    char *err_msg;
+    int result = sqlite3_exec(db_, init_sql, NULL, NULL, &err_msg);
+    if (result != SQLITE_OK) {
+        errs() << "Could not execute SQL statement: " << init_sql
+                << " (" << err_msg << ")\n";
+        ::exit(1);
+    }
+
+    result = sqlite3_prepare_v2(db_, insert_sql, -1, &insert_stmt_, NULL);
+    if (result != SQLITE_OK) {
+        errs() << "Could not prepare SQL statement: " << insert_sql
+                << " (" << sqlite3_errmsg(db) << ")" << '\n';
+        ::exit(1);
+    }
+}
+
+
+QueryStatsRecorder::~QueryStatsRecorder() {
+    int result = sqlite3_finalize(insert_stmt_);
+    assert(result == SQLITE_OK);
+}
+
+
+void QueryStatsRecorder::onQueryDecoded(const Query &query, int64_t qid,
+        QueryType qtype, Solver::Validity rec_validity,
+        int64_t rec_time_usec) {
+    ArrayExprAnalyzer arr_analyzer;
+    arr_analyzer.visit(query.expr);
+
+    for (ConditionNodeRef node = query.constraints.head(),
+            root = query.constraints.root(); node != root;
+            node = node->parent()) {
+        arr_analyzer.visit(node->expr());
+    }
+
+    sqlite3_clear_bindings(insert_stmt_);
+    sqlite3_bind_int64(insert_stmt_, 1, qid);
+    sqlite3_bind_int(insert_stmt_, 2, arr_analyzer.getArrayCount());
+    sqlite3_bind_int(insert_stmt_, 3, arr_analyzer.getConstArrayCount());
+    sqlite3_bind_int(insert_stmt_, 4, arr_analyzer.getTotalNodes());
+    sqlite3_bind_int(insert_stmt_, 7, arr_analyzer.getTotalSymbolicReads());
+    sqlite3_bind_int(insert_stmt_, 8, arr_analyzer.getTotalSelects());
+    sqlite3_bind_int64(insert_stmt_, 9, GetQueryMultiplicity(query));
+
+    int result = sqlite3_step(insert_stmt_);
+    assert(result == SQLITE_DONE);
+
+    sqlite3_reset(insert_stmt_);
+}
+
+
+// QueryReplayer ///////////////////////////////////////////////////////////////
+
+
+class QueryReplayer : public QueryListener {
+public:
+    QueryReplayer();
+    virtual ~QueryReplayer();
+
+    virtual void onQueryDecoded(const Query &query, int64_t qid,
+            QueryType qtype, Solver::Validity rec_validity,
+            int64_t rec_time_usec);
+
+private:
+    Solver *solver_;
+
+    TimeValue total_recorded_;
+    TimeValue total_replayed_;
+};
+
+
+QueryReplayer::QueryReplayer()
+    : total_recorded_(TimeValue::ZeroTime),
+      total_replayed_(TimeValue::ZeroTime) {
+
+    DefaultSolverFactory solver_factory(NULL);
+    solver_ = solver_factory.createEndSolver();
+    solver_ = solver_factory.decorateSolver(solver_);
+}
+
+
+QueryReplayer::~QueryReplayer() {
+    // TODO: Destruct the solver chain...
+}
+
+
+void QueryReplayer::onQueryDecoded(const Query &query, int64_t qid,
+        QueryType qtype, Solver::Validity rec_validity,
+        int64_t rec_time_usec) {
+
+    TimeValue start_replay = TimeValue::now();
+    switch (qtype) {
+    case TRUTH: {
+       bool result = false;
+       solver_->impl->computeTruth(query, result);
+       assert((rec_validity == Solver::True) == result);
+       break;
+    }
+    case VALIDITY: {
+       Solver::Validity result = Solver::Unknown;
+       solver_->impl->computeValidity(query, result);
+       assert(rec_validity == result);
+       break;
+    }
+    case VALUE: {
+       ref<Expr> result;
+       solver_->impl->computeValue(query, result);
+       break;
+    }
+    case INITIAL_VALUES: {
+       std::vector<const Array*> objects;
+       std::vector<std::vector<unsigned char> > result;
+       bool hasSolution;
+       solver_->impl->computeInitialValues(query, objects, result, hasSolution);
+       break;
+    }
+    default:
+       assert(0 && "Unreachable");
+    }
+
+    TimeValue replayed_duration = TimeValue::now() - start_replay;
+    TimeValue recorded_duration = TimeValue(rec_time_usec / 1000000L,
+           (rec_time_usec % 1000000L) * TimeValue::NANOSECONDS_PER_MICROSECOND);
+
+    total_recorded_ += recorded_duration;
+    total_replayed_ += replayed_duration;
+
+    outs() << "[Replay]"
+           << " Recorded: " << total_recorded_.usec()
+           << " Replayed: " << total_replayed_.usec()
+           << " Speedup: " << format("%.1fx", float(total_recorded_.usec()) / float(total_replayed_.usec()))
+           << '\n';
+}
+
+
+// QueryDumper /////////////////////////////////////////////////////////////////
+
+
+class QueryDumper : public QueryListener {
+public:
+    QueryDumper();
+    virtual ~QueryDumper();
+
+    virtual void onQueryDecoded(const Query &query, int64_t qid,
+        QueryType qtype, Solver::Validity rec_validity,
+        int64_t rec_time_usec);
+
+private:
+    ExprSMTLIBPrinter printer_;
+};
+
+
+QueryDumper::QueryDumper() {
+    printer_.setConstantDisplayMode(ExprSMTLIBPrinter::DECIMAL);
+    printer_.setLogic(ExprSMTLIBPrinter::QF_ABV);
+}
+
+QueryDumper::~QueryDumper() {
+
+}
+
+
+void QueryDumper::onQueryDecoded(const Query &query, int64_t qid,
+        QueryType qtype, Solver::Validity rec_validity,
+        int64_t rec_time_usec) {
+    std::stringstream ss;
+
+    printer_.setOutput(ss);
+    printer_.setQuery(query);
+    printer_.generateOutput();
+
+    ss.flush();
+    outs() << "[Print]"
+           << " Size: " << ss.str().size() << " bytes"
+           << '\n';
+}
+
+
+// QueryDecoder ////////////////////////////////////////////////////////////////
+
+
+class QueryDecoder {
+public:
+    QueryDecoder(sqlite3 *db);
+    ~QueryDecoder();
+
+    void addQueryListener(QueryListener *listener) {
+        query_listeners_.push_back(listener);
+    }
+
+    void decodeQueries();
+
+private:
+    typedef std::vector<QueryListener*> QueryListenerSet;
+
+    sqlite3 *db_;
+    sqlite3_stmt *select_stmt_;
+
+    QueryListenerSet query_listeners_;
+
+    TimeValue total_recorded_;
+};
+
+
+QueryDecoder::QueryDecoder(sqlite3 *db)
+    : db_(db),
+      total_recorded_(TimeValue::ZeroTime) {
+
     const char *select_sql =
         "SELECT q.id, q.type, q.body, r.validity, r.time_usec "
         "FROM queries AS q, query_results AS r "
         "WHERE q.id = r.query_id "
         "ORDER BY q.id ASC";
 
-    const char *insert_sql =
-            "INSERT INTO query_stats "
-            "(query_id, arrays_refd, const_arrays_refd, node_count, max_depth, sym_write_count, sym_read_count, select_count, multiplicity)"
-            "VALUES"
-            "(?1,       ?2,          ?3,               ?4,         ?5,        ?6,              ?7,             ?8,           ?9)";
-
-    result = sqlite3_exec(db, init_sql, NULL, NULL, &err_msg);
-    if (result != SQLITE_OK) {
-        errs() << "Could not execute SQL statement: " << init_sql
-                << " (" << err_msg << ")\n";
-        ::exit(1);
-    }
-    sqlite3_stmt *select_stmt;
-    sqlite3_stmt *insert_stmt;
-    result = sqlite3_prepare_v2(db, select_sql, -1, &select_stmt, NULL);
+    int result = sqlite3_prepare_v2(db_, select_sql, -1, &select_stmt_, NULL);
     if (result != SQLITE_OK) {
         errs() << "Could not prepare SQL statement: " << select_sql
                 << " (" << sqlite3_errmsg(db) << ")" << '\n';
         ::exit(1);
     }
-    result = sqlite3_prepare_v2(db, insert_sql, -1, &insert_stmt, NULL);
-    if (result != SQLITE_OK) {
-        errs() << "Could not prepare SQL statement: " << insert_sql
-                << " (" << sqlite3_errmsg(db) << ")" << '\n';
-        ::exit(1);
-    }
+}
+
+
+QueryDecoder::~QueryDecoder() {
+    int result = sqlite3_finalize(select_stmt_);
+    assert(result == SQLITE_OK);
+}
+
+
+void QueryDecoder::decodeQueries() {
+    int result;
 
     scoped_ptr<ExprBuilder> expr_builder(createDefaultExprBuilder());
     ExprDeserializer expr_deserializer(*expr_builder, std::vector<Array*>());
     QueryDeserializer query_deserializer(expr_deserializer);
-    ExprSMTLIBPrinter printer;
-    printer.setConstantDisplayMode(ExprSMTLIBPrinter::DECIMAL);
-    printer.setLogic(ExprSMTLIBPrinter::QF_ABV);
 
-    // Solvers used for replay
-    DefaultSolverFactory solver_factory(NULL);
-    Solver *solver = solver_factory.createEndSolver();
-    solver = solver_factory.decorateSolver(solver);
+    while ((result = sqlite3_step(select_stmt_)) == SQLITE_ROW) {
+        Query query;
 
-    TimeValue total_recorded(TimeValue::ZeroTime);
-    TimeValue total_replayed(TimeValue::ZeroTime);
+        QueryType query_type = static_cast<QueryType>(
+                sqlite3_column_int(select_stmt_, 1));
 
+        std::string data_blob(
+                (const char*)sqlite3_column_blob(select_stmt_, 2),
+                sqlite3_column_bytes(select_stmt_, 2));
+
+        bool deser_result = query_deserializer.Deserialize(data_blob, query);
+        assert(deser_result && "Invalid query blob field");
+
+        int64_t rec_time_usec = sqlite3_column_int64(select_stmt_, 4);
+        TimeValue recorded_duration = TimeValue(rec_time_usec / 1000000L,
+               (rec_time_usec % 1000000L) * TimeValue::NANOSECONDS_PER_MICROSECOND);
+        total_recorded_ += recorded_duration;
+
+        outs() << "[Decode " << format("%06d", sqlite3_column_int64(select_stmt_, 0)) << "]"
+               << " Recorded: " << recorded_duration.usec()
+               << " Total: " << total_recorded_.usec() << '\n';
+
+        for (QueryListenerSet::iterator it = query_listeners_.begin(),
+                ie = query_listeners_.end(); it != ie; ++it) {
+            QueryListener *listener = *it;
+            listener->onQueryDecoded(query,
+                    sqlite3_column_int64(select_stmt_, 0),
+                    query_type,
+                    static_cast<Solver::Validity>(sqlite3_column_int(
+                            select_stmt_, 3)),
+                    rec_time_usec);
+        }
+    }
+
+    assert(result == SQLITE_DONE);
+}
+
+
+// main ////////////////////////////////////////////////////////////////////////
+
+
+static void decodeQueries(sqlite3 *db) {
+    QueryDecoder decoder(db);
+    scoped_ptr<QueryListener> stats_recorder;
+    scoped_ptr<QueryListener> query_replayer;
+    scoped_ptr<QueryListener> query_printer;
+
+    if (ComputeQueryStats) {
+        stats_recorder.reset(new QueryStatsRecorder(db));
+        decoder.addQueryListener(stats_recorder.get());
+    }
+
+    if (ReplayQueries) {
+        query_replayer.reset(new QueryReplayer());
+        decoder.addQueryListener(query_replayer.get());
+    }
+
+    if (DumpSMTLIB != SMTLIB_OUT_NONE) {
+        query_printer.reset(new QueryDumper());
+        decoder.addQueryListener(query_printer.get());
+    }
+
+    decoder.decodeQueries();
+}
+
+
+int main(int argc, char **argv, char **envp) {
+    GOOGLE_PROTOBUF_VERIFY_VERSION;
+    cl::ParseCommandLineOptions(argc, argv, "Query analysis");
+
+    sqlite3 *db;
+
+    if (sqlite3_open(InputFileName.c_str(), &db) != SQLITE_OK) {
+        errs() << "Could not open SQLite DB: " << InputFileName <<
+                " (" << sqlite3_errmsg(db) << ")" << '\n';
+        ::exit(1);
+    }
+
+    decodeQueries(db);
+
+#if 0
     char *smtlib_dump_dir, *smtlib_dump_file;
-    if (GenerateSMTLIB) {
+    if (DumpSMTLIB) {
         std::stringstream dump_path;
-        if (SMTLIBOutPath.length() == 0) {
+        if (DumpSMTLIBPath.length() == 0) {
             char *dbfilepath = strdup(InputFileName.c_str());
             dump_path << dirname(dbfilepath) << '/';
             free(dbfilepath);
         } else {
-            dump_path << SMTLIBOutPath << '/';
+            dump_path << DumpSMTLIBPath << '/';
         }
         smtlib_dump_dir = strdup(dump_path.str().c_str());
         if (SMTLIBMonolithic) {
@@ -347,89 +645,8 @@ int main(int argc, char **argv, char **envp) {
 
     for (int i = 0; (result = sqlite3_step(select_stmt)) == SQLITE_ROW
             && SMTLIBDumpLimit > 0 && i < SMTLIBDumpLimit; ++i) {
-        Query query;
 
-        QueryType query_type = static_cast<QueryType>(
-                sqlite3_column_int(select_stmt, 1));
-
-        std::string data_blob(
-                (const char*)sqlite3_column_blob(select_stmt, 2),
-                sqlite3_column_bytes(select_stmt, 2));
-
-        bool deser_result = query_deserializer.Deserialize(data_blob, query);
-        assert(deser_result && "Invalid query blob field");
-
-        outs() << "Processing query " << sqlite3_column_int64(select_stmt, 0) << '\n';
-
-        ArrayExprAnalyzer arr_analyzer;
-        arr_analyzer.visit(query.expr);
-        for (ConditionNodeRef node = query.constraints.head(),
-                root = query.constraints.root(); node != root;
-                node = node->parent()) {
-            arr_analyzer.visit(node->expr());
-        }
-
-        sqlite3_clear_bindings(insert_stmt);
-        sqlite3_bind_int64(insert_stmt, 1, sqlite3_column_int64(select_stmt, 0));
-        sqlite3_bind_int(insert_stmt, 2, arr_analyzer.getArrayCount());
-        sqlite3_bind_int(insert_stmt, 3, arr_analyzer.getConstArrayCount());
-        sqlite3_bind_int(insert_stmt, 4, arr_analyzer.getTotalNodes());
-        sqlite3_bind_int(insert_stmt, 7, arr_analyzer.getTotalSymbolicReads());
-        sqlite3_bind_int(insert_stmt, 8, arr_analyzer.getTotalSelects());
-        sqlite3_bind_int64(insert_stmt, 9, GetQueryMultiplicity(query));
-        result = sqlite3_step(insert_stmt);
-        assert(result == SQLITE_DONE);
-        sqlite3_reset(insert_stmt);
-
-        if (ReplayQueries) {
-            TimeValue start_replay = TimeValue::now();
-            switch (query_type) {
-            case TRUTH: {
-                bool result = false;
-                solver->impl->computeTruth(query, result);
-                assert((sqlite3_column_int(select_stmt, 3) == Solver::True)
-                        == result);
-                break;
-            }
-            case VALIDITY: {
-                Solver::Validity result = Solver::Unknown;
-                solver->impl->computeValidity(query, result);
-                assert(static_cast<Solver::Validity>(sqlite3_column_int(select_stmt, 3)) == result);
-                break;
-            }
-            case VALUE: {
-                ref<Expr> result;
-                solver->impl->computeValue(query, result);
-                break;
-            }
-            case INITIAL_VALUES: {
-                std::vector<const Array*> objects;
-                std::vector<std::vector<unsigned char> > result;
-                bool hasSolution;
-                solver->impl->computeInitialValues(query, objects, result,
-                        hasSolution);
-                break;
-            }
-            default:
-                assert(0 && "Unreachable");
-            }
-
-            TimeValue replayed_duration = TimeValue::now() - start_replay;
-            int64_t recorded_usec = sqlite3_column_int64(select_stmt, 4);
-            TimeValue recorded_duration = TimeValue(recorded_usec / 1000000L,
-                    (recorded_usec % 1000000L) * TimeValue::NANOSECONDS_PER_MICROSECOND);
-
-            total_recorded += recorded_duration;
-            total_replayed += replayed_duration;
-
-            outs() << "[Total/" << arr_analyzer.getTotalSymbolicReads() << "/" << arr_analyzer.getTotalSelects() << "]"
-                    << " Recorded: " << total_recorded.usec()
-                    << " Replayed: " << total_replayed.usec()
-                    << " Speedup: " << format("%.1fx", float(total_recorded.usec()) / float(total_replayed.usec()))
-                    << '\n';
-        }
-
-        if (GenerateSMTLIB) {
+        if (DumpSMTLIB) {
             int id = sqlite3_column_int64(select_stmt, 0);
             int64_t recorded_usec = sqlite3_column_int64(select_stmt, 4);
 
@@ -445,7 +662,7 @@ int main(int argc, char **argv, char **envp) {
                 outs() << "   Writing to " << smtlib_dump_file << '\n';
                 free(smtlib_dump_file);
             }
-            file << "; " << recorded_usec << " µsec\n";
+            file << "; " << recorded_usec << " usec\n";
 
             printer.setOutput(file);
             printer.setQuery(query);
@@ -453,18 +670,13 @@ int main(int argc, char **argv, char **envp) {
             file.close();
         }
     }
-    if (SMTLIBDumpLimit == 0)
-        assert(result == SQLITE_DONE);
 
-    result = sqlite3_finalize(select_stmt);
-    assert(result == SQLITE_OK);
-    result = sqlite3_finalize(insert_stmt);
-    assert(result == SQLITE_OK);
-    result = sqlite3_close(db);
-    assert(result == SQLITE_OK);
-
-    if (GenerateSMTLIB && SMTLIBMonolithic)
+    if (DumpSMTLIB && SMTLIBMonolithic)
         free(smtlib_dump_file);
+#endif
+
+    int result = sqlite3_close(db);
+    assert(result == SQLITE_OK);
 
     return 0;
 }
