@@ -148,7 +148,7 @@ Z3BaseSolverImpl::Z3BaseSolverImpl()
     else
         builder_ = new Z3AssertArrayBuilder(solver_);*/
     // TODO: Build an appropriate builder
-    builder_.reset(new Z3IteBuilder(context_));
+    builder_.reset(new Z3AssertArrayBuilder(solver_));
 }
 
 
