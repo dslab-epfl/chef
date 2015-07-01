@@ -497,6 +497,7 @@ public:
         query_listeners_.push_back(listener);
     }
 
+    int64_t getQueryCount();
     void decodeQueries();
 
 private:
@@ -533,6 +534,27 @@ QueryDecoder::QueryDecoder(sqlite3 *db)
 QueryDecoder::~QueryDecoder() {
     int result = sqlite3_finalize(select_stmt_);
     assert(result == SQLITE_OK);
+}
+
+
+int64_t QueryDecoder::getQueryCount() {
+    int result;
+    const char *sql = "SELECT COUNT(q.id) "
+                      "FROM queries AS q, query_results as r "
+                      "WHERE q.id = r.query_id";
+
+    sqlite3_stmt *stmt;
+    result = sqlite3_prepare_v2(db_, sql, -1, &stmt, NULL);
+    assert(result == SQLITE_OK);
+    result = sqlite3_step(stmt);
+    assert(result == SQLITE_ROW);
+
+    int64_t qcount = sqlite3_column_int64(stmt, 0);
+
+    result = sqlite3_finalize(stmt);
+    assert(result == SQLITE_OK);
+
+    return qcount;
 }
 
 
@@ -604,6 +626,9 @@ static void decodeQueries(sqlite3 *db) {
         query_printer.reset(new QueryDumper());
         decoder.addQueryListener(query_printer.get());
     }
+
+    outs() << "[Header] Decoding " << decoder.getQueryCount()
+            << " queries" << '\n';
 
     decoder.decodeQueries();
 }
