@@ -65,12 +65,12 @@ using llvm::sys::TimeValue;
 namespace {
 
 cl::opt<std::string> InputFileName(cl::Positional,
-    cl::desc("<input query log file>"),
-    cl::Required);
+        cl::desc("<Input query log file>"),
+        cl::Required);
 
-cl::opt<unsigned> QueryCount("query-count",
-        cl::desc("Number of queries to process"),
-        cl::init(5));
+cl::list<int> QueryPicks(cl::Positional,
+        cl::desc("<Query IDs to pick>"),
+        cl::ZeroOrMore);
 
 cl::opt<bool> VisualizeQueries("visualize",
         cl::desc("Output query structure in Graphviz format"),
@@ -565,6 +565,15 @@ void QueryDecoder::decodeQueries() {
     ExprDeserializer expr_deserializer(*expr_builder, std::vector<Array*>());
     QueryDeserializer query_deserializer(expr_deserializer);
 
+    std::set<int64_t> query_ids;
+
+    if (QueryPicks.size() > 0) {
+        outs() << "[Decoder] Decoding " << QueryPicks.size() << " queries from the DB." << '\n';
+        query_ids.insert(QueryPicks.begin(), QueryPicks.end());
+    } else {
+        outs() << "[Decoder] Decoding all queries in the DB." << '\n';
+    }
+
     while ((result = sqlite3_step(select_stmt_)) == SQLITE_ROW) {
         Query query;
 
@@ -578,20 +587,28 @@ void QueryDecoder::decodeQueries() {
         bool deser_result = query_deserializer.Deserialize(data_blob, query);
         assert(deser_result && "Invalid query blob field");
 
+        int64_t query_id = sqlite3_column_int64(select_stmt_, 0);
+
+        if (!query_ids.empty() && query_ids.count(query_id) == 0) {
+            // Sliently skip queries that were not selected
+            continue;
+        }
+
         int64_t rec_time_usec = sqlite3_column_int64(select_stmt_, 4);
         TimeValue recorded_duration = TimeValue(rec_time_usec / 1000000L,
                (rec_time_usec % 1000000L) * TimeValue::NANOSECONDS_PER_MICROSECOND);
         total_recorded_ += recorded_duration;
 
-        outs() << "[Decode " << format("%06d", sqlite3_column_int64(select_stmt_, 0)) << "]"
-               << " Recorded: " << recorded_duration.usec()
-               << " Total: " << total_recorded_.usec() << '\n';
+        outs() << "[Decode " << format("%06d", query_id) << "]"
+               << " Recorded time: " << recorded_duration.usec() << " usec"
+               << " Total recorded time: " << total_recorded_.usec() << " usec"
+               << '\n';
 
         for (QueryListenerSet::iterator it = query_listeners_.begin(),
                 ie = query_listeners_.end(); it != ie; ++it) {
             QueryListener *listener = *it;
             listener->onQueryDecoded(query,
-                    sqlite3_column_int64(select_stmt_, 0),
+                    query_id,
                     query_type,
                     static_cast<Solver::Validity>(sqlite3_column_int(
                             select_stmt_, 3)),
@@ -627,7 +644,7 @@ static void decodeQueries(sqlite3 *db) {
         decoder.addQueryListener(query_printer.get());
     }
 
-    outs() << "[Header] Decoding " << decoder.getQueryCount()
+    outs() << "[Header] Found " << decoder.getQueryCount()
             << " queries" << '\n';
 
     decoder.decodeQueries();
