@@ -670,12 +670,15 @@ namespace klee
 
     void ExprSMTLIBPrinter::scanAll()
     {
+        std::set<ref<Expr> > scanned_expr;
+        std::set<const UpdateNode*> scanned_un;
+
         //perform scan of all expressions
         for(ConstraintManager::const_iterator i= query->constraints.begin(); i != query->constraints.end(); ++i)
-            scan(query->constraints.toExpr(*i));
+            scan(query->constraints.toExpr(*i), scanned_expr, scanned_un);
 
         //Scan the query too
-        scan(query->expr);
+        scan(query->expr, scanned_expr, scanned_un);
     }
 
     void ExprSMTLIBPrinter::generateOutput()
@@ -837,7 +840,9 @@ namespace klee
         }
     }
 
-    void ExprSMTLIBPrinter::scan(const ref<Expr>& e)
+    void ExprSMTLIBPrinter::scan(const ref<Expr>& e,
+            std::set<ref<Expr> > &scanned_expr,
+            std::set<const UpdateNode*> &scanned_un)
     {
         if(e.isNull())
         {
@@ -847,6 +852,10 @@ namespace klee
 
         if(isa<ConstantExpr>(e))
             return; //we don't need to scan simple constants
+
+        if (scanned_expr.count(e) > 0)
+            return;
+        scanned_expr.insert(e);
 
         if(const ReadExpr* re = dyn_cast<ReadExpr>(e))
         {
@@ -860,7 +869,7 @@ namespace klee
                     haveConstantArray=true;
 
                 //scan the update list
-                scanUpdates(re->updates.head);
+                scanUpdates(re->updates.head, scanned_expr, scanned_un);
 
             }
 
@@ -869,16 +878,22 @@ namespace klee
         //recurse into the children
         Expr* ep = e.get();
         for(unsigned int i=0; i < ep->getNumKids(); i++)
-            scan(ep->getKid(i));
+            scan(ep->getKid(i), scanned_expr, scanned_un);
     }
 
 
-    void ExprSMTLIBPrinter::scanUpdates(const UpdateNode* un)
+    void ExprSMTLIBPrinter::scanUpdates(const UpdateNode* un,
+            std::set<ref<Expr> > &scanned_expr,
+            std::set<const UpdateNode*> &scanned_un)
     {
         while(un != NULL)
         {
-            scan(un->index);
-            scan(un->value);
+            if (scanned_un.count(un) > 0)
+                break;
+            scanned_un.insert(un);
+
+            scan(un->index, scanned_expr, scanned_un);
+            scan(un->value, scanned_expr, scanned_un);
             un= un->next;
         }
     }

@@ -17,6 +17,7 @@
 #include <klee/Constraints.h>
 #include <klee/Expr.h>
 #include <klee/util/PrintContext.h>
+#include <klee/util/ExprHashMap.h>
 #include <klee/Solver.h>
 
 namespace klee {
@@ -236,7 +237,9 @@ namespace klee {
 
 			///Scan Expression recursively for Arrays in expressions. Found arrays are added to
 			/// the usedArrays vector.
-			virtual void scan(const ref<Expr>& e);
+			virtual void scan(const ref<Expr>& e,
+			        std::set<ref<Expr> > &scanned_expr,
+			        std::set<const UpdateNode*> &scanned_un);
 
 			/* Rules of recursion for "Special Expression handlers" and printSortArgsExpr()
 			 *
@@ -273,7 +276,9 @@ namespace klee {
 			virtual void printSeperator();
 
 			///Helper function for scan() that scans the expressions of an update node
-			virtual void scanUpdates(const UpdateNode* un);
+			virtual void scanUpdates(const UpdateNode* un,
+			        std::set<ref<Expr> > &scanned_expr,
+			        std::set<const UpdateNode*> &scanned_un);
 
 			///Helper printer class
                         PrintContext2* p;
@@ -310,7 +315,7 @@ namespace klee {
 			std::string getSanitizedVarName(const std::string& varName);
 
 			// Compact SMT-LIBv2 dumps (variables)
-			std::map<ref<Expr>,int> expressionMap;
+			ExprHashMap<int> expressionMap;
 			int expressionSerial;
 			bool compact;
 
