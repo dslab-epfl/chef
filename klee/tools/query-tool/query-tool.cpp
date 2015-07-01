@@ -42,10 +42,12 @@
 #include "klee/SolverImpl.h"
 #include "klee/SolverFactory.h"
 
+#include <llvm/ADT/SmallString.h>
 #include <llvm/Support/CommandLine.h>
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/Support/TimeValue.h>
 #include <llvm/Support/Format.h>
+#include <llvm/Support/Path.h>
 
 #include <google/protobuf/stubs/common.h>
 
@@ -54,6 +56,7 @@
 
 #include <sqlite3.h>
 
+#include <iostream>
 #include <sstream>
 
 using namespace llvm;
@@ -86,6 +89,7 @@ cl::opt<bool> ComputeQueryStats("compute-query-stats",
 
 enum SMTLIBOutputMode {
     SMTLIB_OUT_NONE,
+    SMTLIB_OUT_TRY,
     SMTLIB_OUT_SINGLE_FILE,
     SMTLIB_OUT_SEPARATE_FILES
 };
@@ -94,6 +98,7 @@ cl::opt<SMTLIBOutputMode> DumpSMTLIB("dump-smtlib",
         cl::desc("Dump the queries in SMTLIB format"),
         cl::values(
                 clEnumValN(SMTLIB_OUT_NONE, "none", "No SMTLIB dumping"),
+                clEnumValN(SMTLIB_OUT_TRY, "try", "Try dumping, but don't write to disk"),
                 clEnumValN(SMTLIB_OUT_SINGLE_FILE, "single", "Dump in single SMTLIB file"),
                 clEnumValN(SMTLIB_OUT_SEPARATE_FILES, "separate", "Dump in one SMTLIB file per query"),
                 clEnumValEnd),
@@ -252,6 +257,20 @@ enum QueryType {
     VALIDITY = 1,
     VALUE = 2,
     INITIAL_VALUES = 3
+};
+
+
+static const char *QueryTypeNames[] = {
+        "Truth (either Valid or not)",
+        "Validity (Valid, Invalid, or Satisfiable)",
+        "Value (used to compute example value for expression)",
+        "InitialValues (used to compute initial counter-example value)"
+};
+
+static const char *SolverValidityNames[] = {
+        "Invalid",
+        "Satisfiable",
+        "Valid"
 };
 
 
@@ -472,6 +491,8 @@ QueryDumper::~QueryDumper() {
 void QueryDumper::onQueryDecoded(const Query &query, int64_t qid,
         QueryType qtype, Solver::Validity rec_validity,
         int64_t rec_time_usec) {
+    // FIXME: VALIDITY QUERIES ARE NOT HANDLED CORRECTLY
+    // (there could be up to two queries)
     std::stringstream ss;
 
     printer_.setOutput(ss);
@@ -482,6 +503,49 @@ void QueryDumper::onQueryDecoded(const Query &query, int64_t qid,
     outs() << "[Print]"
            << " Size: " << ss.str().size() << " bytes"
            << '\n';
+
+    switch (DumpSMTLIB) {
+    case SMTLIB_OUT_SEPARATE_FILES: {
+        SmallString<128> base_name(DumpSMTLIBPath);
+        if (base_name.empty()) {
+            base_name = InputFileName;
+            sys::path::replace_extension(base_name, "smt");
+        }
+
+        SmallString<32> extension = sys::path::extension(base_name);
+        sys::path::replace_extension(base_name, "");
+
+        std::string file_name;
+        raw_string_ostream fns(file_name);
+        fns << base_name << format("%06d", qid) << extension;
+
+        std::string error_code;
+        raw_fd_ostream os(fns.str().c_str(), error_code);
+        if (!error_code.empty()) {
+            errs() << "[Print] COULD NOT OPEN FILE " << fns.str() <<
+                    " FOR WRITING (" << error_code << ")" << '\n';
+            break;
+        }
+
+        // FIXME: This is risky if the DB data is wrong
+        os << "; Query type: " << QueryTypeNames[qtype] << '\n';
+
+        os << "; Recorded validity: "
+                << SolverValidityNames[static_cast<int>(rec_validity)+1]
+                << '\n';
+
+        os << "; Recorded time: " << rec_time_usec << " usec" << '\n';
+        os << ss.str();
+        os.close();
+        break;
+    }
+    case SMTLIB_OUT_SINGLE_FILE: {
+        // TODO
+        break;
+    }
+    default:
+        break;
+    }
 }
 
 
