@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 
-# Parses YAML files that describe the commands to be run in parallel.
-# If run directly, it will output the commands + arguments that can be passed to
-# GNU parallel.
+# Parses YAML files that describe the commands to be run in parallel, and
+# outputs the commands + arguments that can be passed to GNU parallel.
 
 import yaml  # requires the PyYAML package
 import sys
@@ -68,16 +67,20 @@ class Batch:
     def get_commands(self):
         return self.commands
 
+    @staticmethod
+    def main(argv: [str]):
+        if len(argv) < 2:
+            print("Usage: %s YAML [OUTDIR]" % argv[0], file=sys.stderr)
+            exit(1)
+
+        path_yaml = argv[1]
+        path_results = 'batch_results' if len(argv) < 3 else argv[2]
+
+        b = Batch(path_yaml, path_results)
+        cmd_lines = b.get_cmd_lines()
+        for c in cmd_lines:
+            print(c)
+
 
 if __name__ == '__main__':
-    if len(sys.argv) < 2:
-        print("Usage: %s YAML [OUTDIR]" % sys.argv[0], file=sys.stderr)
-        exit(1)
-
-    path_yaml = sys.argv[1]
-    path_results = 'batch_results' if len(sys.argv) < 3 else sys.argv[2]
-
-    b = Batch(path_yaml, path_results)
-    cmd_lines = b.get_cmd_lines()
-    for c in cmd_lines:
-        print(c)
+    Batch.main(sys.argv)

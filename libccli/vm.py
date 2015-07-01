@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 # TODO: wrap everything in docker
 # http://docker-py.readthedocs.org/en/latest/api/
 #------------------------------------------------------------------------------#
@@ -35,10 +37,10 @@ import posix1e
 from posix1e import ACL,Entry
 import sys
 import psutil
-from libccli import libccli
+import libccli
 
 
-global DATAROOT
+DATAROOT = os.environ.get('CHEF_DATAROOT', '/var/lib/chef')
 
 
 class VM:
@@ -149,3 +151,7 @@ class VM:
 
         vm = VM(args['name'])
         args['action'](vm, **kwargs)
+
+
+if __name__ == '__main__':
+    VM.main(sys.argv)
