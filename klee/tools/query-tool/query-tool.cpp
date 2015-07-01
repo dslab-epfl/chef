@@ -665,58 +665,6 @@ int main(int argc, char **argv, char **envp) {
 
     decodeQueries(db);
 
-#if 0
-    char *smtlib_dump_dir, *smtlib_dump_file;
-    if (DumpSMTLIB) {
-        std::stringstream dump_path;
-        if (DumpSMTLIBPath.length() == 0) {
-            char *dbfilepath = strdup(InputFileName.c_str());
-            dump_path << dirname(dbfilepath) << '/';
-            free(dbfilepath);
-        } else {
-            dump_path << DumpSMTLIBPath << '/';
-        }
-        smtlib_dump_dir = strdup(dump_path.str().c_str());
-        if (SMTLIBMonolithic) {
-            dump_path << "dump.smt";
-            smtlib_dump_file = strdup(dump_path.str().c_str());
-            if (remove(smtlib_dump_file) != 0)
-                std::cerr << "Warning: could not delete " << smtlib_dump_file << '\n';
-        }
-    }
-
-    for (int i = 0; (result = sqlite3_step(select_stmt)) == SQLITE_ROW
-            && SMTLIBDumpLimit > 0 && i < SMTLIBDumpLimit; ++i) {
-
-        if (DumpSMTLIB) {
-            int id = sqlite3_column_int64(select_stmt, 0);
-            int64_t recorded_usec = sqlite3_column_int64(select_stmt, 4);
-
-            std::ofstream file;
-            if (SMTLIBMonolithic) {
-                file.open(smtlib_dump_file, std::ios_base::out | std::ios_base::app);
-                outs() << "   Appending to " << smtlib_dump_file << '\n';
-            } else {
-                std::stringstream dump_path;
-                dump_path << smtlib_dump_dir << std::setfill('0') << std::setw(4) << id << ".smt";
-                smtlib_dump_file = strdup(dump_path.str().c_str());
-                file.open(smtlib_dump_file);
-                outs() << "   Writing to " << smtlib_dump_file << '\n';
-                free(smtlib_dump_file);
-            }
-            file << "; " << recorded_usec << " usec\n";
-
-            printer.setOutput(file);
-            printer.setQuery(query);
-            printer.generateOutput();
-            file.close();
-        }
-    }
-
-    if (DumpSMTLIB && SMTLIBMonolithic)
-        free(smtlib_dump_file);
-#endif
-
     int result = sqlite3_close(db);
     assert(result == SQLITE_OK);
 
