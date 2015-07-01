@@ -12,51 +12,52 @@ RUNPATH = os.path.dirname(os.path.realpath(__file__))
 RUNNAME = sys.argv[0]
 INVOKENAME = os.path.basename(RUNNAME)
 
-SUBCOMMAND_LIB = 'libccli'
-SUBCOMMAND_PATH = '%s/%s' % (RUNPATH, SUBCOMMAND_LIB)
-SUBCOMMAND_EXTS = ['.sh', '.py'] # valid scripts
-SUBCOMMANDS = {} # populated in scan_subcommands()
-SUBCOMMAND_DESCRIPTIONS = {
-    'init':        "Initialise Chef environment",
-    'vm':          "Manage chef virtual machines",
-    'build':       "Build Chef in a given configuration",
-    'run':         "Run Chef in a given mode",
-    'smtlibdump':  "Dump collected queries in SMT-LIB format",
-    'compare':     "Compare two query dumps on logic equality",
-    'smtlib-sort': "Sort query dumps by 'interesting'",
-    'docker':      "Run docker container (useful for debugging/tinkering)",
-    'help':        "Display this help",
+COMMAND_LIB = 'libccli'
+COMMAND_PATH = '%s/%s' % (RUNPATH, COMMAND_LIB)
+COMMAND_EXTS = ['.sh', '.py'] # valid scripts
+COMMANDS = {} # populated in scan_commands()
+COMMAND_DESCRIPTIONS = {
+    'init':          "Initialise Chef environment",
+    'vm':            "Manage chef virtual machines",
+    'build':         "Build Chef in a given configuration",
+    'run':           "Run Chef in a given mode",
+    'smtlib-dump':   "Dump collected queries in SMT-LIB format",
+    'smtlib-compare':"Compare two query dumps on logic equality",
+    'smtlib-sort':   "Sort query dumps by 'interesting'",
+    'docker':        "Run docker container (useful for debugging/tinkering)",
+    'help':          "Display this help",
 }
-SUBCOMMAND_IGNORED = ['__init__.py', 'libccli.py', 'utils.sh']
+COMMAND_IGNORED = ['__init__.py', 'libccli.py', 'utils.sh']
 
 
 # EXECUTION ====================================================================
 
-def scan_subcommands():
-    for f in os.listdir(SUBCOMMAND_PATH):
-        name, ext = os.path.splitext(os.path.basename(f))
+def scan_commands():
+    for f in os.listdir(COMMAND_PATH):
+        name, ext = os.path.splitext(f)
         if os.path.isdir(f) \
-        or ext not in SUBCOMMAND_EXTS \
-        or (name + ext) in SUBCOMMAND_IGNORED:
+        or ext not in COMMAND_EXTS \
+        or (name + ext) in COMMAND_IGNORED:
             continue
-        description = SUBCOMMAND_DESCRIPTIONS.get(name, '')
-        SUBCOMMANDS[name] = {
-            'command': '%s/%s' % (SUBCOMMAND_PATH, f),
+        description = COMMAND_DESCRIPTIONS.get(name, '')
+        COMMANDS[name] = {
+            'command': '%s/%s' % (COMMAND_PATH, f),
             'description': description
         }
+    COMMANDS['help'] = { 'description': COMMAND_DESCRIPTIONS.get('help', '') }
 
 
-def run_subcommand(name):
-    subcommand = SUBCOMMANDS.get(name, None)
-
-    if subcommand is None:
-        die_help("Unknown command: `%s`" % name)
-    if subcommand == 'help':
+def run_command(name):
+    if name == 'help':
         help()
+
+    command = COMMANDS.get(name, None)
+    if command is None:
+        die_help("Unknown command: `%s`" % name)
 
     env = os.environ
     env['INVOKENAME'] = '%s %s' % (INVOKENAME, name)
-    os.execve(SUBCOMMANDS[name]['command'], sys.argv[1:], env)
+    os.execve(COMMANDS[name]['command'], sys.argv[1:], env)
 
 
 # MAIN =========================================================================
@@ -69,9 +70,9 @@ def help():
     print("%s: Command line interface to chef\n" % INVOKENAME)
     usage()
     print("\nCommands:")
-    for name in sorted(SUBCOMMANDS) + {'help':SUBCOMMAND_DESCRIPTIONS['help']}:
-        subcmd = SUBCOMMANDS[name]
-        print('  {:<12} %s'.format(name) % subcmd['description'])
+    for name in sorted(COMMANDS):
+        cmd = COMMANDS[name]
+        print('  {:<15} %s'.format(name) % cmd['description'])
     exit(1)
 
 
@@ -83,15 +84,15 @@ def die_help(msg: str):
 
 
 if __name__ == '__main__':
-    # get subcommand from command line:
+    # get command from command line:
     if len(sys.argv) < 2:
         die_help("missing command")
-    subcommand = sys.argv[1]
+    command = sys.argv[1]
 
     # fix help:
-    if subcommand in ['-h', '--help']:
-        subcommand = 'help'
+    if command in ['-h', '--help']:
+        command = 'help'
 
-    # handle subcommand:
-    scan_subcommands()
-    run_subcommand(subcommand)
+    # handle command:
+    scan_commands()
+    run_command(command)
