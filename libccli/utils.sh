@@ -30,7 +30,7 @@ DOCKER_HOSTPATH='/host'
 
 docker_image_exists()
 {
-	if docker inspect "$1" >/dev/null 2>&1; then
+	if docker inspect "$1" >"$NULL" 2>&1; then
 		return $TRUE
 	else
 		return $FALSE
@@ -172,7 +172,7 @@ die_help()
 		shift
 		printf "$die_help_format\n" "$@" >&2
 	fi
-	if is_function usage; then
+	if is_command usage; then
 		usage >&2
 	fi
 	die 1 'Run `%s -h` for help.' "$INVOKENAME"
@@ -201,10 +201,10 @@ is_numeric()
 	esac
 }
 
-# Test if a function is defined
-is_function()
+# Test if a command is available
+is_command()
 {
-	if type "$1" >/dev/null 2>&1; then
+	if type "$1" >"$NULL" 2>&1; then
 		return $TRUE
 	else
 		return $FALSE
@@ -223,20 +223,6 @@ as_boolean()
 		echo 'false'
 	fi
 }
-
-# COMMANDS =====================================================================
-
-# Search for coreutil's `which`
-IFS_="$IFS"
-IFS=:
-WHICH='which'
-for p in "$PATH"; do
-	if [ -x "$p/which" ]; then
-		WHICH="$p/which"
-		break
-	fi
-done
-IFS="$IFS_"
 
 # DEBUG ========================================================================
 

@@ -10,7 +10,10 @@ compare()
 {
 	case "$SOLVER" in
 	z3)
-		SOLVER_BIN="$($WHICH $SOLVER)"
+		if ! is_command "$SOLVER"; then
+			die 2 'Could not find Z3 installation on this system'
+		fi
+		SOLVER_BIN="$SOLVER"
 		SOLVER_ARGS='-smt2'
 		;;
 	cvc3)
@@ -18,6 +21,9 @@ compare()
 		              -name 'cvc3' \
 		              -executable \
 		              -type f)"
+		if [ -z "$SOLVER_BIN" ]; then
+			die 2 'Could not find CVC3 executable in project directory tree.'
+		fi
 		SOLVER_ARGS='-lang smt2'
 		;;
 	*)
@@ -124,13 +130,11 @@ help()
 	cat <<- EOF
 
 	Solvers:
-	  z3
-	  cvc3
-	  stp        (not yet supported)
+	  z3  cvc3  stp  (STP not supported yet)
 
 	Offset, Length:
 	  Strictly positive values denoting the first query to start with, and the
-	  number of queries to compare. The length is 1 by default.
+	  number of queries to compare (by default 1).
 
 	Options:
 	  -h         Display this help

@@ -10,7 +10,7 @@
 
 smtlib_sort()
 {
-	n=$(ls "$DIRECTORY"/*.smt 2>/dev/null | wc -l)
+	n=$(find "$DIRECTORY"/*.smt 2>/dev/null | wc -l)
 	if [ $n -eq 0 ]; then
 		die 2 '%s does not contain any query dumps' "$DIRECTORY"
 	fi
@@ -74,6 +74,10 @@ get_directory()
 
 main()
 {
+	if ! is_command dc; then
+		die 2 'dc is not available on this system'
+	fi
+
 	for getargs in get_options get_directory; do
 		$getargs "$@"
 		shift $ARGSHIFT

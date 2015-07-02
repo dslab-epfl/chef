@@ -4,18 +4,13 @@
 #
 # Maintainer: Tinu Weber <martin.weber@epfl.ch>
 
-DOCKER_VERSION='v0.6'
-DOCKER_HOSTPATH='/host'
+# UTILS ========================================================================
+
+. "$(readlink -f "$(dirname "$0")")/utils.sh"
+
 DOCKER_HOSTPATH_IN='/host-in'
 DOCKER_HOSTPATH_OUT='/host-out'
 DOCKER_HOSTPATH_BUILD='/host-build'
-RUNNAME="$(basename "$0")"
-RUNPATH="$(readlink -f "$(dirname "$0")")"
-RUNDIR="$(basename "$RUNPATH")"
-SRCPATH_ROOT="$(dirname "$RUNPATH")"
-if [ -z "$INVOKENAME" ]; then
-	INVOKENAME="$RUNNAME"
-fi
 
 # DUMP =========================================================================
 
@@ -36,10 +31,10 @@ dump()
 	"$TOOL_BIN" \
 		-end-solver="$SOLVER" \
 		-generate-smtlib -smtlib-out-path="$DUMP_PATH" \
-		$(test $MONOLITHIC -eq 1 && echo '-smtlib-monolithic') \
-		$(test $HUMAN -eq 1 && echo '-smtlib-human-readable') \
+		$(test $MONOLITHIC -eq $TRUE && echo '-smtlib-monolithic') \
+		$(test $HUMAN -eq $TRUE && echo '-smtlib-human-readable') \
 		$(test $LIMIT -gt 0 && echo "-smtlib-dump-limit $LIMIT") \
-		$(test $COMPACT -eq 1 && echo '-smtlib-compact') \
+		$(test $COMPACT -eq $FALSE && echo '-smtlib-compact') \
 		"$DB_FILE"
 }
 
@@ -65,18 +60,18 @@ docker_dump()
 		-v "$DB_PATH":"$DOCKER_HOSTPATH_IN" \
 		-v "$DUMP_PATH":"$DOCKER_HOSTPATH_OUT" \
 		-v "$BUILD_PATH":"$DOCKER_HOSTPATH_BUILD" \
-		dslab/s2e-chef:"$DOCKER_VERSION" \
+		"$DOCKER_IMAGE" \
 		"$DOCKER_HOSTPATH"/"$RUNDIR"/"$RUNNAME" \
 			-a "$ARCH" \
 			-b "$DOCKER_HOSTPATH_BUILD" \
-			$(test $COMPACT -eq 1 && printf "%s" '-c') \
+			$(test $COMPACT -eq $TRUE && printf "%s" '-c') \
 			-l $LIMIT \
 			-m "$MODE" \
-			$(test $MONOLITHIC -eq 1 && printf "%s" '-M') \
+			$(test $MONOLITHIC -eq $TRUE && printf "%s" '-M') \
 			-o "$DOCKER_HOSTPATH_OUT" \
 			-r "$RELEASE" \
 			-s "$SOLVER" \
-			$(test $HUMAN -eq 1 && printf "%s" '-w') \
+			$(test $HUMAN -eq $TRUE && printf "%s" '-w') \
 			-z \
 			"$DOCKER_HOSTPATH_IN/$DB_NAME"
 }
@@ -92,12 +87,12 @@ dryrun()
 	SOLVER=$SOLVER
 	DUMP_PATH=$DUMP_PATH
 	DB_FILE=$DB_FILE
-	MONOLITHIC=$(boolean $MONOLITHIC)
-	HUMAN=$(boolean $HUMAN)
+	MONOLITHIC=$(as_boolean $MONOLITHIC)
+	HUMAN=$(as_boolean $HUMAN)
 	LIMIT=$LIMIT
 	EOF
 
-	if [ $DIRECT -eq 0 ]; then
+	if [ $DIRECT -eq $FALSE ]; then
 		cat <<- EOF
 		DOCKER_HOSTPATH=$SRCPATH_ROOT:$DOCKER_HOSTPATH
 		DOCKER_HOSTPATH_IN=$DB_PATH:$DOCKER_HOSTPATH_IN
@@ -108,46 +103,6 @@ dryrun()
 }
 
 # UTILITIES ====================================================================
-
-boolean()
-{
-	case "$1" in
-		0) echo 'false' ;;
-		*) echo 'true' ;;
-	esac
-}
-
-# ACL + docker + mkdir -p = issues
-mkdirp()
-{
-	test -e "$1" || mkdir "$1"
-}
-
-die()
-{
-	die_retval=$1
-	die_format="$2"
-	shift 2
-	printf "$die_format\n" "$@" >&2
-	exit $die_retval
-}
-
-die_help()
-{
-	die_help_format="$1"
-	if [ -n "$die_help_format" ]; then
-		shift
-		printf "$die_help_format\n" "$@" >&2
-	fi
-	usage >&2
-	die 1 'Run `%s -h` for help.' "$INVOKENAME"
-}
-
-die_internal()
-{
-	printf "Internal error: "
-	die "$@"
-}
 
 usage()
 {
@@ -185,14 +140,6 @@ help()
 	#EOF
 }
 
-isnumeric()
-{
-	case "$1" in
-		''|*[!0-9]*) return 1 ;;
-		*) return 0 ;;
-	esac
-}
-
 # MAIN =========================================================================
 
 get_options()
@@ -200,32 +147,32 @@ get_options()
 	# Default values:
 	ARCH='i386'
 	BUILD_PATH="$SRCPATH_ROOT/build"
-	COMPACT=0
+	COMPACT=$FALSE
 	DUMP_PATH="$PWD"
-	LIMIT=0
+	LIMIT=$FALSE
 	MODE='normal'
-	MONOLITHIC=0
+	MONOLITHIC=$FALSE
 	RELEASE='release'
 	SOLVER='stp'
-	HUMAN=0
-	DIRECT=0
-	DRYRUN=0
+	HUMAN=$FALSE
+	DIRECT=$FALSE
+	DRYRUN=$FALSE
 
 	while getopts a:b:chl:m:Mo:r:s:wyz opt; do
 		case "$opt" in
 			a) ARCH="$OPTARG" ;;
 			b) BUILD_PATH="$OPTARG" ;;
-			c) COMPACT=1 ;;
+			c) COMPACT=$TRUE ;;
 			h) help; exit 1 ;;
 			l) LIMIT="$OPTARG" ;;
 			m) MODE="$OPTARG" ;;
-			M) MONOLITHIC=1 ;;
+			M) MONOLITHIC=$TRUE ;;
 			o) DUMP_PATH="$OPTARG" ;;
 			r) RELEASE="$OPTARG" ;;
 			s) SOLVER="$OPTARG" ;;
-			w) HUMAN=1 ;;
-			y) DRYRUN=1 ;;
-			z) DIRECT=1 ;;
+			w) HUMAN=$TRUE ;;
+			y) DRYRUN=$TRUE ;;
+			z) DIRECT=$TRUE ;;
 			'?') die_help ;;
 		esac
 	done
@@ -242,7 +189,7 @@ get_options()
 		release|debug) ;;
 		*) die_help 'Illegal release mode: %s' "$MODE" ;;
 	esac
-	if ! isnumeric "$LIMIT"; then
+	if ! is_numeric "$LIMIT"; then
 		die_help 'Non-numeric value passed for -l'
 	fi
 	DUMP_PATH="$(readlink -f "$DUMP_PATH")"
@@ -276,15 +223,15 @@ main()
 	shift $ARGSHIFT
 	get_db_path "$@"
 	shift $ARGSHIFT
+	test $# -eq 0 || die_help "Trailing arguments: $@"
 
-	if [ $DRYRUN -eq 1 ]; then
+	if [ $DRYRUN -eq $TRUE ]; then
 		dryrun
-	elif [ $DIRECT -eq 1 ]; then
-		if [ -d "$DBPATH" ]; then
-			dumpall
-		else
-			dump
-		fi
+		exit
+	fi
+
+	if [ $DIRECT -eq $TRUE ]; then
+		dump
 	else
 		docker_dump
 	fi
