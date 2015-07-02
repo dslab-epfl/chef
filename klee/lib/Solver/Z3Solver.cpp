@@ -52,17 +52,25 @@
 #include <list>
 #include <iostream>
 
-
+using namespace llvm;
 using boost::scoped_ptr;
 
 
 namespace {
-    llvm::cl::opt<bool>
-    ConsConstantArrays("z3-cons-constant-arrays",
-                       llvm::cl::desc("Specify constant arrays as nested store() "
-                               "expressions, as opposed to asserting their "
-                               "values in the solver."),
-                       llvm::cl::init(true));
+enum Z3ArrayConsMode {
+    Z3_ARRAY_ITE,
+    Z3_ARRAY_STORES,
+    Z3_ARRAY_ASSERTS
+};
+
+cl::opt<Z3ArrayConsMode> ArrayConsMode("z3-array-cons-mode",
+        cl::desc("Array construction mode in Z3"),
+        cl::values(
+                clEnumValN(Z3_ARRAY_ITE, "ite", "If-then-else expressions over BV variables"),
+                clEnumValN(Z3_ARRAY_STORES, "stores", "Nested store expressions"),
+                clEnumValN(Z3_ARRAY_ASSERTS, "asserts", "Assertions over array values"),
+                clEnumValEnd),
+        cl::init(Z3_ARRAY_ASSERTS));
 }
 
 
@@ -83,6 +91,7 @@ public:
 
 protected:
     void configureSolver();
+    void resetBuilder();
 
     virtual void preCheck(const Query&) = 0;
     virtual void postCheck(const Query&) = 0;
@@ -142,18 +151,27 @@ Z3BaseSolverImpl::Z3BaseSolverImpl()
     : solver_(context_, "QF_BV") {
 
     configureSolver();
-
-    /*if (ConsConstantArrays)
-        builder_ = new Z3ArrayBuilder(context_);
-    else
-        builder_ = new Z3AssertArrayBuilder(solver_);*/
-    // TODO: Build an appropriate builder
-    builder_.reset(new Z3AssertArrayBuilder(solver_));
+    resetBuilder();
 }
 
 
 Z3BaseSolverImpl::~Z3BaseSolverImpl() {
 
+}
+
+
+void Z3BaseSolverImpl::resetBuilder() {
+    switch (ArrayConsMode) {
+    case Z3_ARRAY_ITE:
+        builder_.reset(new Z3IteBuilder(context_));
+        break;
+    case Z3_ARRAY_STORES:
+        builder_.reset(new Z3ArrayBuilder(context_));
+        break;
+    case Z3_ARRAY_ASSERTS:
+        builder_.reset(new Z3AssertArrayBuilder(solver_));
+        break;
+    }
 }
 
 
@@ -205,13 +223,13 @@ bool Z3BaseSolverImpl::check(const Query &query,
 
 void Z3BaseSolverImpl::configureSolver() {
     // TODO: Turn this into some sort of optional logging...
-    llvm::errs() << "[Z3] Initializing..." << '\n';
+    errs() << "[Z3] Initializing..." << '\n';
 
     Z3_param_descrs solver_params = Z3_solver_get_param_descrs(context_, solver_);
     Z3_param_descrs_inc_ref(context_, solver_params);
 
-    llvm::errs() << "[Z3] Available parameters:" << '\n';
-    llvm::errs() << "[Z3]  " << Z3_param_descrs_to_string(context_, solver_params) << '\n';
+    errs() << "[Z3] Available parameters:" << '\n';
+    errs() << "[Z3]  " << Z3_param_descrs_to_string(context_, solver_params) << '\n';
 
     z3::params params(context_);
     params.set("array.extensional", false);
@@ -289,7 +307,7 @@ Z3IncrementalSolverImpl::~Z3IncrementalSolverImpl() {
 
 
 void Z3IncrementalSolverImpl::preCheck(const Query &query) {
-    llvm::errs() << "====> Query size: " << query.constraints.size() << '\n';
+    errs() << "====> Query size: " << query.constraints.size() << '\n';
 
     ConditionNodeList *cur_constraints = new ConditionNodeList();
 
@@ -314,12 +332,12 @@ void Z3IncrementalSolverImpl::preCheck(const Query &query) {
     if (last_it != last_constraints_->end()) {
         unsigned amount = 1 + last_constraints_->back()->depth()
                 - (*last_it)->depth();
-        llvm::errs() << "====> POP x" << amount << '\n';
+        errs() << "====> POP x" << amount << '\n';
         solver_.pop(amount);
     }
 
     if (cur_it != cur_constraints->end()) {
-        llvm::errs() << "====> PUSH x"
+        errs() << "====> PUSH x"
                 << (cur_constraints->back()->depth() - (*cur_it)->depth() + 1)
                 << '\n';
 
@@ -354,7 +372,7 @@ Z3SolverImpl::~Z3SolverImpl() {
 
 
 void Z3SolverImpl::preCheck(const Query &query) {
-    llvm::errs() << "====> Query size: " << query.constraints.size() << '\n';
+    errs() << "====> Query size: " << query.constraints.size() << '\n';
 
     std::list<ConditionNodeRef> cur_constraints;
 
@@ -373,6 +391,7 @@ void Z3SolverImpl::preCheck(const Query &query) {
 
 void Z3SolverImpl::postCheck(const Query&) {
     solver_.reset();
+    resetBuilder();
 }
 
 
