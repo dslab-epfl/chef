@@ -126,12 +126,12 @@ klee_build()
 			klee_ldflags="$klee_ldflags -fsanizite=address"
 		fi
 		track 'Configuring KLEE' "$klee_srcpath"/configure \
-			--prefix="$BUILDPATH_BASE/opt" \
+			--prefix="$BUILDPATH_ROOT/opt" \
 			--with-llvmsrc="$LLVM_SRC" \
 			--with-llvmobj="$LLVM_BUILD" \
 			--target=x86_64 \
 			--enable-exceptions \
-			--with-stp="$BUILDPATH_BASE/stp" \
+			--with-stp="$BUILDPATH_ROOT/stp" \
 			CC="$LLVM_NATIVE_CC" \
 			CXX="$LLVM_NATIVE_CXX" \
 			CFLAGS="$klee_cflags" \
@@ -207,11 +207,11 @@ qemu_install()
 {
 	make install
 	cp "$ARCH-s2e-softmmu/op_helper.bc" \
-		"$BUILDPATH_BASE/opt/share/qemu/op_helper.bc.$ARCH"
+		"$BUILDPATH_ROOT/opt/share/qemu/op_helper.bc.$ARCH"
 	cp "$ARCH-softmmu/qemu-system-$ARCH" \
-		"$BUILDPATH_BASE/opt/bin/qemu-system-$ARCH"
+		"$BUILDPATH_ROOT/opt/bin/qemu-system-$ARCH"
 	cp "$ARCH-s2e-softmmu/qemu-system-$ARCH" \
-		"$BUILDPATH_BASE/opt/bin/qemu-system-$ARCH-s2e"
+		"$BUILDPATH_ROOT/opt/bin/qemu-system-$ARCH-s2e"
 }
 
 qemu_build()
@@ -230,11 +230,11 @@ qemu_build()
 			*) ;;
 		esac
 		track 'Configuring qemu' "$qemu_srcpath"/configure \
-			--with-klee="$BUILDPATH_BASE/klee/$ASSERTS" \
+			--with-klee="$BUILDPATH_ROOT/klee/$ASSERTS" \
 			--with-llvm="$LLVM_BUILD/$ASSERTS" \
-			--with-libvmi-libdir="$BUILDPATH_BASE/libvmi" \
+			--with-libvmi-libdir="$BUILDPATH_ROOT/libvmi" \
 			$(test "$TARGET" = 'debug' && echo '--enable-debug') \
-			--prefix="$BUILDPATH_BASE/opt" \
+			--prefix="$BUILDPATH_ROOT/opt" \
 			--cc="$LLVM_NATIVE_CC" \
 			--cxx="$LLVM_NATIVE_CXX" \
 			--target-list="$ARCH-s2e-softmmu,$ARCH-softmmu" \
@@ -242,14 +242,14 @@ qemu_build()
 			--enable-s2e \
 			--with-pkgversion=S2E \
 			--enable-boost \
-			--with-liblua="$BUILDPATH_BASE/lua/src" \
+			--with-liblua="$BUILDPATH_ROOT/lua/src" \
 			--extra-cxxflags=-Wno-deprecated \
 			--with-libvmi-incdir="$SRCPATH_ROOT/libvmi/include" \
 			--disable-virtfs \
-			--with-stp="$BUILDPATH_BASE/stp" \
+			--with-stp="$BUILDPATH_ROOT/stp" \
 			$qemu_confopt \
 			--extra-ldflags="$(test "$MODE" = 'libmemtracer' && \
-			  echo "-L$BUILDPATH_BASE/libmemtracer -lmemtracer")"\
+			  echo "-L$BUILDPATH_ROOT/libmemtracer -lmemtracer")"\
 			$QEMU_FLAGS \
 		|| return $FALSE
 	fi
@@ -388,12 +388,12 @@ tests_build()
 			--with-llvmsrc="$LLVM_SRC" \
 			--with-llvmobj="$LLVM_BUILD" \
 			--with-s2e-src="$SRCPATH_ROOT/qemu" \
-			--with-s2eobj-release="$BUILDPATH_BASE/qemu" \
-			--with-s2eobj-debug="$BUILDPATH_BASE/qemu" \
+			--with-s2eobj-release="$BUILDPATH_ROOT/qemu" \
+			--with-s2eobj-debug="$BUILDPATH_ROOT/qemu" \
 			--with-klee-src="$SRCPATH_ROOT/klee" \
-			--with-klee-obj="$BUILDPATH_BASE/klee" \
-			--with-gmock="$BUILDPATH_BASE/gmock" \
-			--with-stp="$BUILDPATH_BASE/stp" \
+			--with-klee-obj="$BUILDPATH_ROOT/klee" \
+			--with-gmock="$BUILDPATH_ROOT/gmock" \
+			--with-stp="$BUILDPATH_ROOT/stp" \
 			--with-clang-profile-lib="$LLVM_NATIVE_LIB" \
 			--target=x86_64 \
 			CC="$LLVM_NATIVE_CC" \
@@ -415,7 +415,7 @@ all_build()
 {
 	for BUILDDIR in $COMPONENTS
 	do
-		BUILDPATH="$BUILDPATH_BASE/$BUILDDIR"
+		BUILDPATH="$BUILDPATH_ROOT/$BUILDDIR"
 
 		# Test whether this component needs to be ignored or not
 		cont=$FALSE
@@ -446,7 +446,7 @@ all_build()
 		fi
 
 		# Build:
-		cd "$BUILDPATH_BASE"
+		cd "$BUILDPATH_ROOT"
 		LOGFILE="${BUILDPATH}.log"
 		if [ $CHECK -eq $TRUE ] || [ $STAMPED -eq $FALSE ]; then
 			rm -f "$LOGFILE"
@@ -464,7 +464,7 @@ all_build()
 		LOGFILE='/dev/null'
 		set_stamp
 	done
-	success "Successfully built S²E-chef in %s.\n" "$BUILDPATH_BASE"
+	success "Successfully built S²E-chef in %s.\n" "$BUILDPATH_ROOT"
 	CODE_TERM='success'
 }
 
@@ -492,7 +492,7 @@ docker_build()
 			-q "$QEMU_FLAGS" \
 			$(test $SILENT -eq $TRUE && printf '%s' '-s') \
 			-z \
-			"$ARCH" "$TARGET" "$MODE"
+			"$ARCH:$TARGET:$MODE"
 }
 
 # MAIN =========================================================================
@@ -500,8 +500,7 @@ docker_build()
 usage()
 {
 	cat <<- EOF
-	Usage: $INVOKENAME [OPTIONS ...] ARCH TARGET [MODE]
-	       $INVOKENAME -p
+	Usage: $INVOKENAME [OPTIONS ...] [[ARCH]:[TARGET]:[MODE]]
 	EOF
 }
 
@@ -511,17 +510,7 @@ help()
 
 	cat <<- EOF
 
-	Architectures:
-	  i386  x86_64
-
-	Targets:
-	  release  debug
-
-	Modes:
-	  normal  asan  libmemtracer  [default=normal]
-
 	Options:
-	  -b PATH    Build chef in PATH [default=$BUILDDIR_BASE]
 	  -c COMPS   Force-\`make\` components COMPS
 	             [default='$CHECKED']
 	  -f         Force-rebuild
@@ -538,13 +527,39 @@ help()
 
 	Components:
 	  $COMPONENTS
+
+	Architectures:
+	$(for arch in $ARCHS; do
+		if [ "$arch" = "$DEFAULT_ARCH" ]; then
+			printf '  [%s]' "$arch"
+		else
+			printf '  %s' "$arch"
+		fi
+	done)
+
+	Targets:
+	$(for target in $TARGETS; do
+		if [ "$target" = "$DEFAULT_TARGET" ]; then
+			printf '  [%s]' "$target"
+		else
+			printf '  %s' "$target"
+		fi
+	done)
+
+	Modes:
+	$(for mode in $MODES; do
+		if [ "$mode" = "$DEFAULT_MODE" ]; then
+			printf '  [%s]' "$mode"
+		else
+			printf '  %s' "$mode"
+		fi
+	done)
 	EOF
 }
 
 get_options()
 {
 	# Default values:
-	BUILDDIR_BASE='./build'
 	CHECKED="$COMPONENTS"
 	DIRECT=$FALSE
 	DRYRUN=$FALSE
@@ -560,9 +575,8 @@ get_options()
 	SILENT=${CCLI_SILENT_BUILD:=$FALSE}
 
 	# Options:
-	while getopts b:c:fhi:j:l:q:syz opt; do
+	while getopts c:fhi:j:l:q:syz opt; do
 		case "$opt" in
-			b) BUILDDIR_BASE="$OPTARG" ;;
 			c) CHECKED="$OPTARG" ;;
 			f) FORCE=$TRUE ;;
 			h) help; exit 1 ;;
@@ -588,37 +602,16 @@ get_options()
 	VERBOSE=$(! $(as_boolean $SILENT); echo $?)
 }
 
-get_architecture()
+get_release()
 {
-	ARCH="$1"
-	case "$ARCH" in
-		i386|x86_64) ;;
-		'') die_help 'missing architecture' ;;
-		*) die_help "invalid architecture: '%s'" "$ARCH" ;;
-	esac
-	ARGSHIFT=1
-}
-
-get_target()
-{
-	TARGET="$1"
-	case "$TARGET" in
-		release) ASSERTS='Release+Asserts' ;;
-		debug) ASSERTS='Debug+Asserts' ;;
-		'') die_help "missing target" ;;
-		*) die_help "invalid target: '%s'" "$TARGET" ;;
-	esac
-	ARGSHIFT=1
-}
-
-get_mode()
-{
-	MODE="$1"
-	case "$MODE" in
-		asan|libmemtracer|normal) ARGSHIFT=1 ;;
-		'') MODE='normal'; ARGSHIFT=0 ;;
-		*) die_help "invalid mode: '%s'" "$MODE" ;;
-	esac
+	RELEASE="$1"
+	if [ -z "$RELEASE" ]; then
+		ARGSHIFT=0
+		RELEASE="$DEFAULT_RELEASE"
+	else
+		ARGSHIFT=1
+	fi
+	split_release $RELEASE    # sets ARCH, TARGET and MODE, exits on error
 }
 
 main()
@@ -628,24 +621,15 @@ main()
 	# Command line arguments:
 	get_options "$@"
 	shift $ARGSHIFT
-	get_architecture "$@"
-	shift $ARGSHIFT
-	get_target "$@"
-	shift $ARGSHIFT
-	get_mode "$@"
+	get_release "$@"
 	shift $ARGSHIFT
 	test $# -eq $TRUE || die_help "trailing arguments: $@"
 
-	if [ $DIRECT -eq $TRUE ]; then
-		BUILDPATH_BASE="$(readlink -f "$BUILDDIR_BASE")"
-	else
-		BUILDPATH_BASE="$SRCPATH_ROOT/build"
-	fi
-
 	if [ $DRYRUN -eq $TRUE ]; then
+		util_dryrun
 		cat <<- EOF
 		COMPONENTS='$COMPONENTS'
-		BUILDPATH_BASE=$BUILDPATH_BASE
+		BUILDPATH_ROOT=$BUILDPATH_ROOT
 		CHECKED='$COMPONENTS'
 		DIRECT=$(as_boolean $DIRECT)
 		FORCE=$(as_boolean $FORCE)
@@ -654,9 +638,6 @@ main()
 		LLVM_BASE=$LLVM_BASE
 		QEMU_FLAGS='$QEMU_FLAGS'
 		SILENT=$(as_boolean $SILENT) (CCLI_SILENT_BUILD=$(as_boolean $CCLI_SILENT_BUILD))
-		ARCH=$ARCH
-		TARGET=$TARGET
-		MODE=$MODE
 		LLVM_SRC=$LLVM_SRC
 		LLVM_BUILD=$LLVM_BUILD
 		LLVM_NATIVE=$LLVM_NATIVE
@@ -664,16 +645,16 @@ main()
 		LLVM_NATIVE_CXX=$LLVM_NATIVE_CXX
 		LLVM_NATIVE_LIB=$LLVM_NATIVE_LIB
 		EOF
-		util_dryrun
 		exit 1
 	fi
 
 	if [ $DIRECT -eq $TRUE ]; then
+		info 'Building %s with %d cores' "$RELEASE" "$JOBS"
 		CODE_TERM='restart'
 		while [ "$CODE_TERM" = 'restart' ]; do
 			# Build directly:
-			test -d "$BUILDPATH_BASE" || mkdir "$BUILDPATH_BASE"
-			cd "$BUILDPATH_BASE"
+			test -d "$BUILDPATH_ROOT" || mkdir "$BUILDPATH_ROOT"
+			cd "$BUILDPATH_ROOT"
 			all_build
 		done
 		case "$CODE_TERM" in
@@ -683,11 +664,11 @@ main()
 		esac
 	else
 		# Wrap build in docker:
-		mkdir -p "$BUILDPATH_BASE"
-		setfacl -m user:$(id -u):rwx "$BUILDPATH_BASE"
-		setfacl -m user:431:rwx "$BUILDPATH_BASE"
-		setfacl -d -m user:$(id -u):rwx "$BUILDPATH_BASE"
-		setfacl -d -m user:431:rwx "$BUILDPATH_BASE"
+		mkdir -p "$BUILDPATH_ROOT"
+		setfacl -m user:$(id -u):rwx "$BUILDPATH_ROOT"
+		setfacl -m user:431:rwx "$BUILDPATH_ROOT"
+		setfacl -d -m user:$(id -u):rwx "$BUILDPATH_ROOT"
+		setfacl -d -m user:431:rwx "$BUILDPATH_ROOT"
 		docker_build
 	fi
 }
