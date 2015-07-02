@@ -148,7 +148,7 @@ Z3Solver::Z3Solver(bool incremental)
 
 
 Z3BaseSolverImpl::Z3BaseSolverImpl()
-    : solver_(context_) { // TODO: Figure out right way to instantiate theory
+    : solver_(context_, "QF_ABV") {
 
     configureSolver();
     resetBuilder();
