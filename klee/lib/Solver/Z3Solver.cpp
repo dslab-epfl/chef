@@ -148,7 +148,7 @@ Z3Solver::Z3Solver(bool incremental)
 
 
 Z3BaseSolverImpl::Z3BaseSolverImpl()
-    : solver_(context_, "QF_BV") {
+    : solver_(context_) {
 
     configureSolver();
     resetBuilder();
