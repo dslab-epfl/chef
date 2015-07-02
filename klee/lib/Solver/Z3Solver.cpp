@@ -180,7 +180,8 @@ bool Z3BaseSolverImpl::check(const Query &query,
                              std::vector<std::vector<unsigned char> > &values,
                              bool &hasSolution) {
 
-    // Note that we're checking for validity (or a counterexample)
+    // Note the negation, since we're checking for validity
+    // (i.e., a counterexample)
     solver_.add(!builder_->construct(query.expr));
 
     z3::check_result result = solver_.check();
