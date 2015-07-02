@@ -18,7 +18,7 @@ smtlib_sort()
 		t=$(head -n 1 "$query" | awk '{print $2}')
 		s=$(stat -c '%s' "$query")
 		r=$(dc -e "5k $t $s / p")
-		printf "%f µs: %s\n" $r "$query"
+		printf "%f µs/B: %s\n" $r "$query"
 	done | sort | tail -n $LINES | tac
 }
 
@@ -53,6 +53,7 @@ get_options()
 		case "$opt" in
 			h) help; exit 1 ;;
 			l) LINES="$OPTARG" ;;
+			'?') die_help ;;
 		esac
 	done
 	is_numeric "$LINES" || die_help 'Limit must be numeric'
