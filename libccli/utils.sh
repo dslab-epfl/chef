@@ -1,7 +1,11 @@
-# Shell script utilities shared by most ccli scripts
-# Include with:
+# Shell script utilities shared by most ccli scripts.
+# Compatible with set -e
+#
+# To be include as follows:
 #
 #     . "$(readlink -f "$(dirname "$0")")/utils.sh"
+#
+# XXX $VERBOSE and $LOGFILE *must* be set for track() and examine_logs()
 #
 # Maintainer: Tinu Weber <martin.weber@epfl.ch>
 
@@ -17,16 +21,34 @@ if [ -z "$INVOKENAME" ]; then
 	INVOKENAME="$RUNNAME"
 fi
 
+NULL='/dev/null'
+
+# DOCKER =======================================================================
+
 DOCKER_IMAGE='dslab/s2e-chef:v0.6'
 DOCKER_HOSTPATH='/host'
 
+docker_image_exists()
+{
+	if docker inspect "$1" >/dev/null 2>&1; then
+		return $TRUE
+	else
+		return $FALSE
+	fi
+}
+
 # MESSAGES =====================================================================
 
+COLOUR_ERROR=31
+COLOUR_SUCCESS=32
+COLOUR_WARNING=33
+COLOUR_MISC=34
+
 FATAL_="[\033[31mFATAL\033[0m]"
-FAIL_="[\033[31mFAIL\033[0m]"
-WARN_="[\033[33mWARN\033[0m]"
-_OK__="[\033[32m OK \033[0m]"
-SKIP_="[\033[34mSKIP\033[0m]"
+FAIL_="[\033[${COLOUR_ERROR}mFAIL\033[0m]"
+WARN_="[\033[${COLOUR_WARNING}mWARN\033[0m]"
+_OK__="[\033[${COLOUR_SUCCESS}m OK \033[0m]"
+SKIP_="[\033[${COLOUR_MISC}mSKIP\033[0m]"
 
 note()
 {
@@ -51,28 +73,30 @@ skip()
 
 emphasised()
 {
-	important_colour=$1
-	important_format="$2"
+	emphasised_colour=$1
+	emphasised_format="$2"
 	shift 2
-	printf "\033[1;${important_colour}m>>>\033[0m $important_format" "$@"
+	printf "\033[1;${emphasised_colour}m>>>\033[0m $emphasised_format" "$@"
 }
 
 success()
 {
 	success_format="$1"
 	shift
-	emphasised 32 "$success_format" "$@"
+	emphasised $COLOUR_SUCCESS "$success_format" "$@"
 }
 
 fail()
 {
 	fail_format="$1"
 	shift
-	emphasised 31 "$fail_format" "$@"
+	emphasised $COLOUR_ERROR "$fail_format" "$@"
 }
 
 track()
 {
+	util_check
+
 	track_msg="$1"
 	shift
 
@@ -83,14 +107,15 @@ track()
 			return $FALSE
 		fi
 	else
-		if [ -z "$LOGFILE" ]; then
-			die_internal "track(): no log file specified"
-		fi
 		printf "\033[s[ .. ] %s" "$track_msg"
-		track_status=$_OK__
-		{ "$@" || track_status=$FAIL_; } >>"$LOGFILE" 2>>"$LOGFILE"
-		printf "\033[u%s %s\n" "$track_status" "$track_msg"
-		test $track_status -eq $_OK__ && return $TRUE || return $FALSE
+		track_status="$_OK__"
+		{ "$@" || track_status="$FAIL_"; } >>"$LOGFILE" 2>>"$LOGFILE"
+		printf "\033[u$track_status %s\n" "$track_msg"
+		if [ "$track_status" = "$_OK__" ]; then
+			return $TRUE
+		else
+			return $FALSE
+		fi
 	fi
 }
 
@@ -117,6 +142,14 @@ ask()
 			*) ;;
 		esac
 	done
+}
+
+examine_logs()
+{
+	util_check
+	test $VERBOSE -eq $FALSE || return
+	ask $COLOUR_ERROR 'yes' 'Examine %s?' "$LOGFILE" || return
+	less "$LOGFILE"
 }
 
 # EXIT =========================================================================
@@ -149,7 +182,7 @@ die_help()
 die_internal()
 {
 	die_internal_format="$1"
-	die 127 "internal error: $die_internal_format\n" "$@"
+	die 127 "$FATAL_ Internal Error: $die_internal_format" "$@" >&2
 }
 
 # SHELL ========================================================================
@@ -180,6 +213,9 @@ is_function()
 # Give human readable representation for boolean
 as_boolean()
 {
+	test -n "$1" || die_internal "as_boolean(): empty value"
+	is_numeric "$1" || die_internal "as_boolean(): non-numeric value"
+
 	if [ $1 -eq $TRUE ]; then
 		echo 'true'
 	else
@@ -212,12 +248,20 @@ util_dryrun()
 	SRCPATH_ROOT=$SRCPATH_ROOT
 	SRCDIR_ROOT=$SRCDIR_ROOT
 	INVOKENAME=$INVOKENAME
-	DOCKER_IMAGE=$DOCKER_IMAGE
-	DOCKER_HOSTPATH=$DOCKER_HOSTPATH
+	VERBOSE=$(as_boolean $VERBOSE)
+	LOGFILE=$LOGFILE
 	FATAL_=$FATAL_
 	FAIL_=$FAIL_
 	WARN_=$WARN_
 	_OK__=$_OK__
 	SKIP_=$SKIP_
+	DOCKER_IMAGE=$DOCKER_IMAGE
+	DOCKER_HOSTPATH=$DOCKER_HOSTPATH
 	EOF
+}
+
+util_check()
+{
+	test -n "$VERBOSE" || die_internal 'VERBOSE not set'
+	test -n "$LOGFILE" || die_internal 'LOGFILE not set'
 }
