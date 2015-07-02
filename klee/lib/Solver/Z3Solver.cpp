@@ -148,7 +148,7 @@ Z3Solver::Z3Solver(bool incremental)
 
 
 Z3BaseSolverImpl::Z3BaseSolverImpl()
-    : solver_(context_) {
+    : solver_(context_) { // TODO: Figure out right way to instantiate theory
 
     configureSolver();
     resetBuilder();
