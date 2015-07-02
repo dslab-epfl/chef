@@ -193,17 +193,34 @@ bool Z3BaseSolverImpl::check(const Query &query,
 
     z3::model model = solver_.get_model();
 
+#if 0 // TODO: Turn into proper debug logging
+    std::stringstream model_ss;
+    model_ss << solver_ << '\n';
+    model_ss << model; model_ss.flush();
+    errs() << "[Z3][Debug] Model: " << '\n' << model_ss.str() << '\n';
+#endif
+
     values.reserve(objects.size());
     for (std::vector<const Array*>::const_iterator it = objects.begin(),
             ie = objects.end(); it != ie; ++it) {
         const Array *array = *it;
         std::vector<unsigned char> data;
 
+#if 0 // TODO: Turn into proper debug logging
+        errs() << "[Z3][Debug] Array name: " << array->name << '\n';
+#endif
+
         data.reserve(array->size);
         for (unsigned offset = 0; offset < array->size; ++offset) {
             z3::expr value_ast = model.eval(
                     builder_->getInitialRead(array, offset), true);
             unsigned value_num;
+
+#if 0 // TODO: Turn into proper debug logging
+            std::stringstream ss;
+            ss << builder_->getInitialRead(array, offset) << " // " << value_ast; ss.flush();
+            errs() << "[Z3][Debug] Initial read eval: " << ss.str() << '\n';
+#endif
 
             Z3_bool conv_result = Z3_get_numeral_uint(context_, value_ast,
                     &value_num);
