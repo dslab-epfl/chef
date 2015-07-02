@@ -1,18 +1,14 @@
 #!/usr/bin/env sh
 #
-# This script simplifies the docker usage.
+# This script runs the right docker container, with the necessary paths set up
+# to interact with the chef source. It is especially handy for debugging things
+# inside the container without having to type the full docker command line.
 #
 # Maintainer: Tinu Weber <martin.weber@epfl.ch>
 
-RUNNAME="$(basename "$0")"
-RUNPATH="$(dirname "$(readlink -f "$0")")"
-CHEFROOT="$(dirname "$RUNPATH")"
-DOCKER_IMAGE='dslab/s2e-chef'
-DOCKER_VERSION='v0.6'
-DOCKER_HOSTPATH='/host'
-if [ -z "$INVOKENAME" ]; then
-	INVOKENAME="$RUNNAME"
-fi
+# UTILS ========================================================================
+
+. "$(readlink -f "$(dirname "$0")")/utils.sh"
 
 # RUN ==========================================================================
 
@@ -22,21 +18,12 @@ run()
 		--rm \
 		-t \
 		-i \
-		-v "$CHEFROOT":"$DOCKER_HOSTPATH" \
-		"$DOCKER_IMAGE":"$DOCKER_VERSION" \
+		-v "$SRCPATH_ROOT":"$DOCKER_HOSTPATH" \
+		"$DOCKER_IMAGE" \
 		/bin/bash
 }
 
-# UTILITIES ====================================================================
-
-die()
-{
-	die_retval=$1
-	die_format="$2"
-	shift 2
-	printf "$die_format\n" "$@" >&2
-	exit $die_retval
-}
+# MAIN =========================================================================
 
 usage()
 {
@@ -57,27 +44,6 @@ help()
 	  -h      Display this help
 	EOF
 }
-
-die_help()
-{
-	die_help_format="$1"
-	if [ -n "$die_help_format" ]; then
-		shift
-		printf "$die_help_format\n" "$@" >&2
-	fi
-	usage >&2
-	die 1 'Run `%s -h` for help.' "$INVOKENAME"
-}
-
-internal_error()
-{
-	internal_error_format="$1"
-	shift
-	printf "Internal error: $internal_error_format\n" "$@"
-	exit 3
-}
-
-# MAIN =========================================================================
 
 read_options()
 {
@@ -110,7 +76,7 @@ main()
 
 	case "$SUBCOMMAND" in
 		run) run ;;
-		*) internal_error 'main(): Unknown subcommand: %s' "$SUBCOMMAND" ;;
+		*) die_internal 'main(): Unknown subcommand: %s' "$SUBCOMMAND" ;;
 	esac
 }
 

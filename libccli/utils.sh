@@ -1,7 +1,7 @@
 # Shell script utilities shared by most ccli scripts.
 # Compatible with set -e
 #
-# To be include as follows:
+# To be included as follows:
 #
 #     . "$(readlink -f "$(dirname "$0")")/utils.sh"
 #
@@ -182,7 +182,8 @@ die_help()
 die_internal()
 {
 	die_internal_format="$1"
-	die 127 "$FATAL_ Internal Error: $die_internal_format" "$@" >&2
+	shift
+	die 127 "$FATAL_ Internal Error: $die_internal_format" "$@"
 }
 
 # SHELL ========================================================================

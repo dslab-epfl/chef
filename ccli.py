@@ -5,7 +5,6 @@
 
 import sys
 import os
-import libccli.libccli
 
 
 RUNPATH = os.path.dirname(os.path.realpath(__file__))
