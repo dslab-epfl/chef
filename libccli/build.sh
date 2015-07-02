@@ -453,52 +453,46 @@ all_build()
 			if ! ${BUILDDIR}_build; then
 				fail "Build failed.\n"
 				examine_logs
-				die 2 'Aborting'
+				if ask $COLOUR_ERROR 'yes' "Restart?"; then
+					CODE_TERM='restart'
+				else
+					CODE_TERM='abort'
+				fi
+				return
 			fi
 		fi
 		LOGFILE='/dev/null'
 		set_stamp
 	done
 	success "Successfully built S²E-chef in %s.\n" "$BUILDPATH_BASE"
+	CODE_TERM='success'
 }
 
 # DOCKER =======================================================================
 
 docker_build()
 {
-	docker_build_repeat=$TRUE
-	while [ $docker_build_repeat -eq $TRUE ]; do
-		docker_build_repeat=$FALSE
+	if ! docker_image_exists "$DOCKER_IMAGE"; then
+		die '%s: image not found' "$DOCKER_IMAGE"
+	fi
 
-		if ! docker_image_exists "$DOCKER_IMAGE"; then
-			die '%s: image not found' "$DOCKER_IMAGE"
-		fi
-
-		if ! docker run \
-			--rm \
-			-t \
-			-i \
-			-v "$SRCPATH_ROOT":"$DOCKER_HOSTPATH" \
-			"$DOCKER_IMAGE" \
-			"$DOCKER_HOSTPATH/$RUNDIR/$RUNNAME" \
-				-b "$DOCKER_HOSTPATH/build/$ARCH-$TARGET-$MODE" \
-				-c "$CHECKED" \
-				$(test $FORCE -eq $TRUE && printf '%s' '-f') \
-				-i "$IGNORED" \
-				-j$JOBS \
-				-l "$LLVM_BASE" \
-				-q "$QEMU_FLAGS" \
-				$(test $SILENT -eq $TRUE && printf '%s' '-s') \
-				-z \
-				"$ARCH" "$TARGET" "$MODE"
-		then
-			if ask $COLOUR_ERROR 'yes' "Restart?"; then
-				docker_build_repeat=$TRUE
-			else
-				die 2 'Aborting'
-			fi
-		fi
-	done
+	exec docker run \
+		--rm \
+		-t \
+		-i \
+		-v "$SRCPATH_ROOT":"$DOCKER_HOSTPATH" \
+		"$DOCKER_IMAGE" \
+		"$DOCKER_HOSTPATH/$RUNDIR/$RUNNAME" \
+			-b "$DOCKER_HOSTPATH/build/$ARCH-$TARGET-$MODE" \
+			-c "$CHECKED" \
+			$(test $FORCE -eq $TRUE && printf '%s' '-f') \
+			-i "$IGNORED" \
+			-j$JOBS \
+			-l "$LLVM_BASE" \
+			-q "$QEMU_FLAGS" \
+			$(test $SILENT -eq $TRUE && printf '%s' '-s') \
+			-z \
+			"$ARCH" "$TARGET" "$MODE"
 }
 
 # MAIN =========================================================================
@@ -672,11 +666,21 @@ main()
 		EOF
 		util_dryrun
 		exit 1
-	elif [ $DIRECT -eq $TRUE ]; then
-		# Build directly:
-		test -d "$BUILDPATH_BASE" || mkdir "$BUILDPATH_BASE"
-		cd "$BUILDPATH_BASE"
-		all_build
+	fi
+
+	if [ $DIRECT -eq $TRUE ]; then
+		CODE_TERM='restart'
+		while [ "$CODE_TERM" = 'restart' ]; do
+			# Build directly:
+			test -d "$BUILDPATH_BASE" || mkdir "$BUILDPATH_BASE"
+			cd "$BUILDPATH_BASE"
+			all_build
+		done
+		case "$CODE_TERM" in
+			'success') exit 0 ;;
+			'abort') exit 2 ;;
+			*) die_internal 'main(): unknown termination code: %s' "$CODE_TERM" ;;
+		esac
 	else
 		# Wrap build in docker:
 		mkdir -p "$BUILDPATH_BASE"

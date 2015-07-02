@@ -101,7 +101,7 @@ dryrun()
 
 docker_compare()
 {
-	docker run \
+	exec docker run \
 		-t \
 		-i \
 		--rm \

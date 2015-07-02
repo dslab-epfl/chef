@@ -52,7 +52,7 @@ dumpall()
 
 docker_dump()
 {
-	docker run \
+	exec docker run \
 		--rm \
 		-t \
 		-i \

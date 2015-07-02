@@ -147,9 +147,13 @@ ask()
 examine_logs()
 {
 	util_check
-	test $VERBOSE -eq $FALSE || return
-	ask $COLOUR_ERROR 'yes' 'Examine %s?' "$LOGFILE" || return
-	less "$LOGFILE"
+	if [ $VERBOSE -eq $FALSE ]; then
+		if ask $COLOUR_ERROR 'yes' 'Examine %s?' "$LOGFILE"; then
+			less "$LOGFILE"
+		else
+			note '"ignoring the error logs - the path to dark side is" -- Yoda'
+		fi
+	fi
 }
 
 # EXIT =========================================================================
