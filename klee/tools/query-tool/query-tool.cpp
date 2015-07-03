@@ -83,6 +83,10 @@ cl::opt<bool> ReplayQueries("replay",
         cl::desc("Re-run the queries through a solver (expensive!)"),
         cl::init(false));
 
+cl::opt<std::string> ReplayLabel("replay-label",
+        cl::desc("Label to attached to replayed query statistics"),
+        cl::init("query-tool"));
+
 cl::opt<bool> ComputeQueryStats("compute-query-stats",
         cl::desc("Compute query statistics (somewhat expensive)"),
         cl::init(false));
@@ -382,7 +386,7 @@ void QueryStatsRecorder::onQueryDecoded(const Query &query, int64_t qid,
 
 class QueryReplayer : public QueryListener {
 public:
-    QueryReplayer();
+    QueryReplayer(sqlite3 *db);
     virtual ~QueryReplayer();
 
     virtual void onQueryDecoded(const Query &query, int64_t qid,
@@ -394,21 +398,35 @@ private:
 
     TimeValue total_recorded_;
     TimeValue total_replayed_;
+
+    sqlite3 *db_;
+    sqlite3_stmt *insert_stmt_;
 };
 
 
-QueryReplayer::QueryReplayer()
+QueryReplayer::QueryReplayer(sqlite3 *db)
     : total_recorded_(TimeValue::ZeroTime),
-      total_replayed_(TimeValue::ZeroTime) {
+      total_replayed_(TimeValue::ZeroTime),
+      db_(db) {
 
     DefaultSolverFactory solver_factory(NULL);
     solver_ = solver_factory.createEndSolver();
     solver_ = solver_factory.decorateSolver(solver_);
+
+    const char *sql =
+            "INSERT OR REPLACE INTO query_results"
+            "(query_id, label, time_usec, validity)"
+            "VALUES"
+            "(?1, ?2, ?3, ?4);";
+    int result = sqlite3_prepare_v2(db_, sql, -1, &insert_stmt_, NULL);
+    assert(result == SQLITE_OK);
 }
 
 
 QueryReplayer::~QueryReplayer() {
     // TODO: Destruct the solver chain...
+    int result = sqlite3_finalize(insert_stmt_);
+    assert(result == SQLITE_OK);
 }
 
 
@@ -458,6 +476,19 @@ void QueryReplayer::onQueryDecoded(const Query &query, int64_t qid,
            << " Replayed: " << total_replayed_.usec()
            << " Speedup: " << format("%.1fx", float(total_recorded_.usec()) / float(total_replayed_.usec()))
            << '\n';
+
+    sqlite3_clear_bindings(insert_stmt_);
+    sqlite3_bind_int64(insert_stmt_, 1, qid);
+    sqlite3_bind_text(insert_stmt_, 2, ReplayLabel.c_str(), -1, NULL);
+    sqlite3_bind_int64(insert_stmt_, 3, replayed_duration.usec());
+    if (qtype == TRUTH || qtype == VALIDITY) {
+        // This is always correct, as guarded by the assertions above
+        sqlite3_bind_int(insert_stmt_, 4, static_cast<int>(rec_validity));
+    }
+
+    int result = sqlite3_step(insert_stmt_);
+    assert(result == SQLITE_DONE);
+    sqlite3_reset(insert_stmt_);
 }
 
 
@@ -583,7 +614,7 @@ QueryDecoder::QueryDecoder(sqlite3 *db)
     const char *select_sql =
         "SELECT q.id, q.type, q.body, r.validity, r.time_usec "
         "FROM queries AS q, query_results AS r "
-        "WHERE q.id = r.query_id "
+        "WHERE q.id = r.query_id AND r.label = 'recorded' "
         "ORDER BY q.id ASC";
 
     int result = sqlite3_prepare_v2(db_, select_sql, -1, &select_stmt_, NULL);
@@ -605,7 +636,7 @@ int64_t QueryDecoder::getQueryCount() {
     int result;
     const char *sql = "SELECT COUNT(q.id) "
                       "FROM queries AS q, query_results as r "
-                      "WHERE q.id = r.query_id";
+                      "WHERE q.id = r.query_id AND r.label = 'recorded'";
 
     sqlite3_stmt *stmt;
     result = sqlite3_prepare_v2(db_, sql, -1, &stmt, NULL);
@@ -699,7 +730,7 @@ static void decodeQueries(sqlite3 *db) {
     }
 
     if (ReplayQueries) {
-        query_replayer.reset(new QueryReplayer());
+        query_replayer.reset(new QueryReplayer(db));
         decoder.addQueryListener(query_replayer.get());
     }
 

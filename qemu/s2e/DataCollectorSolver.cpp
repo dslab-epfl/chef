@@ -93,11 +93,12 @@ static const char *initialize_sql =
         ");"
 
         "CREATE TABLE IF NOT EXISTS query_results ("
-        "id        INTEGER PRIMARY KEY NOT NULL,"
         "query_id  INTEGER NOT NULL,"
+        "label     TEXT NOT NULL,"
         "time_usec INTEGER,"
         "validity  INTEGER,"
-        "FOREIGN KEY(query_id) REFERENCES queries(id)"
+        "PRIMARY KEY (query_id, label)"
+        "FOREIGN KEY (query_id) REFERENCES queries(id)"
         ");";
 
 
@@ -110,9 +111,9 @@ static const char *qinsert_sql =
 
 static const char *rinsert_sql =
         "INSERT INTO query_results"
-        "(query_id, time_usec, validity)"
+        "(query_id, time_usec, validity, label)"
         "VALUES"
-        "(?1, ?2, ?3);";
+        "(?1, ?2, ?3, 'recorded');";
 
 ////////////////////////////////////////////////////////////////////////////////
 
