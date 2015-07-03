@@ -151,6 +151,38 @@ examine_logs()
 	fi
 }
 
+# EXPANSIONS ===================================================================
+
+list_expand()
+{
+	h="$(echo "$1" | cut -d ',' -f 1)"       # head
+	t="$(echo "$1" | cut -d ',' -f 2-)"      # tail
+	echo "$h"
+	if [ -n "$t" ] && [ "$t" != "$1" ]; then # ugly
+		list_expand "$t"
+	fi
+}
+
+range_expand()
+{
+	range="$1"
+	test -n "$range" || return
+
+	begin="$(echo "$range" | cut -d '-' -f 1)"
+	if ! is_numeric "$begin"; then
+		warn 'Range begin must be numeric' >&2
+		return
+	fi
+	end="$(echo "$range" | cut -d '-' -f 2-)"
+	if ! is_numeric "$end"; then
+		warn 'Range end must be numeric' >&2
+		return
+	fi
+	for i in $(seq $begin $end); do
+		echo $i
+	done
+}
+
 # EXIT =========================================================================
 
 # General die
@@ -227,6 +259,7 @@ as_boolean()
 
 util_dryrun()
 {
+	util_check
 	cat <<- EOF
 	RUNNAME=$RUNNAME
 	RUNPATH=$RUNPATH
@@ -253,8 +286,8 @@ util_dryrun()
 
 util_check()
 {
-	test -n "$VERBOSE" || die_internal 'VERBOSE not set'
-	test -n "$LOGFILE" || die_internal 'LOGFILE not set'
+	VERBOSE=${VERBOSE:-$DEFAULT_VERBOSE}
+	LOGFILE="${LOGFILE:-"$DEFAULT_LOGFILE"}"
 }
 
 # DOCKER =======================================================================
@@ -281,6 +314,8 @@ DEFAULT_TARGET="${CCLI_TARGET:-"release"}"
 DEFAULT_MODE="${CCLI_MODE:-"normal"}"
 DEFAULT_RELEASE="${CCLI_RELEASE:-"$DEFAULT_ARCH:$DEFAULT_TARGET:$DEFAULT_MODE"}"
 DEFAULT_DATAROOT="${CHEF_DATAROOT:-"/var/lib/chef"}"
+DEFAULT_VERBOSE=$FALSE
+DEFAULT_LOGFILE="$NULL"
 
 split_release()
 {
