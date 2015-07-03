@@ -41,10 +41,10 @@ help()
 
 get_options()
 {
-	while getopts h opt; do
+	while getopts :h opt; do
 		case "$opt" in
 			h) help; exit 1 ;;
-			'?') die_help ;;
+			'?') die_help 'Invalid option: -%s' "$OPTARG";;
 		esac
 	done
 	ARGSHIFT=$(($OPTIND - 1))

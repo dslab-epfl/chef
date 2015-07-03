@@ -49,11 +49,11 @@ get_options()
 {
 	LINES=10
 
-	while getopts hl: opt; do
+	while getopts :hl: opt; do
 		case "$opt" in
 			h) help; exit 1 ;;
 			l) LINES="$OPTARG" ;;
-			'?') die_help ;;
+			'?') die_help 'Invalid option: -%s' "$OPTARG";;
 		esac
 	done
 	is_numeric "$LINES" || die_help 'Limit must be numeric'

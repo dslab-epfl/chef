@@ -575,7 +575,7 @@ get_options()
 	SILENT=${CCLI_SILENT_BUILD:=$FALSE}
 
 	# Options:
-	while getopts c:fhi:j:l:q:syz opt; do
+	while getopts :c:fhi:j:l:q:syz opt; do
 		case "$opt" in
 			c) CHECKED="$OPTARG" ;;
 			f) FORCE=$TRUE ;;
@@ -587,7 +587,7 @@ get_options()
 			s) SILENT=$TRUE ;;
 			y) DRYRUN=$TRUE ;;
 			z) DIRECT=$TRUE ;;
-			'?') die_help ;;
+			'?') die_help 'Invalid option: -%s' "$OPTARG";;
 		esac
 	done
 	ARGSHIFT=$(($OPTIND - 1))
@@ -604,14 +604,12 @@ get_options()
 
 get_release()
 {
-	RELEASE="$1"
-	if [ -z "$RELEASE" ]; then
+	if [ -z "$1" ]; then
 		ARGSHIFT=0
-		RELEASE="$DEFAULT_RELEASE"
 	else
 		ARGSHIFT=1
 	fi
-	split_release $RELEASE    # sets ARCH, TARGET and MODE, exits on error
+	split_release "$1"  # sets RELEASE, ARCH, TARGET and MODE
 }
 
 main()

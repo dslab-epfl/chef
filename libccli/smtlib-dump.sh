@@ -16,13 +16,13 @@ DOCKER_HOSTPATH_BUILD='/host-build'
 
 dump()
 {
-	case "$RELEASE" in
-		'release') RELEASE_NAME='Release+Asserts' ;;
-		'debug') RELEASE_NAME='Debug+Asserts' ;;
-		*) die_internal 'dump(): Invalid release: %s' "$RELEASE" ;;
+	case "$TARGET" in
+		'release') BUILD_NAME='Release+Asserts' ;;
+		'debug') BUILD_NAME='Debug+Asserts' ;;
+		*) die_internal 'dump(): Invalid target: %s' "$TARGET" ;;
 	esac
 
-	TOOL_BIN="$BUILD_PATH/$BUILD/klee/$RELEASE_NAME/bin/query-tool"
+	TOOL_BIN="$BUILD_PATH/$BUILD/klee/$BUILD_NAME/bin/query-tool"
 
 	if [ ! -e "$TOOL_BIN" ]; then
 		die 2 '%s not found' "$TOOL_BIN"
@@ -118,21 +118,22 @@ help()
 	cat <<- EOF
 
 	Options:
-	  -a ARCH        Chef build architecture [default=$ARCH]
 	  -b BUILD_PATH  Path to the Chef build directory
 	                 [default=$BUILD_PATH]
 	  -c             Print compact SMTLIB (experimental!)
 	  -h             Display this help
 	  -l LIMIT       Limit number of produced queries to LIMIT (0 = no limit) [default=0]
-	  -m MODE        Build mode ('normal', 'asan', 'libmemtracer') [default=$MODE]
 	  -M             Monolithic dump (no separate files)
 	  -o DUMP_PATH   Dump queries from the DB file to DUMP_PATH
 	                 [default=$DUMP_PATH]
-	  -r RELEASE     Release mode ('release' or 'debug') [default=$RELEASE]
+	  -r RELEASE     Release tuple [default=$DEFAULT_RELEASE]
 	  -s SOLVER      Use solver SOLVER [default=$SOLVER]
 	  -w             Use whitespace to make it human-readable
 	  -y             Dry run: print runtime variables and exit
 	  -z             Direct mode (do not use docker)
+
+	Solvers:
+	  z3  cvc3
 	EOF
 
 	#If DB_PATH denotes a directory, all database files below are searched and dumped.
@@ -145,27 +146,23 @@ help()
 get_options()
 {
 	# Default values:
-	ARCH='i386'
 	BUILD_PATH="$SRCPATH_ROOT/build"
 	COMPACT=$FALSE
 	DUMP_PATH="$PWD"
 	LIMIT=$FALSE
-	MODE='normal'
 	MONOLITHIC=$FALSE
-	RELEASE='release'
+	RELEASE="$DEFAULT_RELEASE"
 	SOLVER='stp'
 	HUMAN=$FALSE
 	DIRECT=$FALSE
 	DRYRUN=$FALSE
 
-	while getopts a:b:chl:m:Mo:r:s:wyz opt; do
+	while getopts :b:chl:Mo:r:s:wyz opt; do
 		case "$opt" in
-			a) ARCH="$OPTARG" ;;
 			b) BUILD_PATH="$OPTARG" ;;
 			c) COMPACT=$TRUE ;;
 			h) help; exit 1 ;;
 			l) LIMIT="$OPTARG" ;;
-			m) MODE="$OPTARG" ;;
 			M) MONOLITHIC=$TRUE ;;
 			o) DUMP_PATH="$OPTARG" ;;
 			r) RELEASE="$OPTARG" ;;
@@ -173,28 +170,15 @@ get_options()
 			w) HUMAN=$TRUE ;;
 			y) DRYRUN=$TRUE ;;
 			z) DIRECT=$TRUE ;;
-			'?') die_help ;;
+			'?') die_help 'Invalid option: -%s' "$OPTARG";;
 		esac
 	done
 
-	case "$ARCH" in
-		i386|x86_64) ;;
-		*) die_help 'Illegal architecture: %s' "$ARCH" ;;
-	esac
-	case "$MODE" in
-		normal|asan|libmemtracer) ;;
-		*) die_help 'Illegal build mode: %s' "$MODE" ;;
-	esac
-	case "$RELEASE" in
-		release|debug) ;;
-		*) die_help 'Illegal release mode: %s' "$MODE" ;;
-	esac
-	if ! is_numeric "$LIMIT"; then
-		die_help 'Non-numeric value passed for -l'
-	fi
+	split_release "$RELEASE"
+	is_numeric "$LIMIT" || die_help 'Non-numeric value passed for -l'
 	DUMP_PATH="$(readlink -f "$DUMP_PATH")"
 	BUILD_PATH="$(readlink -f "$BUILD_PATH")"
-	BUILD="$ARCH-$RELEASE-$MODE"
+	BUILD="$ARCH-$TARGET-$MODE"
 	if [ ! -d "$BUILD_PATH/$BUILD" ]; then
 		die 2 '%s: build does not exist in %s' "$BUILD" "$BUILD_PATH"
 	fi

@@ -284,36 +284,18 @@ DEFAULT_DATAROOT="${CHEF_DATAROOT:-"/var/lib/chef"}"
 
 split_release()
 {
-	IFS_="$IFS"
-	IFS=':'
-	from_release_slot='arch'
-	for t in $1; do
-		case "$from_release_slot" in
-		arch)
-			case "$t" in
-				''|i386|x86_64) ARCH="$t" ;;
-				*) die_help 'Invalid architecture: %s' "$t" ;;
-			esac
-			from_release_slot='target'
-			;;
-		target)
-			case "$t" in
-				''|release|debug) TARGET="$t" ;;
-				*) die_help 'Invalid target: %s' "$t" ;;
-			esac
-			from_release_slot='mode'
-			;;
-		mode)
-			case "$t" in
-				''|normal|asan|libmemtracer) MODE="$t" ;;
-				*) die_help 'Invalid mode: %s' "$t" ;;
-			esac
-			;;
-		esac
-	done
-	IFS="$IFS_"
+	IFS=: read ARCH TARGET MODE <<- EOF
+	$(echo "$1:")
+	EOF
 
-	ARCH="${ARCH:-"$DEFAULT_ARCH"}"
-	TARGET="${TARGET:-"$DEFAULT_TARGET"}"
-	MODE="${MODE:-"$DEFAULT_MODE"}"
+	if case "${ARCH:="$DEFAULT_ARCH"}" in (i386|x86_64) false;; esac; then
+		die_help 'Unknown architecture: %s' "$ARCH"
+	fi
+	if case "${TARGET:="$DEFAULT_TARGET"}" in (release|debug) false;; esac; then
+		die_help 'Unknown target: %s' "$TARGET"
+	fi
+	if case "${MODE:="$DEFAULT_MODE"}" in (normal|asan|libmemtracer) false;; esac; then
+		die_help 'Unknown mode: %s' "$MODE"
+	fi
+	RELEASE="$ARCH:$TARGET:$MODE"
 }

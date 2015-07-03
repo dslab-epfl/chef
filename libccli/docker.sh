@@ -28,7 +28,7 @@ run()
 usage()
 {
 	cat <<- EOF
-	Usage: $INVOKENAME [OPTIONS ...] SUBCOMMAND
+	Usage: $INVOKENAME [OPTIONS ...] ACTION
 	EOF
 }
 
@@ -37,20 +37,20 @@ help()
 	usage
 	cat <<- EOF
 
-	Commands:
-	  run     Run docker container
-
 	Options:
 	  -h      Display this help
+
+	Actions:
+	  run     Run docker container
 	EOF
 }
 
 read_options()
 {
-	while getopts h opt; do
+	while getopts :h opt; do
 		case "$opt" in
-			'h') help; exit 1 ;;
-			'?') die_help ;;
+			h) help; exit 1 ;;
+			'?') die_help 'Invalid option: -%s' "$OPTARG";;
 		esac
 	done
 	ARGSHIFT=$(($OPTIND - 1))
