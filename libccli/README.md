@@ -10,7 +10,7 @@ ccli - Chef Command Line Interface
 
 # DESCRIPTION
 
-The Chef command line interface is a common interface to a collection of scripts
+The Chef Command Line Interface is a common interface to a collection of scripts
 that offer a simplified way for using Chef, including building Chef, creating
 and managing disk images, or interacting with running Chef instances.
 

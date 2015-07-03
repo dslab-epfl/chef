@@ -24,7 +24,7 @@ COMMAND_DESCRIPTIONS = {
     'smtlib-compare':"Compare two query dumps on logic equality",
     'smtlib-sort':   "Sort query dumps by 'interesting'",
     'docker':        "Run docker container (useful for debugging/tinkering)",
-    'help':          "Display this help",
+    'env':           "List Chef-specific environment variables",
 }
 COMMAND_IGNORED = ['__init__.py', 'libccli.py', 'utils.sh']
 
@@ -43,13 +43,9 @@ def scan_commands():
             'command': '%s/%s' % (COMMAND_PATH, f),
             'description': description
         }
-    COMMANDS['help'] = { 'description': COMMAND_DESCRIPTIONS.get('help', '') }
 
 
 def run_command(name):
-    if name == 'help':
-        help()
-
     command = COMMANDS.get(name, None)
     if command is None:
         die_help("Unknown command: `%s`" % name)
@@ -88,10 +84,11 @@ if __name__ == '__main__':
         die_help("missing command")
     command = sys.argv[1]
 
-    # fix help:
-    if command in ['-h', '--help']:
-        command = 'help'
-
-    # handle command:
+    # get legal commands:
     scan_commands()
-    run_command(command)
+
+    # command, or help
+    if command.lower() in ['-h', '--help', '-help', 'help', 'halp']:
+        help()
+    else:
+        run_command(command)

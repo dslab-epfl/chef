@@ -294,11 +294,10 @@ def build_docker_cmd_line(args, command: [str]):
     if args.mode == "kvm":
         docker_cmd_line.append("--privileged=true")
     docker_cmd_line.append("dslab/s2e-chef:%s" % VERSION)
-    if args.mode == "kvm":
-        docker_cmd_line.extend(["/bin/bash", "-c",
-                                "sudo setfacl -m group:kvm:rw /dev/kvm; %s"
-                                                             % ' '.join(command)
-                               ])
+    if args.mode == 'kvm':
+        docker_cmd_line.extend(['/bin/bash', '-c',
+                                'sudo setfacl -m group:kvm:rw /dev/kvm; exec %s'
+                                                           % ' '.join(command)])
     else:
         docker_cmd_line.extend(command)
     return docker_cmd_line
