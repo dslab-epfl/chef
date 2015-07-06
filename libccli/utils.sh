@@ -15,7 +15,7 @@ RUNNAME="$(basename "$0")"
 RUNPATH="$(readlink -f "$(dirname "$0")")"
 RUNDIR="$(basename "$RUNPATH")"
 SRCPATH_ROOT="$(dirname "$RUNPATH")"
-SRCDIR_ROOT="$(basename "$SCRPATH_ROOT")"
+SRCDIR_ROOT="$(basename "$SRCPATH_ROOT")"
 BUILDPATH_ROOT="$SRCPATH_ROOT/build"
 
 if [ -z "$INVOKENAME" ]; then

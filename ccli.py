@@ -68,6 +68,7 @@ def help():
     for name in sorted(COMMANDS):
         cmd = COMMANDS[name]
         print('  {:<15} %s'.format(name) % cmd['description'])
+    print("\nRun with `-h` for more information")
     exit(1)
 
 
@@ -81,7 +82,7 @@ def die_help(msg: str):
 if __name__ == '__main__':
     # get command from command line:
     if len(sys.argv) < 2:
-        die_help("missing command")
+        die_help("Missing command")
     command = sys.argv[1]
 
     # get legal commands:
@@ -89,6 +90,8 @@ if __name__ == '__main__':
 
     # command, or help
     if command.lower() in ['-h', '--help', '-help', 'help', 'halp']:
+        if len(sys.argv) > 2:
+            die_help("Trailing arguments: %s" % ' '.join(sys.argv[2:]))
         help()
     else:
         run_command(command)
