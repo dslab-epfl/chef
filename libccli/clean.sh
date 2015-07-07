@@ -58,7 +58,7 @@ help()
 
 get_options()
 {
-	DIRECT=$FALSE
+	DIRECT=$DEFAULT_DIRECT
 
 	while getopts :hz opt; do
 		case "$opt" in

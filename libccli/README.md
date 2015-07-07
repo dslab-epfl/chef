@@ -40,3 +40,19 @@ and managing disk images, or interacting with running Chef instances.
 * python-psutil
 * python-pyyaml
 * qemu
+
+
+# ENVIRONMENT VARIABLES
+
+The currently supported environment variables are:
+
+	CCLI_ARCH         # Default architecture (default: i386)
+	CCLI_TARGET       # Default target (default: release)
+	CCLI_MODE         # Default mode (default: normal)
+	CCLI_SILENT_BUILD # Whether to run builds silently by default (default: false)
+	CCLI_DIRECT       # Whether to run in direct mode (without docker) by default (default: false)
+	CHEF_DATAROOT     # Where Chef stores its virtual machines on the system (default: /var/local/chef)
+
+Note that values for booleans are **0 for true, and non-0 for false**.
+
+Because.

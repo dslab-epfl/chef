@@ -14,7 +14,8 @@ ccli_env()
 	CCLI_ARCH=$CCLI_ARCH
 	CCLI_TARGET=$CCLI_TARGET
 	CCLI_MODE=$CCLI_MODE
-	CCLI_SILENT_BUILD=$CCLI_SILENT_BUILD  # $(as_boolean $CCLI_SILENT_BUILD)
+	CCLI_SILENT_BUILD=$CCLI_SILENT_BUILD
+	CCLI_DIRECT=$CCLI_DIRECT
 	EOF
 }
 
@@ -33,6 +34,7 @@ help()
 	cat <<- EOF
 
 	Print Chef-specific environment variables.
+	Note that for booleans, true=$TRUE and false=$FALSE.
 
 	Options:
 	  -h     Display this help.

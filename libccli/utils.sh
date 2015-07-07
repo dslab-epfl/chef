@@ -274,6 +274,7 @@ util_dryrun()
 	MODE=$MODE
 	VERBOSE=$(as_boolean $VERBOSE)
 	LOGFILE=$LOGFILE
+	DIRECT=$(as_boolean $DIRECT)
 	FATAL_=$FATAL_
 	FAIL_=$FAIL_
 	WARN_=$WARN_
@@ -288,6 +289,7 @@ util_check()
 {
 	VERBOSE=${VERBOSE:-$DEFAULT_VERBOSE}
 	LOGFILE="${LOGFILE:-"$DEFAULT_LOGFILE"}"
+	DIRECT=${DIRECT:-$DEFAULT_DIRECT}
 }
 
 # DOCKER =======================================================================
@@ -316,6 +318,7 @@ DEFAULT_RELEASE="${CCLI_RELEASE:-"$DEFAULT_ARCH:$DEFAULT_TARGET:$DEFAULT_MODE"}"
 DEFAULT_DATAROOT="${CHEF_DATAROOT:-"/var/lib/chef"}"
 DEFAULT_VERBOSE=$FALSE
 DEFAULT_LOGFILE="$NULL"
+DEFAULT_DIRECT=${CCLI_DIRECT:-$FALSE}
 
 split_release()
 {

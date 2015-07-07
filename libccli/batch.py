@@ -24,6 +24,7 @@ class Batch:
             self.variables = self.filter(variables)
             self.config = token['config']
 
+
         def filter(self, variables: {str: str}):
             used_variables = {}
             for k, vs in variables.items():
@@ -31,12 +32,14 @@ class Batch:
                     used_variables[k] = vs
             return used_variables
 
+
         def substitute(self, line: [str], key: str, values: [str]):
             lines = []
             for v in values:
                 l = [w.replace('{%s}' % key, v) for w in line]
                 lines.append(l)
             return lines
+
 
         def get_cmd_lines(self):
             cmd_lines = [self.line]
@@ -58,28 +61,33 @@ class Batch:
             c = Batch.Command(ctoken, self.variables)
             self.commands.append(c)
 
+
     def get_cmd_lines(self):
         cmd_lines = []
         for c in self.commands:
             cmd_lines.extend(c.get_cmd_lines())
         return cmd_lines
 
+
     def get_commands(self):
         return self.commands
 
+
     @staticmethod
     def main(argv: [str]):
-        if len(argv) < 2:
-            print("Usage: %s YAML [OUTDIR]" % argv[0], file=sys.stderr)
+        if len(argv) != 2 or argv[1] in ['-h', '--help', '-help', '-halp']:
+            print("Usage: %s YAML" % os.environ.get('INVOKENAME', argv[0]),
+                  file=sys.stderr)
             exit(1)
-
         path_yaml = argv[1]
-        path_results = 'batch_results' if len(argv) < 3 else argv[2]
-
-        b = Batch(path_yaml, path_results)
+        try:
+            b = Batch(path_yaml)
+        except Exception as e:
+            print(e, file=sys.stderr)
+            exit(2)
         cmd_lines = b.get_cmd_lines()
         for c in cmd_lines:
-            print(c)
+            print(' '.join(c))
 
 
 if __name__ == '__main__':
