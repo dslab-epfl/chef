@@ -42,7 +42,7 @@ note()
 {
 	note_format="$1"
 	shift
-	printf "       $note_format\n" "$@"
+	printf "$note_format\n" "$@"
 }
 
 info()
