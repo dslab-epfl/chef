@@ -5,6 +5,7 @@
 
 import sys
 import os
+from collections import OrderedDict
 
 
 RUNPATH = os.path.dirname(os.path.realpath(__file__))
@@ -16,16 +17,23 @@ COMMAND_PATH = '%s/%s' % (RUNPATH, COMMAND_LIB)
 COMMAND_EXTS = ['.sh', '.py'] # valid scripts
 COMMANDS = {} # populated in scan_commands()
 COMMAND_DESCRIPTIONS = {
-    'init':          "Initialise Chef environment",
-    'vm':            "Manage chef virtual machines",
     'build':         "Build Chef in a given configuration",
     'run':           "Run Chef in a given mode",
+    'clean':         "Clean the build results",
     'smtlib-dump':   "Dump collected queries in SMT-LIB format",
     'smtlib-compare':"Compare two query dumps on logic equality",
     'smtlib-sort':   "Sort query dumps by 'interesting'",
+    'init':          "Initialise Chef environment",
+    'vm':            "Manage chef virtual machines",
     'docker':        "Run docker container (useful for debugging/tinkering)",
     'env':           "List Chef-specific environment variables",
 }
+COMMAND_GROUPS = OrderedDict([
+    ('Chef', ['build', 'run', 'clean']),
+    ('SMTLIB', ['smtlib-dump', 'smtlib-compare', 'smtlib-sort']),
+    ('Environment', ['init', 'vm', 'env']),
+    ('Miscellaneous', []),
+])
 COMMAND_IGNORED = ['__init__.py', 'libccli.py', 'utils.sh']
 
 
@@ -61,13 +69,24 @@ def usage(file=sys.stdout):
     print("Usage: %s COMMAND [ARGUMENTS ...]" % INVOKENAME, file=file)
 
 
+def help_group(group: str, used: [str]):
+    print('  %s:' % group)
+    for name in COMMANDS:
+        if name in used:
+            continue
+        if name not in COMMAND_GROUPS[group] and group != 'Miscellaneous':
+            continue
+        print('    {:<15} %s'.format(name) % COMMANDS[name]['description'])
+        used.append(name)
+
+
 def help():
     print("%s: Command line interface to chef\n" % INVOKENAME)
     usage()
     print("\nCommands:")
-    for name in sorted(COMMANDS):
-        cmd = COMMANDS[name]
-        print('  {:<15} %s'.format(name) % cmd['description'])
+    used = []
+    for group in COMMAND_GROUPS:
+        help_group(group, used)
     print("\nRun with `-h` for more information")
     exit(1)
 

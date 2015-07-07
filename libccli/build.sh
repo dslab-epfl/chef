@@ -511,6 +511,8 @@ help()
 	cat <<- EOF
 
 	Options:
+	  -b PATH    Build Chef in DIR
+	             [default=$BUILDPATH_ROOT]
 	  -c COMPS   Force-\`make\` components COMPS
 	             [default='$CHECKED']
 	  -f         Force-rebuild
@@ -560,6 +562,7 @@ help()
 get_options()
 {
 	# Default values:
+	#BUILDPATH_ROOT set in utils.sh
 	CHECKED="$COMPONENTS"
 	DIRECT=$FALSE
 	DRYRUN=$FALSE
@@ -575,8 +578,9 @@ get_options()
 	SILENT=${CCLI_SILENT_BUILD:=$FALSE}
 
 	# Options:
-	while getopts :c:fhi:j:l:q:syz opt; do
+	while getopts :b:c:fhi:j:l:q:syz opt; do
 		case "$opt" in
+			b) BUILDPATH_ROOT="$OPTARG" ;;
 			c) CHECKED="$OPTARG" ;;
 			f) FORCE=$TRUE ;;
 			h) help; exit 1 ;;
@@ -592,7 +596,7 @@ get_options()
 	done
 	ARGSHIFT=$(($OPTIND - 1))
 
-	# Dependent values:
+	BUILDPATH_ROOT="$(readlink -f "$BUILDPATH_ROOT")"
 	LLVM_SRC="$LLVM_BASE/llvm-3.2.src"
 	LLVM_BUILD="$LLVM_BASE/llvm-3.2.build"
 	LLVM_NATIVE="$LLVM_BASE/llvm-3.2-native"
