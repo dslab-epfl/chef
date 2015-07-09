@@ -10,6 +10,8 @@
 export C_INCLUDE_PATH='/usr/include:/usr/include/x86_64-linux-gnu'
 export CPLUS_INCLUDE_PATH="$C_INCLUDE_PATH:/usr/include/x86_64-linux-gnu/c++/4.8"
 COMPONENTS='lua stp klee libmemtracer libvmi qemu tools guest gmock tests'
+DOCKER_HOSTPATH_IN='/host-in'
+DOCKER_HOSTPATH_OUT='/host-out'
 
 # LUA ==========================================================================
 
@@ -310,16 +312,16 @@ all_build()
 		SRCPATH="$SRCPATH_ROOT/$component"
 		FORCE=$FALSE
 
-		# Ignore component?
-		ignored=$FALSE
-		for i in $IGNORED; do
+		# Exclude component?
+		excluded=$FALSE
+		for i in $EXCLUDED; do
 			if [ "$i" = "$component" ]; then
-				skip '%s: ignored' "$component"
-				ignored=$TRUE
+				skip '%s: excluded' "$component"
+				excluded=$TRUE
 				break
 			fi
 		done
-		test $ignored -eq $FALSE || continue
+		test $excluded -eq $FALSE || continue
 
 		# Force-rebuild component?
 		for c in $FORCE_COMPS; do
@@ -393,18 +395,20 @@ docker_build()
 		--rm \
 		-t \
 		-i \
-		-v "$SRCPATH_ROOT":"$DOCKER_HOSTPATH" \
+		-v "$SRCPATH_ROOT":"$DOCKER_HOSTPATH_IN" \
+		-v "$BUILDPATH_ROOT":"$DOCKER_HOSTPATH_OUT" \
 		"$DOCKER_IMAGE" \
-		"$DOCKER_HOSTPATH/$RUNDIR/$RUNNAME" \
-			-b "$DOCKER_HOSTPATH/build" \
+		"$DOCKER_HOSTPATH_IN/$RUNDIR/$RUNNAME" \
 			-f "$FORCE_COMPS" \
-			-i "$IGNORED" \
-			-j$JOBS \
+			-i "$DOCKER_HOSTPATH_IN" \
+			-j $JOBS \
 			-l "$LLVM_BASE" \
+			-o "$DOCKER_HOSTPATH_OUT" \
 			-q "$QEMU_FLAGS" \
 			$(test $SILENT -eq $TRUE && printf '%s' '-s') \
+			-x "$EXCLUDED" \
 			-z \
-			"$ARCH:$TARGET:$MODE"
+			"$RELEASE"
 }
 
 # MAIN =========================================================================
@@ -436,17 +440,19 @@ help()
 	cat <<- EOF
 
 	Options:
-	  -b PATH    Build Chef in DIR
-	             [default=$BUILDPATH_ROOT]
 	  -f COMPS   Force-rebuild (configure+make) components COMPS
+	  -i PATH    Path to the Chef source directory root
+	             [default=$SRCPATH_ROOT]
 	  -h         Display this help
-	  -i COMPS   Ignore components COMPS (has higher priority than -c)
-	             [default='$IGNORED']
 	  -j N       Compile with N jobs [default=$JOBS]
 	  -l PATH    Path to where the LLVM-3.2 files are installed
 	             [default=$LLVM_BASE]
+	  -o PATH    Path to the build output directory
+	             [default=$BUILDPATH_ROOT]
 	  -q FLAGS   Additional flags passed to qemu's \`configure\` script
 	  -s         Silent: redirect compilation messages/warnings/errors into log file
+	  -x COMPS   Exclude components COMPS (has higher priority than -f)
+	             [default='$EXCLUDED']
 	  -y         Dry run: print build-related variables and exit
 	  -z         Direct mode (build directly on machine, instead inside docker)
 
@@ -468,30 +474,32 @@ get_options()
 {
 	# Default values:
 	#BUILDPATH_ROOT set in utils.sh
+	#SRCPATH_ROOT set in utils.sh
 	DIRECT=$DEFAULT_DIRECT
 	DRYRUN=$FALSE
 	FORCE_COMPS=''
-	IGNORED='gmock tests'
+	EXCLUDED='gmock tests'
 	case "$(uname)" in
 		Darwin) JOBS=$(sysctl hw.ncpu | cut -d ':' -f 2); alias cp=gcp ;;
 		Linux) JOBS=$(grep -c '^processor' /proc/cpuinfo) ;;
-		*) JOBS=2 ;;
+		*) JOBS=1 ;;
 	esac
 	LLVM_BASE='/opt/s2e/llvm'
 	QEMU_FLAGS=''
 	SILENT=${CCLI_SILENT_BUILD:=$FALSE}
 
 	# Options:
-	while getopts :b:f:hi:j:l:q:syz opt; do
+	while getopts :f:hi:j:l:o:q:sx:yz opt; do
 		case "$opt" in
-			b) BUILDPATH_ROOT="$OPTARG" ;;
 			f) FORCE_COMPS="$OPTARG" ;;
 			h) help; exit 1 ;;
-			i) IGNORED="$OPTARG" ;;
+			i) SRCPATH_ROOT="$OPTARG" ;;
 			j) JOBS="$OPTARG" ;;
 			l) LLVM_BASE="$OPTARG" ;;
+			o) BUILDPATH_ROOT="$OPTARG" ;;
 			q) QEMU_FLAGS="$OPTARG" ;;
 			s) SILENT=$TRUE ;;
+			x) EXCLUDED="$OPTARG" ;;
 			y) DRYRUN=$TRUE ;;
 			z) DIRECT=$TRUE ;;
 			'?') die_help 'Invalid option: -%s' "$OPTARG";;
@@ -541,7 +549,7 @@ main()
 		COMPONENTS='$COMPONENTS'
 		BUILDPATH_ROOT=$BUILDPATH_ROOT
 		FORCE_COMPS='$FORCE_COMPS'
-		IGNORED='$IGNORED'
+		EXCLUDED='$EXCLUDED'
 		JOBS=$JOBS
 		LLVM_BASE=$LLVM_BASE
 		QEMU_FLAGS='$QEMU_FLAGS'
