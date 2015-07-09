@@ -84,8 +84,7 @@ cl::opt<bool> ReplayQueries("replay",
         cl::init(false));
 
 cl::opt<std::string> ReplayLabel("replay-label",
-        cl::desc("Label to attached to replayed query statistics"),
-        cl::init("query-tool"));
+        cl::desc("Label to attached to replayed query statistics"));
 
 cl::opt<bool> ComputeQueryStats("compute-query-stats",
         cl::desc("Compute query statistics (somewhat expensive)"),
@@ -477,18 +476,20 @@ void QueryReplayer::onQueryDecoded(const Query &query, int64_t qid,
            << " Speedup: " << format("%.1fx", float(total_recorded_.usec()) / float(total_replayed_.usec()))
            << '\n';
 
-    sqlite3_clear_bindings(insert_stmt_);
-    sqlite3_bind_int64(insert_stmt_, 1, qid);
-    sqlite3_bind_text(insert_stmt_, 2, ReplayLabel.c_str(), -1, NULL);
-    sqlite3_bind_int64(insert_stmt_, 3, replayed_duration.usec());
-    if (qtype == TRUTH || qtype == VALIDITY) {
-        // This is always correct, as guarded by the assertions above
-        sqlite3_bind_int(insert_stmt_, 4, static_cast<int>(rec_validity));
-    }
+    if (!ReplayLabel.empty()) {
+        sqlite3_clear_bindings(insert_stmt_);
+        sqlite3_bind_int64(insert_stmt_, 1, qid);
+        sqlite3_bind_text(insert_stmt_, 2, ReplayLabel.c_str(), -1, NULL);
+        sqlite3_bind_int64(insert_stmt_, 3, replayed_duration.usec());
+        if (qtype == TRUTH || qtype == VALIDITY) {
+            // This is always correct, as guarded by the assertions above
+            sqlite3_bind_int(insert_stmt_, 4, static_cast<int>(rec_validity));
+        }
 
-    int result = sqlite3_step(insert_stmt_);
-    assert(result == SQLITE_DONE);
-    sqlite3_reset(insert_stmt_);
+        int result = sqlite3_step(insert_stmt_);
+        assert(result == SQLITE_DONE);
+        sqlite3_reset(insert_stmt_);
+    }
 }
 
 
