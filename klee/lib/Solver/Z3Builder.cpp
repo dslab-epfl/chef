@@ -473,7 +473,8 @@ z3::expr Z3IteBuilder::makeReadExpr(ref<ReadExpr> re) {
 
 z3::expr Z3IteBuilder::getReadForArray(z3::expr index, const Array *root,
             const UpdateNode *un) {
-    ReadMap::iterator it = read_map_.find(std::make_pair(index, un));
+    ReadMap::iterator it = read_map_.find(std::make_pair(index,
+            std::make_pair(root, un)));
     if (it != read_map_.end()) {
         return it->second;
     }
@@ -488,7 +489,8 @@ z3::expr Z3IteBuilder::getReadForArray(z3::expr index, const Array *root,
                 getOrMakeExpr(un->value),
                 getReadForArray(index, root, un->next)));
     }
-    read_map_.insert(std::make_pair(std::make_pair(index, un), result));
+    read_map_.insert(std::make_pair(std::make_pair(index,
+            std::make_pair(root, un)), result));
     return result;
 }
 

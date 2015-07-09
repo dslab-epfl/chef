@@ -124,7 +124,8 @@ private:
     typedef std::vector<z3::expr> ExprVector;
     typedef llvm::DenseMap<const Array*,
             boost::shared_ptr<ExprVector> > ArrayVariableMap;
-    typedef llvm::DenseMap<std::pair<Z3_ast, const UpdateNode*>, z3::expr> ReadMap;
+    typedef llvm::DenseMap<std::pair<Z3_ast,
+            std::pair<const Array*, const UpdateNode*> >, z3::expr> ReadMap;
 
     z3::expr getReadForArray(z3::expr index, const Array *root,
             const UpdateNode *un);
