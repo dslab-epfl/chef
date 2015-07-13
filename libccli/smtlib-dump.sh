@@ -33,7 +33,7 @@ dump()
 		-dump-smtlib=$(test $MONOLITHIC -eq $TRUE && echo 'single' || echo 'separate') \
 		-dump-smtlib-path="$DUMP_PATH/" \
 		$(test $HUMAN -eq $TRUE && echo '-smtlib-human-readable') \
-		$(test $COMPACT -eq $FALSE && echo '-smtlib-compact') \
+		$(test $COMPACT -eq $TRUE && echo '-smtlib-compact') \
 		"$DB_FILE" \
 		$IDS_EXPANDED
 }
