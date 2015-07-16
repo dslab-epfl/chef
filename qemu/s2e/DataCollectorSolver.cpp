@@ -138,6 +138,9 @@ private:
         INITIAL_VALUES = 3
     };
 
+    void logQueryStats(const Query &query, QueryType type,
+            TimeValue start, Solver::Validity validity);
+
     ExprSerializer es_;
     QuerySerializer serializer_;
     scoped_ptr<Solver> base_solver_;
@@ -145,9 +148,6 @@ private:
     EventLogger *event_logger_;
     sqlite3_stmt *qinsert_stmt_;
     sqlite3_stmt *rinsert_stmt_;
-
-    void LogQueryStats(const Query &query, QueryType type,
-            TimeValue start, Solver::Validity validity);
 };
 
 
@@ -178,7 +178,7 @@ DataCollectorSolver::DataCollectorSolver(Solver *base_solver, EventLogger *event
 }
 
 
-void DataCollectorSolver::LogQueryStats(const Query &query,
+void DataCollectorSolver::logQueryStats(const Query &query,
         QueryType type, TimeValue start, Solver::Validity validity) {
     int result;
 
@@ -220,7 +220,7 @@ void DataCollectorSolver::LogQueryStats(const Query &query,
 bool DataCollectorSolver::computeTruth(const Query &query, bool &isValid) {
     TimeValue start = TimeValue::now();
     bool result = base_solver_->impl->computeTruth(query, isValid);
-    LogQueryStats(query, TRUTH, start, isValid ? Solver::True : Solver::False);
+    logQueryStats(query, TRUTH, start, isValid ? Solver::True : Solver::False);
     return result;
 }
 
@@ -229,7 +229,7 @@ bool DataCollectorSolver::computeValidity(const Query &query,
         Solver::Validity &validity) {
     TimeValue start = TimeValue::now();
     bool result = base_solver_->impl->computeValidity(query, validity);
-    LogQueryStats(query, VALIDITY, start, validity);
+    logQueryStats(query, VALIDITY, start, validity);
 
     return result;
 }
@@ -238,7 +238,7 @@ bool DataCollectorSolver::computeValidity(const Query &query,
 bool DataCollectorSolver::computeValue(const Query &query, ref<Expr> &value) {
     TimeValue start = TimeValue::now();
     bool result = base_solver_->impl->computeValue(query, value);
-    LogQueryStats(query, VALUE, start, Solver::Unknown);
+    logQueryStats(query, VALUE, start, Solver::Unknown);
 
     return result;
 }
@@ -252,7 +252,7 @@ bool DataCollectorSolver::computeInitialValues(const Query &query,
     bool result = base_solver_->impl->computeInitialValues(query, objects,
             values, hasSolution);
 
-    LogQueryStats(query, INITIAL_VALUES, start, Solver::Unknown);
+    logQueryStats(query, INITIAL_VALUES, start, Solver::Unknown);
 
     return result;
 }
