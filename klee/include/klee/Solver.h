@@ -175,7 +175,12 @@ namespace klee {
 
   class Z3Solver : public Solver {
   public:
-      Z3Solver(bool incremental);
+      static Z3Solver *createResetSolver();
+      static Z3Solver *createStackSolver();
+      static Z3Solver *createAssumptionSolver();
+
+  private:
+      Z3Solver(SolverImpl *impl);
   };
 
   /* *** */

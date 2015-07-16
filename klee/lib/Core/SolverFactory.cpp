@@ -60,6 +60,22 @@ cl::opt<EndSolverType> EndSolver("end-solver", cl::desc("End solver to use"),
                 clEnumValEnd),
         cl::init(SOLVER_STP));
 
+enum SolverIncrementalityType {
+    INCREMENTAL_NONE,
+    INCREMENTAL_STACK,
+    INCREMENTAL_ASSUMPTIONS
+};
+
+
+cl::opt<SolverIncrementalityType> SolverIncrementality("end-solver-increm",
+        cl::desc("Solver incrementality type (when available)"),
+        cl::values(
+                clEnumValN(INCREMENTAL_NONE, "none", "No incrementality"),
+                clEnumValN(INCREMENTAL_STACK, "stack", "Context stack incrementality"),
+                clEnumValN(INCREMENTAL_ASSUMPTIONS, "assumptions", "Assumption-based incrementality"),
+                clEnumValEnd),
+        cl::init(INCREMENTAL_NONE));
+
 
 //The counter example cache may have bad interactions with
 //concolic mode. Disabled by default.
@@ -98,11 +114,6 @@ cl::opt<bool>
 DebugValidateSolver("debug-validate-solver",
             cl::init(false));
 
-cl::opt<bool>
-UseIncrementalSolving("use-incremental-solving",
-                      cl::init(true),
-                      cl::desc("Use incremental solving, if available"));
-
 }
 
 
@@ -119,7 +130,14 @@ Solver *DefaultSolverFactory::createEndSolver() {
     if (EndSolver == SOLVER_STP) {
         return new STPSolver(UseForkedSTP);
     } else if (EndSolver == SOLVER_Z3) {
-        return new Z3Solver(UseIncrementalSolving);
+        switch (SolverIncrementality) {
+        case INCREMENTAL_NONE:
+            return Z3Solver::createResetSolver();
+        case INCREMENTAL_STACK:
+            return Z3Solver::createStackSolver();
+        case INCREMENTAL_ASSUMPTIONS:
+            return Z3Solver::createAssumptionSolver();
+        }
     }
     return NULL;
 }

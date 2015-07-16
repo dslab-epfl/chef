@@ -36,6 +36,7 @@
 #include "klee/SolverImpl.h"
 #include "klee/SolverStats.h"
 #include "klee/Constraints.h"
+#include "klee/util/ExprHashMap.h"
 #include "klee/util/ExprUtil.h"
 #include "klee/util/Assignment.h"
 #include "klee/Common.h"
@@ -44,6 +45,8 @@
 #include <llvm/Support/raw_ostream.h>
 
 #include "Z3Builder.h"
+#include "Z3ArrayBuilder.h"
+#include "Z3IteBuilder.h"
 
 #include <boost/scoped_ptr.hpp>
 
@@ -91,19 +94,34 @@ public:
 
 protected:
     void configureSolver();
-    void resetBuilder();
+    void createBuilder();
 
     virtual void preCheck(const Query&) = 0;
+    virtual z3::check_result check(const Query&) = 0;
     virtual void postCheck(const Query&) = 0;
 
-    bool check(const Query &query,
-               const std::vector<const Array*> &objects,
-               std::vector<std::vector<unsigned char> > &values,
-               bool &hasSolution);
+    void extractModel(const std::vector<const Array*> &objects,
+                  std::vector<std::vector<unsigned char> > &values);
+
+    void push() {
+        solver_.push();
+        builder_->push();
+    }
+
+    void pop(unsigned n = 1) {
+        solver_.pop(n);
+        builder_->pop(n);
+    }
+
+    void reset() {
+        solver_.reset();
+        builder_->reset();
+    }
 
     z3::context context_;
     z3::solver solver_;
 
+    scoped_ptr<Z3BuilderCache> builder_cache_;
     scoped_ptr<Z3Builder> builder_;
 };
 
@@ -117,6 +135,7 @@ protected:
     typedef std::list<ConditionNodeRef> ConditionNodeList;
 
     virtual void preCheck(const Query&);
+    virtual z3::check_result check(const Query&);
     virtual void postCheck(const Query&);
 
     scoped_ptr<ConditionNodeList> last_constraints_;
@@ -130,28 +149,60 @@ public:
 
 protected:
     virtual void preCheck(const Query&);
+    virtual z3::check_result check(const Query&);
     virtual void postCheck(const Query&);
 };
 
 
-////////////////////////////////////////////////////////////////////////////////
+class Z3AssumptionSolverImpl : public Z3BaseSolverImpl {
+public:
+    Z3AssumptionSolverImpl();
+    virtual ~Z3AssumptionSolverImpl();
+
+protected:
+    virtual void preCheck(const Query&);
+    virtual z3::check_result check(const Query&);
+    virtual void postCheck(const Query&);
+
+private:
+    typedef ExprHashMap<z3::expr> GuardMap;
+
+    z3::expr getAssumption(ref<Expr> assertion);
+
+    GuardMap guards_;
+    uint64_t guard_counter_;
+};
 
 
-Z3Solver::Z3Solver(bool incremental)
-    : Solver(incremental ?
-                (SolverImpl*) new Z3IncrementalSolverImpl() :
-                (SolverImpl*) new Z3SolverImpl()) {
+// Z3Solver ////////////////////////////////////////////////////////////////////
+
+
+Z3Solver *Z3Solver::createResetSolver() {
+    return new Z3Solver(new Z3SolverImpl());
+}
+
+Z3Solver *Z3Solver::createStackSolver() {
+    return new Z3Solver(new Z3IncrementalSolverImpl());
+}
+
+Z3Solver *Z3Solver::createAssumptionSolver() {
+    return new Z3Solver(new Z3AssumptionSolverImpl());
+}
+
+
+Z3Solver::Z3Solver(SolverImpl *impl)
+    : Solver(impl) {
 
 }
 
-////////////////////////////////////////////////////////////////////////////////
+// Z3BaseSolverImpl ////////////////////////////////////////////////////////////
 
 
 Z3BaseSolverImpl::Z3BaseSolverImpl()
     : solver_(context_, "QF_ABV") {
 
     configureSolver();
-    resetBuilder();
+    createBuilder();
 }
 
 
@@ -160,37 +211,27 @@ Z3BaseSolverImpl::~Z3BaseSolverImpl() {
 }
 
 
-void Z3BaseSolverImpl::resetBuilder() {
+void Z3BaseSolverImpl::createBuilder() {
     switch (ArrayConsMode) {
+#if 0
     case Z3_ARRAY_ITE:
         builder_.reset(new Z3IteBuilder(context_));
         break;
+#endif
     case Z3_ARRAY_STORES:
-        builder_.reset(new Z3ArrayBuilder(context_));
+        builder_cache_.reset(new Z3ArrayBuilderCacheInc());
+        builder_.reset(new Z3StoreArrayBuilder(context_, (Z3ArrayBuilderCache*)builder_cache_.get()));
         break;
     case Z3_ARRAY_ASSERTS:
-        builder_.reset(new Z3AssertArrayBuilder(solver_));
+        builder_cache_.reset(new Z3ArrayBuilderCacheInc());
+        builder_.reset(new Z3AssertArrayBuilder(solver_, (Z3ArrayBuilderCache*)builder_cache_.get()));
         break;
     }
 }
 
 
-bool Z3BaseSolverImpl::check(const Query &query,
-                             const std::vector<const Array*> &objects,
-                             std::vector<std::vector<unsigned char> > &values,
-                             bool &hasSolution) {
-
-    // Note the negation, since we're checking for validity
-    // (i.e., a counterexample)
-    solver_.add(!builder_->construct(query.expr));
-
-    z3::check_result result = solver_.check();
-
-    if (result != z3::sat) {
-        hasSolution = false;
-        return true;
-    }
-
+void Z3BaseSolverImpl::extractModel(const std::vector<const Array*> &objects,
+        std::vector<std::vector<unsigned char> > &values) {
     z3::model model = solver_.get_model();
 
 #if 0 // TODO: Turn into proper debug logging
@@ -232,10 +273,6 @@ bool Z3BaseSolverImpl::check(const Query &query,
         }
         values.push_back(data);
     }
-
-    hasSolution = true;
-    return true;
-
 }
 
 
@@ -297,20 +334,28 @@ bool Z3BaseSolverImpl::computeInitialValues(const Query &query,
     ++stats::queryCounterexamples;
 
     preCheck(query);
-    bool result = check(query, objects, values, hasSolution);
-    postCheck(query);
+    z3::check_result result = check(query);
 
-    if (hasSolution) {
-        ++stats::queriesInvalid;
-    } else {
+    switch (result) {
+    case z3::unknown:
+        postCheck(query);
+        return false;
+    case z3::unsat:
+        postCheck(query);
+        hasSolution = false;
         ++stats::queriesValid;
+        return true;
+    case z3::sat:
+        extractModel(objects, values);
+        postCheck(query);
+        hasSolution = true;
+        ++stats::queriesInvalid;
+        return true;
     }
-
-    return result;
 }
 
 
-////////////////////////////////////////////////////////////////////////////////
+// Z3IncrementalSolverImpl /////////////////////////////////////////////////////
 
 
 Z3IncrementalSolverImpl::Z3IncrementalSolverImpl()
@@ -351,7 +396,7 @@ void Z3IncrementalSolverImpl::preCheck(const Query &query) {
         unsigned amount = 1 + last_constraints_->back()->depth()
                 - (*last_it)->depth();
         errs() << "====> POP x" << amount << '\n';
-        solver_.pop(amount);
+        pop(amount);
     }
 
     if (cur_it != cur_constraints->end()) {
@@ -360,7 +405,7 @@ void Z3IncrementalSolverImpl::preCheck(const Query &query) {
                 << '\n';
 
         while (cur_it != cur_constraints->end()) {
-            solver_.push();
+            push();
             solver_.add(builder_->construct((*cur_it)->expr()));
             cur_it++;
         }
@@ -368,15 +413,24 @@ void Z3IncrementalSolverImpl::preCheck(const Query &query) {
 
     last_constraints_.reset(cur_constraints);
 
-    solver_.push();
+    push();
+}
+
+
+z3::check_result Z3IncrementalSolverImpl::check(const Query &query) {
+    // Note the negation, since we're checking for validity
+    // (i.e., a counterexample)
+    solver_.add(!builder_->construct(query.expr));
+
+    return solver_.check();
 }
 
 
 void Z3IncrementalSolverImpl::postCheck(const Query&) {
-    solver_.pop();
+    pop();
 }
 
-////////////////////////////////////////////////////////////////////////////////
+// Z3SolverImpl ////////////////////////////////////////////////////////////////
 
 
 Z3SolverImpl::Z3SolverImpl() : Z3BaseSolverImpl() {
@@ -407,9 +461,80 @@ void Z3SolverImpl::preCheck(const Query &query) {
 }
 
 
+z3::check_result Z3SolverImpl::check(const Query &query) {
+    solver_.add(!builder_->construct(query.expr));
+    return solver_.check();
+}
+
+
 void Z3SolverImpl::postCheck(const Query&) {
-    solver_.reset();
-    resetBuilder();
+    reset();
+}
+
+// Z3AssumptionSolverImpl //////////////////////////////////////////////////////
+
+
+Z3AssumptionSolverImpl::Z3AssumptionSolverImpl()
+    : Z3BaseSolverImpl(),
+      guard_counter_(0) {
+
+}
+
+
+Z3AssumptionSolverImpl::~Z3AssumptionSolverImpl() {
+
+}
+
+
+void Z3AssumptionSolverImpl::preCheck(const Query&) {
+    // TODO: Remove preCheck
+}
+
+
+z3::check_result Z3AssumptionSolverImpl::check(const Query &query) {
+    std::list<ConditionNodeRef> cur_constraints;
+    for (ConditionNodeRef node = query.constraints.head(),
+            root = query.constraints.root();
+            node != root; node = node->parent()) {
+        cur_constraints.push_front(node);
+    }
+
+    z3::expr_vector assumptions(context_);
+
+    for (std::list<ConditionNodeRef>::iterator it = cur_constraints.begin(),
+            ie = cur_constraints.end(); it != ie; ++it) {
+        assumptions.push_back(getAssumption((*it)->expr()));
+    }
+    assumptions.push_back(getAssumption(Expr::createIsZero(query.expr)));
+    return solver_.check(assumptions);
+}
+
+
+void Z3AssumptionSolverImpl::postCheck(const Query&) {
+    // TODO: Add periodic resets
+    errs() << "==> Number of assumptions: " << guards_.size() << '\n';
+    if (guards_.size() > 50) {
+        reset();
+        guards_.clear();
+    }
+}
+
+
+z3::expr Z3AssumptionSolverImpl::getAssumption(ref<Expr> assertion) {
+    GuardMap::iterator it = guards_.find(assertion);
+    if (it != guards_.end()) {
+        return it->second;
+    }
+
+    char name[16];
+    snprintf(name, 16, "g%lu", guard_counter_++);
+    z3::expr result = context_.bool_const(name);
+    guards_.insert(std::make_pair(assertion, result));
+
+    solver_.add(z3::to_expr(context_,
+            Z3_mk_implies(context_, result, builder_->construct(assertion))));
+
+    return result;
 }
 
 

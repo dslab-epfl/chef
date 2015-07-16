@@ -38,6 +38,7 @@
 #include "klee/Expr.h"
 #include "klee/util/ExprHashMap.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/ImmutableMap.h"
 
 #include <z3++.h>
 
@@ -47,12 +48,55 @@
 
 #include <boost/shared_ptr.hpp>
 
+
+namespace llvm {
+
+template <>
+struct ImutProfileInfo<z3::expr> {
+  typedef const z3::expr  value_type;
+  typedef const z3::expr& value_type_ref;
+
+  static inline void Profile(FoldingSetNodeID& ID, value_type_ref X) {
+    ID.AddInteger(X);
+  }
+};
+
+
+template<typename T>
+struct ImutProfileInfo<klee::ref<T> > {
+    typedef const klee::ref<T> value_type;
+    typedef const klee::ref<T>& value_type_ref;
+
+    static inline void Profile(FoldingSetNodeID& ID, value_type_ref X) {
+        ID.AddPointer(X.get());
+    }
+};
+
+}
+
+
 namespace klee {
+
+
+class Z3BuilderCache {
+public:
+    virtual ~Z3BuilderCache() { }
+
+    virtual bool findExpr(ref<Expr> e, z3::expr &expr) = 0;
+    virtual void insertExpr(ref<Expr> e, const z3::expr &expr) = 0;
+
+protected:
+    virtual void push() = 0;
+    virtual void pop(unsigned n) = 0;
+    virtual void reset() = 0;
+
+    friend class Z3Builder;
+};
 
 
 class Z3Builder {
 public:
-    Z3Builder(z3::context &context);
+    Z3Builder(z3::context &context, Z3BuilderCache *cache);
     virtual ~Z3Builder();
 
     z3::context &context() {
@@ -60,82 +104,29 @@ public:
     }
 
     z3::expr construct(ref<Expr> e) {
-        // TODO: Should we clear the cache after each construction?
         return getOrMakeExpr(e);
     }
 
     virtual z3::expr getInitialRead(const Array *root, unsigned index) = 0;
 
-protected:
-    typedef ExprHashMap<z3::expr> ExprMap;
+    void push() { cache_->push(); }
+    void pop(unsigned n) { cache_->pop(n); }
+    void reset() { cache_->reset(); }
 
+protected:
     z3::expr getOrMakeExpr(ref<Expr> e);
     z3::expr makeExpr(ref<Expr> e);
     virtual z3::expr makeReadExpr(ref<ReadExpr> re) = 0;
 
     z3::context &context_;
-    ExprMap cons_expr_;
-};
-
-
-class Z3ArrayBuilder: public Z3Builder {
-public:
-    Z3ArrayBuilder(z3::context &context);
-    virtual ~Z3ArrayBuilder();
-
-    virtual z3::expr getInitialRead(const Array *root, unsigned index);
-protected:
-    virtual z3::expr makeReadExpr(ref<ReadExpr> re);
-    virtual z3::expr initializeArray(const Array *root, z3::expr array_ast);
+    Z3BuilderCache *cache_;
 
 private:
-    typedef llvm::DenseMap<const Array*, z3::expr> ArrayMap;
-    typedef llvm::DenseMap<const UpdateNode*, z3::expr> UpdateListMap;
-
-    z3::expr getArrayForUpdate(const Array *root, const UpdateNode *un);
-    z3::expr getInitialArray(const Array *root);
-
-    ArrayMap cons_arrays_;
-    UpdateListMap cons_updates_;
+    Z3Builder(const Z3Builder&);
 };
 
 
-class Z3AssertArrayBuilder : public Z3ArrayBuilder {
-public:
-    Z3AssertArrayBuilder(z3::solver &solver);
-    virtual ~Z3AssertArrayBuilder();
-protected:
-    virtual z3::expr initializeArray(const Array *root, z3::expr array_ast);
-private:
-    z3::expr getArrayAssertion(const Array *root, z3::expr array_ast);
-    z3::solver solver_;
-};
 
-
-class Z3IteBuilder : public Z3Builder {
-public:
-    Z3IteBuilder(z3::context &context);
-    virtual ~Z3IteBuilder();
-
-    virtual z3::expr getInitialRead(const Array *root, unsigned index);
-protected:
-    virtual z3::expr makeReadExpr(ref<ReadExpr> re);
-private:
-    typedef std::vector<z3::expr> ExprVector;
-    typedef llvm::DenseMap<const Array*,
-            boost::shared_ptr<ExprVector> > ArrayVariableMap;
-    typedef llvm::DenseMap<std::pair<Z3_ast,
-            std::pair<const Array*, const UpdateNode*> >, z3::expr> ReadMap;
-
-    z3::expr getReadForArray(z3::expr index, const Array *root,
-            const UpdateNode *un);
-    z3::expr getReadForInitialArray(z3::expr index, const Array *root);
-
-    boost::shared_ptr<ExprVector> getArrayValues(const Array *root);
-
-    ArrayVariableMap array_variables_;
-    ReadMap read_map_;
-};
 
 
 } /* namespace klee */
