@@ -96,7 +96,6 @@ protected:
     void configureSolver();
     void createBuilder();
 
-    virtual void preCheck(const Query&) = 0;
     virtual z3::check_result check(const Query&) = 0;
     virtual void postCheck(const Query&) = 0;
 
@@ -134,7 +133,6 @@ public:
 protected:
     typedef std::list<ConditionNodeRef> ConditionNodeList;
 
-    virtual void preCheck(const Query&);
     virtual z3::check_result check(const Query&);
     virtual void postCheck(const Query&);
 
@@ -148,7 +146,6 @@ public:
     virtual ~Z3ResetSolverImpl();
 
 protected:
-    virtual void preCheck(const Query&);
     virtual z3::check_result check(const Query&);
     virtual void postCheck(const Query&);
 };
@@ -160,7 +157,6 @@ public:
     virtual ~Z3AssumptionSolverImpl();
 
 protected:
-    virtual void preCheck(const Query&);
     virtual z3::check_result check(const Query&);
     virtual void postCheck(const Query&);
 
@@ -333,7 +329,6 @@ bool Z3BaseSolverImpl::computeInitialValues(const Query &query,
     ++stats::queries;
     ++stats::queryCounterexamples;
 
-    preCheck(query);
     z3::check_result result = check(query);
 
     switch (result) {
@@ -364,12 +359,13 @@ Z3StackSolverImpl::Z3StackSolverImpl()
 
 }
 
+
 Z3StackSolverImpl::~Z3StackSolverImpl() {
 
 }
 
 
-void Z3StackSolverImpl::preCheck(const Query &query) {
+z3::check_result Z3StackSolverImpl::check(const Query &query) {
     errs() << "====> Query size: " << query.constraints.size() << '\n';
 
     ConditionNodeList *cur_constraints = new ConditionNodeList();
@@ -414,10 +410,7 @@ void Z3StackSolverImpl::preCheck(const Query &query) {
     last_constraints_.reset(cur_constraints);
 
     push();
-}
 
-
-z3::check_result Z3StackSolverImpl::check(const Query &query) {
     // Note the negation, since we're checking for validity
     // (i.e., a counterexample)
     solver_.add(!builder_->construct(query.expr));
@@ -443,7 +436,7 @@ Z3ResetSolverImpl::~Z3ResetSolverImpl() {
 }
 
 
-void Z3ResetSolverImpl::preCheck(const Query &query) {
+z3::check_result Z3ResetSolverImpl::check(const Query &query) {
     errs() << "====> Query size: " << query.constraints.size() << '\n';
 
     std::list<ConditionNodeRef> cur_constraints;
@@ -458,10 +451,7 @@ void Z3ResetSolverImpl::preCheck(const Query &query) {
             ie = cur_constraints.end(); it != ie; ++it) {
         solver_.add(builder_->construct((*it)->expr()));
     }
-}
 
-
-z3::check_result Z3ResetSolverImpl::check(const Query &query) {
     solver_.add(!builder_->construct(query.expr));
     return solver_.check();
 }
@@ -486,11 +476,6 @@ Z3AssumptionSolverImpl::~Z3AssumptionSolverImpl() {
 }
 
 
-void Z3AssumptionSolverImpl::preCheck(const Query&) {
-    // TODO: Remove preCheck
-}
-
-
 z3::check_result Z3AssumptionSolverImpl::check(const Query &query) {
     std::list<ConditionNodeRef> cur_constraints;
     for (ConditionNodeRef node = query.constraints.head(),
@@ -511,7 +496,6 @@ z3::check_result Z3AssumptionSolverImpl::check(const Query &query) {
 
 
 void Z3AssumptionSolverImpl::postCheck(const Query&) {
-    // TODO: Add periodic resets
     errs() << "==> Number of assumptions: " << guards_.size() << '\n';
     if (guards_.size() > 50) {
         reset();
