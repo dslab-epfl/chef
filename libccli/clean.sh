@@ -2,8 +2,15 @@
 
 # This script is responsible for cleaning/removing builds. It is mostly
 # necessary for removing directories that have been generated within a docker
-# container through `mkdir -p`, which does not seem to respect ACLs if run on a
-# shared directory from within docker.
+# container, as ACLs are not properly supported by AUFS (the backend for sharing
+# data between containers and optionally the host).¹
+#
+# The alternative would be to switch to "devicemapper" as device backend, but
+# this would require the user to modify their own docker daemon's command line
+# options, which is not ideal if we want to keep initial setup efforts to a
+# minimum.
+# ____
+# ¹ The problematic part is actually only `mkdir -p`, whereas `mkdir` works.
 
 # Maintainer: Tinu Weber <martin.weber@epfl.ch>
 
@@ -34,7 +41,6 @@ docker_clean()
 		-v "$SRCPATH_ROOT":"$DOCKER_HOSTPATH" \
 		"$DOCKER_IMAGE" \
 		"$DOCKER_HOSTPATH/$RUNDIR/$RUNNAME" \
-			-z \
 			"$RELEASE"
 }
 
@@ -51,19 +57,19 @@ help()
 	cat <<- EOF
 
 	Options:
+	  -d       Dockerized (wrap execution inside docker container)
 	  -h       Display this help
-	  -z       Run directly, without docker
 	EOF
 }
 
 get_options()
 {
-	DIRECT=$DEFAULT_DIRECT
+	DOCKERIZED=$DEFAULT_DOCKERIZED
 
-	while getopts :hz opt; do
+	while getopts :dh opt; do
 		case "$opt" in
+			d) DOCKERIZED=$TRUE ;;
 			h) help; exit 1 ;;
-			z) DIRECT=$TRUE ;;
 			'?') die_help 'Invalid option: -%s' "$OPTARG" ;;
 		esac
 	done
@@ -89,14 +95,15 @@ main()
 	shift $ARGSHIFT
 	test $# -eq 0 || die_help "Trailing arguments: $@"
 
-	if [ $DIRECT -eq $TRUE ]; then
+	if [ $DOCKERIZED -eq $TRUE ]; then
+		docker_clean
+	else
 		LOGFILE='clean.log'
 		if ! clean; then
 			fail "Cleaning failed.\n"
 			examine_logs
+			exit 2
 		fi
-	else
-		docker_clean
 	fi
 }
 

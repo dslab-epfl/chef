@@ -69,7 +69,6 @@ docker_dump()
 			-r "$RELEASE" \
 			-s "$SOLVER" \
 			$(test $HUMAN -eq $TRUE && printf "%s" '-w') \
-			-z \
 			"$DOCKER_HOSTPATH_IN/$DB_NAME" \
 			"$IDS"
 }
@@ -89,7 +88,7 @@ dryrun()
 	HUMAN=$(as_boolean $HUMAN)
 	EOF
 
-	if [ $DIRECT -eq $FALSE ]; then
+	if [ $DOCKERIZED -eq $FALSE ]; then
 		cat <<- EOF
 		DOCKER_HOSTPATH=$SRCPATH_ROOT:$DOCKER_HOSTPATH
 		DOCKER_HOSTPATH_IN=$DB_PATH:$DOCKER_HOSTPATH_IN
@@ -115,6 +114,7 @@ help()
 	  -b BUILD_PATH  Path to the Chef build directory
 	                 [default=$BUILD_PATH]
 	  -c             Print compact SMTLIB (experimental!)
+	  -d             Dockerized (wrap execution inside docker container)
 	  -h             Display this help
 	  -M             Monolithic dump (no separate files)
 	  -o DUMP_PATH   Dump queries from the DB file to DUMP_PATH
@@ -123,7 +123,6 @@ help()
 	  -s SOLVER      Use solver SOLVER [default=$SOLVER]
 	  -w             Use whitespace to make it human-readable
 	  -y             Dry run: print runtime variables and exit
-	  -z             Direct mode (do not use docker)
 
 	Solvers:
 	  z3  cvc3
@@ -144,13 +143,14 @@ get_options()
 	RELEASE="$DEFAULT_RELEASE"
 	SOLVER='stp'
 	HUMAN=$FALSE
-	DIRECT=$FALSE
+	DOCKERIZED=$FALSE
 	DRYRUN=$FALSE
 
-	while getopts :b:chMo:r:s:wyz opt; do
+	while getopts :b:cdhMo:r:s:wy opt; do
 		case "$opt" in
 			b) BUILD_PATH="$OPTARG" ;;
 			c) COMPACT=$TRUE ;;
+			d) DOCKERIZED=$TRUE ;;
 			h) help; exit 1 ;;
 			M) MONOLITHIC=$TRUE ;;
 			o) DUMP_PATH="$OPTARG" ;;
@@ -158,7 +158,6 @@ get_options()
 			s) SOLVER="$OPTARG" ;;
 			w) HUMAN=$TRUE ;;
 			y) DRYRUN=$TRUE ;;
-			z) DIRECT=$TRUE ;;
 			'?') die_help 'Invalid option: -%s' "$OPTARG";;
 		esac
 	done
@@ -195,11 +194,11 @@ get_ids()
 {
 	IDS="$1"
 	test -n "$IDS" || die_help 'Missing ID list'
-	IDS_EXPANDED="$(list_expand "$IDS")"
-	IDS_EXPANDED="$(for id in $IDS_EXPANDED; do range_expand "$id"; done \
-	                | uniq | sort -n)"
+	IDS_EXPANDED="$(for id in $(list_expand "$IDS"); do \
+	                    range_expand "$id"; \
+	                done | uniq | sort -n)"
 	ID_COUNT=$(printf "$IDS_EXPANDED" | wc -l)
-	test -n "$IDS_EXPANDED" || die_help 'Invalid ID format'
+	test -n "$IDS_EXPANDED" || die_help 'ID list syntax error'
 	ARGSHIFT=1
 }
 
@@ -218,10 +217,10 @@ main()
 		exit
 	fi
 
-	if [ $DIRECT -eq $TRUE ]; then
-		dump
-	else
+	if [ $DOCKERIZED -eq $TRUE ]; then
 		docker_dump
+	else
+		dump
 	fi
 }
 

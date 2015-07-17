@@ -34,7 +34,7 @@ COMMAND_GROUPS = OrderedDict([
     ('Environment', ['init', 'vm', 'env']),
     ('Miscellaneous', []),
 ])
-COMMAND_IGNORED = ['__init__.py', 'libccli.py', 'utils.sh']
+COMMAND_IGNORED = ['__init__.py', 'utils.py', 'utils.sh']
 
 
 # EXECUTION ====================================================================
@@ -107,7 +107,7 @@ if __name__ == '__main__':
     # get legal commands:
     scan_commands()
 
-    # command, or help
+    # command, or help:
     if command.lower() in ['-h', '--help', '-help', 'help', 'halp']:
         if len(sys.argv) > 2:
             die_help("Trailing arguments: %s" % ' '.join(sys.argv[2:]))

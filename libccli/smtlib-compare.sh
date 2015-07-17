@@ -113,7 +113,6 @@ docker_compare()
 		dslab/s2e-chef:v0.6 \
 		"$DOCKER_HOSTPATH/$RUNDIR/$RUNNAME" \
 			-s "$SOLVER" \
-			-z \
 			"$DOCKER_DUMPPATH1":"$DOCKER_DUMPPATH2" \
 			"$IDS"
 }
@@ -134,10 +133,10 @@ help()
 	cat <<- EOF
 
 	Options:
+	  -d         Dockerized (wrap execution inside docker container)
 	  -h         Display this help
 	  -s SOLVER  Use solver SOLVER [default=$SOLVER]
 	  -y         Dry run: print variables and exit
-	  -z         Direct mode (don't use docker)
 
 	Solvers:
 	  z3  cvc3  stp  (STP not supported yet)
@@ -153,16 +152,16 @@ help()
 
 get_options()
 {
-	DIRECT=$DEFAULT_DIRECT
+	DOCKERIZED=$DEFAULT_DOCKERIZED
 	DRYRUN=$FALSE
 	SOLVER='z3'
 
-	while getopts :hs:yz opt; do
+	while getopts :dhs:y opt; do
 		case "$opt" in
+			d) DOCKERIZED=$TRUE ;;
 			h) help; exit 1 ;;
 			s) SOLVER="$OPTARG" ;;
 			y) DRYRUN=$TRUE ;;
-			z) DIRECT=$TRUE ;;
 			'?') die_help 'Invalid option: -%s' "$OPTARG";;
 		esac
 	done
@@ -222,10 +221,10 @@ main()
 		exit
 	fi
 
-	if [ $DIRECT -eq $TRUE ]; then
-		compare
-	else
+	if [ $DOCKERIZED -eq $TRUE ]; then
 		docker_compare
+	else
+		compare
 	fi
 }
 

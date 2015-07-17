@@ -407,7 +407,6 @@ docker_build()
 			-q "$QEMU_FLAGS" \
 			$(test $SILENT -eq $TRUE && printf '%s' '-s') \
 			-x "$EXCLUDED" \
-			-z \
 			"$RELEASE"
 }
 
@@ -440,6 +439,7 @@ help()
 	cat <<- EOF
 
 	Options:
+	  -d         Dockerized (wrap build process inside docker container)
 	  -f COMPS   Force-rebuild (configure+make) components COMPS
 	  -i PATH    Path to the Chef source directory root
 	             [default=$SRCPATH_ROOT]
@@ -454,7 +454,6 @@ help()
 	  -x COMPS   Exclude components COMPS (has higher priority than -f)
 	             [default='$EXCLUDED']
 	  -y         Dry run: print build-related variables and exit
-	  -z         Direct mode (build directly on machine, instead inside docker)
 
 	Components:
 	  $COMPONENTS
@@ -475,7 +474,7 @@ get_options()
 	# Default values:
 	#BUILDPATH_ROOT set in utils.sh
 	#SRCPATH_ROOT set in utils.sh
-	DIRECT=$DEFAULT_DIRECT
+	DOCKERIZED=$DEFAULT_DOCKERIZED
 	DRYRUN=$FALSE
 	FORCE_COMPS=''
 	EXCLUDED='gmock tests'
@@ -489,8 +488,9 @@ get_options()
 	SILENT=${CCLI_SILENT_BUILD:=$FALSE}
 
 	# Options:
-	while getopts :f:hi:j:l:o:q:sx:yz opt; do
+	while getopts :df:hi:j:l:o:q:sx:y opt; do
 		case "$opt" in
+			d) DOCKERIZED=$TRUE ;;
 			f) FORCE_COMPS="$OPTARG" ;;
 			h) help; exit 1 ;;
 			i) SRCPATH_ROOT="$OPTARG" ;;
@@ -501,7 +501,6 @@ get_options()
 			s) SILENT=$TRUE ;;
 			x) EXCLUDED="$OPTARG" ;;
 			y) DRYRUN=$TRUE ;;
-			z) DIRECT=$TRUE ;;
 			'?') die_help 'Invalid option: -%s' "$OPTARG";;
 		esac
 	done
@@ -564,8 +563,15 @@ main()
 		exit 1
 	fi
 
-	if [ $DIRECT -eq $TRUE ]; then
-		note 'Building %s with %d cores' "$RELEASE" "$JOBS"
+	if [ $DOCKERIZED -eq $TRUE ]; then
+		mkdir -p "$BUILDPATH_ROOT"
+		setfacl -m user:$(id -u):rwx "$BUILDPATH_ROOT"
+		setfacl -m user:431:rwx "$BUILDPATH_ROOT"
+		setfacl -d -m user:$(id -u):rwx "$BUILDPATH_ROOT"
+		setfacl -d -m user:431:rwx "$BUILDPATH_ROOT"
+		docker_build
+	else
+		note 'Building %s (jobs=%d)' "$RELEASE" "$JOBS"
 		BUILDPATH_ROOT="$BUILDPATH_ROOT/$ARCH-$TARGET-$MODE"
 		CODE_TERM='restart'
 		while [ "$CODE_TERM" = 'restart' ]; do
@@ -577,13 +583,6 @@ main()
 			'abort') exit 2 ;;
 			*) die_internal 'main(): unknown termination code: %s' "$CODE_TERM" ;;
 		esac
-	else
-		mkdir -p "$BUILDPATH_ROOT"
-		setfacl -m user:$(id -u):rwx "$BUILDPATH_ROOT"
-		setfacl -m user:431:rwx "$BUILDPATH_ROOT"
-		setfacl -d -m user:$(id -u):rwx "$BUILDPATH_ROOT"
-		setfacl -d -m user:431:rwx "$BUILDPATH_ROOT"
-		docker_build
 	fi
 }
 

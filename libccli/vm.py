@@ -1,43 +1,10 @@
 #!/usr/bin/env python3
 
-# TODO: wrap everything in docker
-# http://docker-py.readthedocs.org/en/latest/api/
-#------------------------------------------------------------------------------#
-#from docker import Client as DockerClient
-#
-#docker_name = 'dslab/s2e-chef'
-#docker_tag = 'v0.6'
-#docker_image = '%s:%s' % (DOCKER_NAME, DOCKER_TAG)
-#docker_socket = 'unix://var/run/docker.sock'
-#docker_uid = 431
-#
-#c = DockerClient(base_url=DOCKER_SOCKET)
-#try:
-#    c.inspect_image(DOCKER_IMAGE)
-#except docker.errors.APIError:
-#    print("%s: docker image not found" % DOCKER_IMAGE, file=stderr)
-#    exit(1)
-#------------------------------------------------------------------------------#
-
-# TODO: use ACL
-# http://pylibacl.k1024.org/module.html
-#------------------------------------------------------------------------------#
-# ACL (TODO make it work):
-#acl = ACL(text="u::rwx,g::rx,o::rx")
-#acl.applyto(path, posix1e.ACL_TYPE_DEFAULT)
-#acl = ACL(text="u:431:rwx,g::rx,o::rx")
-#acl.applyto(path)
-#acl.applyto(path, posix1e.ACL_TYPE_DEFAULT)
-#------------------------------------------------------------------------------#
-
-
 import os
 import argparse
-import posix1e
-from posix1e import ACL,Entry
 import sys
 import psutil
-import libccli
+import utils
 
 
 DATAROOT = os.environ.get('CHEF_DATAROOT', '/var/lib/chef')
@@ -49,13 +16,13 @@ class VM:
     memory = min(max(psutil.virtual_memory().total / 4, 2 * 1024), 4 * 1024)
 
 
-    def __init__(self, name: str):
+    def __init__(self, name):
         self.name = name
         self.path = '%s/%s.raw' % (DATAROOT, name)
 
 
     def exists(self):
-        return os.path.exists(self.path)
+        return self.name and os.path.exists(self.path)
 
 
     def create(self, size: int, **kwargs: dict):
@@ -74,26 +41,26 @@ class VM:
             exit(1)
 
         try:
-            libccli.execute(['qemu-img', 'create', self.path, '%d' % size])
-        except libccli.ExecError as e:
+            utils.execute(['qemu-img', 'create', self.path, '%d' % size])
+        except utils.ExecError as e:
             print(e, file=sys.stderr)
             exit(1)
 
-        libccli.set_permissions(self.path)
+        utils.set_permissions(self.path)
 
 
     def install(self, iso_path: str, **kwargs: dict):
         if not self.exists():
             print("Machine [%s] does not exist" % self.name, file=sys.stderr)
-            if libccli.prompt_yes_no("Create now?", True):
-                size = libccli.prompt_int("VM size in MiB", 10240)
+            if utils.prompt_yes_no("Create now?", True):
+                size = utils.prompt_int("VM size in MiB", 10240)
                 self.create(size)
             else:
                 print("Not installing %s, aborting" % iso_path, file=sys.stderr)
                 exit(1)
 
         if not os.path.exists(iso_path):
-            print("%s not found" % iso_path, file=sys.stderr)
+            print("%s: ISO image not found" % iso_path, file=sys.stderr)
             exit(1)
 
         qemu_cmd = ['qemu-system-%s' % VM.arch,
@@ -104,11 +71,11 @@ class VM:
                     '-vga', 'std',
                     '-net', 'user',
                     '-monitor', 'tcp::1234,server,nowait',
-                    '-drive', 'file=%s,if=virtio' % self.path,
+                    '-drive', 'file=%s,if=virtio,format=raw' % self.path,
                     '-drive', 'file=%s,media=cdrom,readonly' % iso_path,
                     '-boot', 'order=d']
         print("executing: `%s`" % ' '.join(qemu_cmd))
-        libccli.execute(qemu_cmd)
+        utils.execute(qemu_cmd)
 
 
     def delete(self, **kwargs: dict):
@@ -123,10 +90,19 @@ class VM:
 
 
     @staticmethod
+    def list(self, **kwargs: dict):
+        for f in os.listdir(DATAROOT):
+            bn, ext = os.path.splitext(f)
+            if not ext == '.raw':
+                continue
+            print(bn)
+
+
+    @staticmethod
     def main(argv: [str]):
         p = argparse.ArgumentParser(description="Handle Virtual Machines")
 
-        pcmd = p.add_subparsers(help="Action", dest="Action")
+        pcmd = p.add_subparsers(help="Action", dest="action")
         pcmd.required = True
 
         # create
@@ -146,11 +122,18 @@ class VM:
         pdelete.set_defaults(action=VM.delete)
         pdelete.add_argument('name', help="Machine name")
 
+        # list
+        plist = pcmd.add_parser('list', help="List existing VMs")
+        plist.set_defaults(action=VM.list)
+
         args = p.parse_args(argv[1:])
         kwargs = vars(args) # make it a dictionary, for easier use
 
-        vm = VM(args['name'])
-        args['action'](vm, **kwargs)
+        if kwargs['action'] == plist:
+            VM.list()
+        else:
+            vm = VM(kwargs.get('name', None))
+            kwargs['action'](vm, **kwargs)
 
 
 if __name__ == '__main__':
