@@ -4,11 +4,17 @@
 
 import sys
 import os
+import utils
 
 RUNPATH = os.path.dirname(os.path.realpath(__file__))
 RUNNAME = sys.argv[0]
 INVOKENAME = os.environ.get('INVOKENAME', os.path.basename(RUNNAME))
 DATAROOT = os.environ.get('CHEF_DATAROOT', '/var/local/chef')
+DATAROOT_TREE = [
+    DATAROOT,
+    DATAROOT+'/expdata',
+    DATAROOT+'/vm',
+]
 
 class Init:
     @staticmethod
@@ -43,20 +49,21 @@ class Init:
             else:
                 Init.die_help("Unknown argument: %s" % args[1])
 
-        if os.path.isdir(DATAROOT):
-            print("Chef has already been initialised (%s already exists)"
-                  % DATAROOT, file=sys.stderr)
-            exit(1)
         if os.geteuid() != 0:
             print("Please run `%s init` as root" % RUNNAME, file=sys.stderr)
             exit(1)
         try:
-            print("Creating %s" % DATAROOT)
-            os.mkdir(DATAROOT)
+            for directory in DATAROOT_TREE:
+                if os.path.isdir(directory):
+                    print('%s [skip]' % directory)
+                    continue
+                else:
+                    print('%s' % directory)
+                os.mkdir(directory)
+                utils.set_permissions(directory)
         except PermissionError:
             print("Permission denied", file=sys.stderr)
             exit(1)
-        libccli.set_permissions(DATAROOT)
 
 
 if __name__ == '__main__':

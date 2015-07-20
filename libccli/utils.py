@@ -10,16 +10,6 @@ class ExecError(Exception):
         return self.message
 
 
-def execute(cmd: [str]):
-    pid = os.fork()
-    if pid == 0:
-        os.execvp(cmd[0], cmd)
-        raise ExecError('exec(%s) failed' % ' '.join(cmd))
-    else:
-        (pid, status) = os.waitpid(pid, 0)
-        return status >> 8
-
-
 def set_permissions(path: str):
     try:
         os.chown(path, -1, grp.getgrnam('kvm').gr_gid)

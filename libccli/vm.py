@@ -5,9 +5,16 @@ import argparse
 import sys
 import psutil
 import utils
+import tempfile
+import subprocess
 
 
-DATAROOT = os.environ.get('CHEF_DATAROOT', '/var/lib/chef')
+DATAROOT = os.environ.get('CHEF_DATAROOT', '/var/local/chef')
+INVOKENAME = os.environ.get('INVOKENAME', sys.argv[0])
+SRC_ROOT = os.path.dirname(os.path.dirname(__file__))
+VMROOT = '%s/vm' % DATAROOT
+INSTALLSCRIPTS_ROOT, _ = os.path.splitext(__file__)
+PREPARED = ['Debian']
 
 
 class VM:
@@ -16,52 +23,44 @@ class VM:
     memory = min(max(psutil.virtual_memory().total / 4, 2 * 1024), 4 * 1024)
 
 
-    def __init__(self, name):
+    def __init__(self, name: str):
         self.name = name
-        self.path = '%s/%s.raw' % (DATAROOT, name)
+        self.path = '%s/%s.raw' % (VMROOT, name)
 
 
     def exists(self):
         return self.name and os.path.exists(self.path)
 
 
-    def create(self, size: int, **kwargs: dict):
+    def prepare(self, size: int, force: bool):
         if self.exists():
-            print("Machine [%s] already exists" % self.name, file=sys.stderr)
+            if force:
+                print("Overriding existing machine [%s]" % self.name)
+                os.unlink(self.path)
+            else:
+                print("Machine [%s] already exists" % self.name, file=sys.stderr)
+                exit(1)
+        if not os.path.isdir(VMROOT):
+            print("%s: directory not found (you may need to initialise Chef first)"
+                  % VMROOT, file=sys.stderr)
             exit(1)
-        if not os.path.isdir(DATAROOT):
-            print("Chef has not been initialised; run `ccli.py init` first",
-                  file=sys.stderr)
-            exit(1)
-
         try:
             open(self.path, 'a').close()
         except PermissionError:
             print("Permission denied", file=sys.stderr)
             exit(1)
-
-        try:
-            utils.execute(['qemu-img', 'create', self.path, '%d' % size])
-        except utils.ExecError as e:
-            print(e, file=sys.stderr)
+        if subprocess.call(['qemu-img', 'create', self.path, '%dM' % size]) != 0:
+            print("Failed to execute qemu-img", file=sys.stderr)
             exit(1)
-
         utils.set_permissions(self.path)
 
 
-    def install(self, iso_path: str, **kwargs: dict):
-        if not self.exists():
-            print("Machine [%s] does not exist" % self.name, file=sys.stderr)
-            if utils.prompt_yes_no("Create now?", True):
-                size = utils.prompt_int("VM size in MiB", 10240)
-                self.create(size)
-            else:
-                print("Not installing %s, aborting" % iso_path, file=sys.stderr)
-                exit(1)
-
+    def create(self, size: int, iso_path: str, **kwargs: dict):
         if not os.path.exists(iso_path):
             print("%s: ISO image not found" % iso_path, file=sys.stderr)
             exit(1)
+
+        self.prepare(size, kwargs['force'])
 
         qemu_cmd = ['qemu-system-%s' % VM.arch,
                     '-enable-kvm',
@@ -75,7 +74,39 @@ class VM:
                     '-drive', 'file=%s,media=cdrom,readonly' % iso_path,
                     '-boot', 'order=d']
         print("executing: `%s`" % ' '.join(qemu_cmd))
-        utils.execute(qemu_cmd)
+        subprocess.call(qemu_cmd)
+
+
+    def install(self, size: int, os_name: str, **kwargs: dict):
+        self.prepare(size, kwargs['force'])
+        { 'Debian': VM.install_debian }[os_name](self, size)
+
+
+    def install_debian(self, size: int):
+        if subprocess.call(['sfdisk', '-d', self.path]) != 0:
+            print("%s: bare disk image; initialising ..." % self.path)
+            sp = subprocess.Popen(['fdisk', self.path], shell=False, stdin=subprocess.PIPE)
+            #                     , create a new empty DOS partition table
+            #                     |  , add a new partition
+            #                     |  |  , partition type (primary)
+            #                     |  |  |  , partition number
+            #                     |  |  |  |  , first sector
+            #                     |  |  |  |  | , last sector
+            #                     |  |  |  |  | | , write table to disk and exit
+            #                     |  |  |  |  | | |
+            sp.communicate(bytes('o\nn\np\n1\n\n\nw\n', 'utf-8'))
+            # FIXME set sector size and partition start sector explicitely
+            print("creating partition table and partition ...")
+            if sp.wait() != 0:
+                print("failed to partition", file=sys.stderr)
+                exit(1)
+            print("formatting partition ...")
+            if subprocess.call(['mkfs.ext4', '-E', 'offset=%d' % 1024**2, self.path]) != 0:
+                print("failed to format", file=sys.stderr)
+                exit(1)
+        else:
+            print("%s: partition table exists; assuming properly formatted" % self.path)
+        subprocess.call(['sudo', '%s/debian.sh' % INSTALLSCRIPTS_ROOT, self.path])
 
 
     def delete(self, **kwargs: dict):
@@ -89,9 +120,8 @@ class VM:
             exit(1)
 
 
-    @staticmethod
     def list(self, **kwargs: dict):
-        for f in os.listdir(DATAROOT):
+        for f in os.listdir(VMROOT):
             bn, ext = os.path.splitext(f)
             if not ext == '.raw':
                 continue
@@ -100,22 +130,28 @@ class VM:
 
     @staticmethod
     def main(argv: [str]):
-        p = argparse.ArgumentParser(description="Handle Virtual Machines")
+        p = argparse.ArgumentParser(description="Handle Virtual Machines", prog=INVOKENAME)
 
-        pcmd = p.add_subparsers(help="Action", dest="action")
+        pcmd = p.add_subparsers(dest="Action")
         pcmd.required = True
 
         # create
-        pcreate = pcmd.add_parser('create', help="Create a new VM")
+        pcreate = pcmd.add_parser('create', help="Install an OS from an ISO to a VM")
         pcreate.set_defaults(action=VM.create)
+        pcreate.add_argument('-f', '--force', action='store_true', default=False,
+                             help="Force creation, even if VM already exists")
         pcreate.add_argument('name', help="Machine name")
         pcreate.add_argument('size', help="VM size (in MB)", type=int)
+        pcreate.add_argument('iso_path', help="Path to ISO file containing the OS")
 
         # install
-        pinstall = pcmd.add_parser('install', help="Install an OS to a VM")
+        pinstall = pcmd.add_parser('install', help="Install a prepared OS to a VM")
         pinstall.set_defaults(action=VM.install)
+        pinstall.add_argument('-f', '--force', action='store_true', default=False,
+                             help="Force installation, even if VM already exists")
         pinstall.add_argument('name', help="Machine name")
-        pinstall.add_argument('iso_path', help="Path to ISO file containing the OS")
+        pinstall.add_argument('size', help="VM size (in MB)", type=int)
+        pinstall.add_argument('os_name', choices=PREPARED, help="Operating System name")
 
         # delete
         pdelete = pcmd.add_parser('delete', help="Delete an existing VM")
@@ -129,11 +165,11 @@ class VM:
         args = p.parse_args(argv[1:])
         kwargs = vars(args) # make it a dictionary, for easier use
 
-        if kwargs['action'] == plist:
-            VM.list()
-        else:
-            vm = VM(kwargs.get('name', None))
-            kwargs['action'](vm, **kwargs)
+        #if kwargs['action'] == VM.list:
+        #    VM.list()
+        #else:
+        vm = VM(kwargs.get('name', None))
+        return kwargs['action'](vm, **kwargs)
 
 
 if __name__ == '__main__':
