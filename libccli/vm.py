@@ -35,8 +35,8 @@ class VM:
     def prepare(self, size: int, force: bool):
         if self.exists():
             if force:
-                print("Overriding existing machine [%s]" % self.name)
-                os.unlink(self.path)
+                print("[SKIP] image creation: Machine [%s] already exists" % self.name)
+                return
             else:
                 print("Machine [%s] already exists" % self.name, file=sys.stderr)
                 exit(1)
@@ -49,10 +49,69 @@ class VM:
         except PermissionError:
             print("Permission denied", file=sys.stderr)
             exit(1)
-        if subprocess.call(['qemu-img', 'create', self.path, '%dM' % size]) != 0:
-            print("Failed to execute qemu-img", file=sys.stderr)
+        if utils.execute(['qemu-img', 'create', self.path, '%dM' % size],
+                         msg="execute qemu-img") != 0:
             exit(1)
         utils.set_permissions(self.path)
+
+
+    def partition(self):
+        if utils.execute(['sfdisk', '-d', self.path]) == 0:
+            print("[SKIP] partitioning: partition table already exists")
+            return
+
+        print("creating partition table ...")
+        if utils.execute(['fdisk', self.path],
+        #                             , create a new empty DOS partition table
+        #                             |  , add a new partition
+        #                             |  |  , partition type (primary)
+        #                             |  |  |  , partition number
+        #                             |  |  |  |  , first sector
+        #                             |  |  |  |  | , last sector
+        #                             |  |  |  |  | | , table to disk and exit
+        #                             |  |  |  |  | | |
+                         stdin='o\nn\np\n1\n\n\nw\n',
+                         msg="create partition") != 0:
+            exit(1)
+
+
+    def format(self, fs:str='ext4'):
+        # Get free loop device:
+        out, _, retval = utils.execute(['losetup', '-f'], iowrap=True,
+                                             msg="get free loop device")
+        if retval != 0:
+            exit(1)
+        loopdev = out.strip()
+        print("[INFO] using %s as loop device" % loopdev)
+
+        # Connect loop device:
+        try:
+            if utils.sudo(['losetup', '--partscan', loopdev, self.path],
+                          msg="attach to loop device %s" % loopdev) != 0:
+                exit(1)
+        except KeyboardInterrupt:
+            exit(127)
+
+        # Format:
+        try:
+            out,_,retval = utils.sudo(['blkid', '-o', 'value', '-s', 'TYPE',
+                                      '%sp1' % loopdev], iowrap=True)
+            if retval == 0 and out.strip() == fs:
+                print('[SKIP] formatting: already formatted as %s' % fs)
+            else:
+                retval = utils.sudo(['mkfs.%s' % fs, '%sp1' % loopdev],
+                                    msg="format partition %sp1" % loopdev)
+        except KeyboardInterrupt:
+            retval = 127
+
+        # Disconnect loopdevice:
+        finally:
+            utils.sudo(['losetup', '-d', loopdev],
+                          msg="detach from loop device %s" % loopdev)
+
+        # Evaluate progress:
+        if retval != 0:
+            exit(retval)
 
 
     def create(self, size: int, iso_path: str, **kwargs: dict):
@@ -83,30 +142,13 @@ class VM:
 
 
     def install_debian(self, size: int):
-        if subprocess.call(['sfdisk', '-d', self.path]) != 0:
-            print("%s: bare disk image; initialising ..." % self.path)
-            sp = subprocess.Popen(['fdisk', self.path], shell=False, stdin=subprocess.PIPE)
-            #                     , create a new empty DOS partition table
-            #                     |  , add a new partition
-            #                     |  |  , partition type (primary)
-            #                     |  |  |  , partition number
-            #                     |  |  |  |  , first sector
-            #                     |  |  |  |  | , last sector
-            #                     |  |  |  |  | | , write table to disk and exit
-            #                     |  |  |  |  | | |
-            sp.communicate(bytes('o\nn\np\n1\n\n\nw\n', 'utf-8'))
-            # FIXME set sector size and partition start sector explicitely
-            print("creating partition table and partition ...")
-            if sp.wait() != 0:
-                print("failed to partition", file=sys.stderr)
-                exit(1)
-            print("formatting partition ...")
-            if subprocess.call(['mkfs.ext4', '-E', 'offset=%d' % 1024**2, self.path]) != 0:
-                print("failed to format", file=sys.stderr)
-                exit(1)
-        else:
-            print("%s: partition table exists; assuming properly formatted" % self.path)
-        subprocess.call(['sudo', '%s/debian.sh' % INSTALLSCRIPTS_ROOT, self.path])
+        self.partition()
+        self.format('ext4')
+        try:
+            utils.sudo(['%s/debian.sh' % INSTALLSCRIPTS_ROOT, self.path],
+                       sudo_msg='debootstrap', stdout=True, stderr=True)
+        except KeyboardInterrupt:
+            exit(127)
 
 
     def delete(self, **kwargs: dict):
@@ -136,22 +178,30 @@ class VM:
         pcmd.required = True
 
         # create
-        pcreate = pcmd.add_parser('create', help="Install an OS from an ISO to a VM")
+        pcreate = pcmd.add_parser('create',
+                                  help="Install an OS from an ISO to a VM")
         pcreate.set_defaults(action=VM.create)
-        pcreate.add_argument('-f', '--force', action='store_true', default=False,
+        pcreate.add_argument('-f','--force', action='store_true', default=False,
                              help="Force creation, even if VM already exists")
-        pcreate.add_argument('name', help="Machine name")
-        pcreate.add_argument('size', help="VM size (in MB)", type=int)
-        pcreate.add_argument('iso_path', help="Path to ISO file containing the OS")
+        pcreate.add_argument('iso_path',
+                             help="Path to ISO file containing the OS")
+        pcreate.add_argument('name',
+                             help="Machine name")
+        pcreate.add_argument('size', type=int, default=5120, nargs='?',
+                             help="VM size (in MB)")
 
         # install
-        pinstall = pcmd.add_parser('install', help="Install a prepared OS to a VM")
+        pinstall = pcmd.add_parser('install',
+                                   help="Install a prepared OS to a VM")
         pinstall.set_defaults(action=VM.install)
-        pinstall.add_argument('-f', '--force', action='store_true', default=False,
-                             help="Force installation, even if VM already exists")
-        pinstall.add_argument('name', help="Machine name")
-        pinstall.add_argument('size', help="VM size (in MB)", type=int)
-        pinstall.add_argument('os_name', choices=PREPARED, help="Operating System name")
+        pinstall.add_argument('-f','--force', action='store_true',default=False,
+                             help="Force installation, even if already exists")
+        pinstall.add_argument('os_name', choices=PREPARED,
+                              help="Operating System name")
+        pinstall.add_argument('name',
+                              help="Machine name")
+        pinstall.add_argument('size', type=int, default=5120, nargs='?',
+                              help="VM size (in MB)")
 
         # delete
         pdelete = pcmd.add_parser('delete', help="Delete an existing VM")

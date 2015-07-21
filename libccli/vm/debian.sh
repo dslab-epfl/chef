@@ -2,7 +2,8 @@
 
 # This script installs a "prepared-for-Chef" Debian in a directory through
 # debootstrap.
-# It is not meant for direct use, as there is no argument checking.
+# It is not meant for direct use, as there is no argument checking or help
+# messages.
 
 # Usage: debian.sh [DIRECTORY]
 # XXX if DIRECTORY is omitted, it assumes to be running inside the chroot
@@ -10,12 +11,12 @@
 DEBIAN_RELEASE='wheezy'
 DEBIAN_URL='http://http.debian.net/debian'
 CHROOT_ROOT='/ccli'
+DEBIAN_PATH='/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
 
 # UTILITIES ====================================================================
 
 # The location of utils.sh depends on whether this script is invoked inside the
 # chroot as part of the whole process, or called directly outside the chroot.
-
 # => sourced in main()
 
 stamp()
@@ -41,9 +42,26 @@ stamp()
 
 # INSTALLATION (OUTSIDE CHROOT) ================================================
 
+_losetup()
+{
+	LOOPDEV="$(losetup -f)"
+	info 'using %s as loop device' "$LOOPDEV"
+	losetup --partscan "$LOOPDEV" "$RAW"
+}
+
+_ulosetup()
+{
+	losetup -d "$LOOPDEV"
+}
+
 _mount()
 {
-	mount -o loop,rw,offset=$MEBI "$RAW" "$DIRECTORY"
+	mount "${LOOPDEV}p1" "$DIRECTORY"
+}
+
+_umount()
+{
+	umount "$DIRECTORY"
 }
 
 _debootstrap()
@@ -59,18 +77,12 @@ _chroot()
 {
 	mount -t sysfs sysfs "$DIRECTORY"/sys
 	mount -t proc proc "$DIRECTORY"/proc
-	ln -f "$RUNPATH/$RUNNAME" "${DIRECTORY}$CHROOT_ROOT/$RUNNAME"
-	ln -f "$UTILS" "${DIRECTORY}$CHROOT_ROOT/utils.sh"
-	PATH='/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin' \
-		chroot "$DIRECTORY" "$CHROOT_ROOT/$RUNNAME" \
+	cp "$RUNPATH/$RUNNAME" "${DIRECTORY}$CHROOT_ROOT/$RUNNAME"
+	cp "$UTILS" "${DIRECTORY}$CHROOT_ROOT/utils.sh"
+	PATH="$DEBIAN_PATH" chroot "$DIRECTORY" "$CHROOT_ROOT/$RUNNAME" \
 	|| fail "chroot failed\n"
 	umount "$DIRECTORY"/sys
 	umount "$DIRECTORY"/proc
-}
-
-_umount()
-{
-	umount "$DIRECTORY"
 }
 
 # INSTALLATION (INSIDE CHROOT) =================================================
@@ -120,9 +132,10 @@ main()
 	RAW="$1"
 	if [ -z "$RAW" ]; then
 		# Running inside chroot:
-		UTILS=/ccli/utils.sh
+		UTILS="$CHROOT_ROOT"/utils.sh
 		. "$UTILS"
 		DIRECTORY=''
+
 		stamp _base
 		stamp _update
 		stamp _grub
@@ -132,10 +145,13 @@ main()
 		UTILS="$(dirname "$(readlink -f "$(dirname "$0")")")/utils.sh"
 		. "$UTILS"
 		DIRECTORY="${RAW}.mount"
-		mkdir -p "$DIRECTORY/ccli"
+		mkdir -p "${DIRECTORY}$CHROOT_ROOT"
+
+		_losetup
 		_mount
 		stamp _debootstrap && _chroot
 		_umount
+		_ulosetup
 	fi
 }
 
