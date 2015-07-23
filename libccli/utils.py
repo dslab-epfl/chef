@@ -83,7 +83,7 @@ def fetch(url: str, path: str, msg: str=None, overwrite: bool=False,
     pend(pending=True)
 
     if os.path.exists(path) and not overwrite:
-        skip("%s already exists" % path)
+        skip("%s already downloaded" % path)
         set_msg_prefix(None)
         return
 

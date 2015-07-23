@@ -14,7 +14,7 @@ DATAROOT = os.environ.get('CHEF_DATAROOT', '/var/local/chef')
 INVOKENAME = os.environ.get('INVOKENAME', sys.argv[0])
 SRC_ROOT = os.path.dirname(os.path.dirname(__file__))
 VMROOT = '%s/vm' % DATAROOT
-PREPARED = ['Debian']
+PREPARED = {'Debian':'debian-7.8.0-i386-netinst.iso'}
 FETCH_URL_BASE = 'http://localhost/~ayekat' # TODO real host
 
 
@@ -26,15 +26,16 @@ class VM:
 
     def __init__(self, name: str):
         self.name = name
-        self.path = '%s/%s.raw' % (VMROOT, name)
+        self.path_raw = '%s/%s.raw' % (VMROOT, name)
         self.path_qcow = '%s/%s.qcow2' % (VMROOT, name)
-        self.path_qcow_gz = '%s.gz' % (self.path_qcow)
+        self.path_iso = '%s/%s' % (VMROOT, PREPARED[name])
+        self.path_tar_gz = '%s/%s.tar.gz' % (VMROOT, name)
 
 
     # UTILITIES ================================================================
 
     def exists(self):
-        return self.name and os.path.exists(self.path)
+        return self.name and os.path.exists(self.path_raw)
 
 
     def prepare(self, size: int, force: bool):
@@ -54,14 +55,14 @@ class VM:
                        % VMROOT)
             exit(1)
         try:
-            open(self.path, 'a').close()
+            open(self.path_raw, 'a').close()
         except PermissionError:
             utils.fail("Permission denied")
             exit(1)
-        if utils.execute(['qemu-img', 'create', self.path, '%dM' % size],
+        if utils.execute(['qemu-img', 'create', self.path_raw, '%dM' % size],
                          msg="execute qemu-img") != 0:
             exit(1)
-        utils.set_permissions(self.path)
+        utils.set_permissions(self.path_raw)
         utils.ok()
         utils.set_msg_prefix(None)
 
@@ -86,7 +87,7 @@ class VM:
                     '-vga', 'std',
                     '-net', 'user',
                     '-monitor', 'tcp::1234,server,nowait',
-                    '-drive', 'file=%s,if=virtio,format=raw' % self.path,
+                    '-drive', 'file=%s,if=virtio,format=raw' % self.path_raw,
                     '-drive', 'file=%s,media=cdrom,readonly' % iso_path,
                     '-boot', 'order=d']
         print("executing: `%s`" % ' '.join(qemu_cmd))
@@ -97,42 +98,49 @@ class VM:
 
 
     def fetch(self, os_name: str, **kwargs: dict):
-        if self.exists():
-            msg = "Machine [%s] already exists" % self.name
-            if kwargs['force']:
-                utils.warn(msg)
-            else:
-                utils.fail(msg)
-                exit(1)
-        if not os.path.exists(self.path_qcow) or kwargs['no_cache']:
+        if not os.path.exists(self.path_qcow) \
+        or not os.path.exists(self.path_iso) \
+        or kwargs['no_cache']:
             # Fetch
-            url = '%s/%s.qcow2.gz' % (FETCH_URL_BASE, os_name)
-            utils.fetch(url, self.path_qcow_gz, overwrite=kwargs['no_cache'],
-                        unit=utils.MEBI, msg="fetch disk image")
+            url = '%s/%s' % (FETCH_URL_BASE, os.path.basename(self.path_tar_gz))
+            utils.fetch(url, self.path_tar_gz, overwrite=kwargs['no_cache'],
+                        unit=utils.MEBI, msg="fetch image bundle")
+        elif not os.path.exists(self.path_tar_gz):
+            utils.warn('no local version of archive available')
 
-            # Extract
-            utils.set_msg_prefix("extract image")
-            utils.pend()
+        # Extract
+        utils.set_msg_prefix("extract bundle")
+        try:
+            for f in [self.path_qcow, self.path_iso]:
+                fb = os.path.basename(f)
+                if not os.path.exists(f) or kwargs['no_cache']:
+                    utils.pend('%s' % fb)
+                    if utils.execute(['tar', '-z', '-x', fb,
+                                      '-f', self.path_tar_gz],
+                                      msg="extract") != 0:
+                        exit(1)
+                    utils.ok('%s' % fb)
+                else:
+                    utils.skip('%s: already extracted' % fb)
+        except KeyboardInterrupt:
+            utils.abort("keyboard interrupt")
+            exit(127)
+
+        # Expand:
+        utils.set_msg_prefix("expand image")
+        utils.pend()
+        if not self.exists() or kwargs['force']:
             try:
-                if utils.execute(['gunzip', self.path_qcow_gz], msg="gunzip") != 0:
+                if utils.execute(['qemu-img', 'convert', '-f', 'qcow2',
+                                  '-O', 'raw', self.path_qcow, self.path_raw],
+                                  msg="expand qemu image") != 0:
                     exit(1)
             except KeyboardInterrupt:
                 utils.abort("keyboard interrupt")
                 exit(127)
             utils.ok()
-
-        # Convert:
-        utils.set_msg_prefix("convert image")
-        utils.pend()
-        try:
-            if utils.execute(['qemu-img', 'convert', '-f', 'qcow2', '-O', 'raw',
-                             self.path_qcow, self.path],
-                             msg="convert qemu image") != 0:
-                exit(1)
-        except KeyboardInterrupt:
-            utils.abort("keyboard interrupt")
-            exit(127)
-        utils.ok()
+        else:
+            utils.skip("%s already exists" % self.path_raw)
         utils.set_msg_prefix(None)
 
 
@@ -141,7 +149,7 @@ class VM:
             utils.fail("Machine [%s] does not exist" % self.name)
             exit(1)
         try:
-            os.unlink(self.path)
+            os.unlink(self.path_raw)
         except PermissionError:
             utils.fail("Permission denied")
             exit(1)
@@ -178,6 +186,7 @@ class VM:
                              help="VM size (in MB)")
 
         # fetch
+        prepared_list = list(PREPARED)
         pfetch = pcmd.add_parser('fetch',
                                  help="Download a prepared OS image")
         pfetch.set_defaults(action=VM.fetch)
@@ -185,7 +194,7 @@ class VM:
                             help="Overwrite existing OS image")
         pfetch.add_argument('--no-cache', action='store_true', default=False,
                             help="Don't use locally cached download files")
-        pfetch.add_argument('os_name', choices=PREPARED,
+        pfetch.add_argument('os_name', choices=prepared_list,
                             help="Operating System name")
         pfetch.add_argument('name',
                             help="Machine name")
