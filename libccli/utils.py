@@ -26,7 +26,7 @@ def execute(cmd:[str], stdin:str=None, stdout:bool=False, stderr:bool=False,
     try:
         out, err = sp.communicate(input=_indata)
         if sp.returncode != 0 and msg:
-            fail("could not %s: %s" % (msg, err.decode()), file=sys.stderr)
+            fail("could not %s: %s" % (msg, err.decode()))
     except KeyboardInterrupt as ki:
         try:
             sp.wait()
@@ -51,11 +51,8 @@ def set_permissions(path: str):
     try:
         os.chown(path, -1, grp.getgrnam('kvm').gr_gid)
         os.chmod(path, 0o775 if os.path.isdir(path) else 0o664)
-
-        # TODO: ACL
     except PermissionError:
-        print("Cannot modify permissions for %s: Permission denied" % path,
-              file=sys.stderr)
+        fail("Cannot modify permissions for %s: Permission denied" % path)
         exit(1)
 
 # USER INTERACTION =============================================================
@@ -66,11 +63,7 @@ def ask(msg: str, default: bool = None):
     pmsg = '%s [%s/%s] ' % (msg, ('y', 'Y')[default == True],
                                  ('n', 'N')[default == False])
     while (True):
-        try:
-            user = input(pmsg).lower()
-        except KeyboardInterrupt:
-            print('\nAborting', file=sys.stderr)
-            exit(1)
+        user = input(pmsg).lower()
         if user in yes or user in no:
             break
         if user == '' and default != None:
@@ -80,8 +73,8 @@ def ask(msg: str, default: bool = None):
 
 # NETWORK ======================================================================
 
-def fetch(url: str, path: str, msg: str=None, msg_exists: str=None,
-          overwrite: bool=False, unit: int=None):
+def fetch(url: str, path: str, msg: str=None, overwrite: bool=False,
+          unit: int=None):
     global KIBI
     if not unit:
         unit = KIBI
@@ -89,13 +82,10 @@ def fetch(url: str, path: str, msg: str=None, msg_exists: str=None,
     set_msg_prefix(msg if msg else url)
     pend(pending=True)
 
-    if os.path.exists(path):
-        msg_exists = msg_exists if msg_exists else "%s: file exists" % path
-        if overwrite:
-            warn(msg_exists)
-        else:
-            fail(msg_exists)
-            exit(1)
+    if os.path.exists(path) and not overwrite:
+        skip("%s already exists" % path)
+        set_msg_prefix(None)
+        return
 
     r = requests.get(url, stream=True)
     if r.status_code != 200:
@@ -108,7 +98,7 @@ def fetch(url: str, path: str, msg: str=None, msg_exists: str=None,
         file_size_block = 8 * unit
         try:
             for block in r.iter_content(file_size_block):
-                #file.write(block)
+                file.write(block)
                 file_size_current += len(block)
                 pend("%d MiB / %d MiB (%3d%%)"
                      % (file_size_current / unit,
@@ -164,10 +154,10 @@ def info(msg: str):
 def skip(msg: str):
     print_msg(SKIP, msg)
 
-def ok(msg: str = None):
+def ok(msg: str=None):
     print_msg(_OK_, msg)
 
-def fail(msg: str = None):
+def fail(msg: str=None):
     print_msg(FAIL, msg, file=sys.stderr)
 
 def warn(msg: str):
@@ -180,5 +170,5 @@ def abort(msg: str):
     print()
     print_msg(ABRT, msg)
 
-def pend(msg: str = None, pending: bool = False):
+def pend(msg: str=None, pending: bool=True):
     print_msg(PEND, msg, eol=('\n', '\r')[pending])

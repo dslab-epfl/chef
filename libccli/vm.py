@@ -27,6 +27,8 @@ class VM:
     def __init__(self, name: str):
         self.name = name
         self.path = '%s/%s.raw' % (VMROOT, name)
+        self.path_qcow = '%s/%s.qcow2' % (VMROOT, name)
+        self.path_qcow_gz = '%s.gz' % (self.path_qcow)
 
 
     # UTILITIES ================================================================
@@ -37,7 +39,7 @@ class VM:
 
     def prepare(self, size: int, force: bool):
         utils.set_msg_prefix("prepare disk image")
-        utils.pend(pending=True)
+        utils.pend()
 
         if self.exists():
             msg = "Machine [%s] already exists" % self.name
@@ -68,7 +70,7 @@ class VM:
 
     def create(self, size: int, iso_path: str, **kwargs: dict):
         utils.set_msg_prefix("create")
-        utils.pend(pending=True)
+        utils.pend()
 
         if not os.path.exists(iso_path):
             utils.fail("%s: ISO image not found" % iso_path, file=sys.stderr)
@@ -95,10 +97,43 @@ class VM:
 
 
     def fetch(self, os_name: str, **kwargs: dict):
-        url = '%s/%s.raw' % (FETCH_URL_BASE, os_name)
-        utils.fetch(url, self.path, overwrite=kwargs['force'], unit=utils.MEBI,
-                    msg="fetch disk image",
-                    msg_exists="Machine [%s] already exists" % self.name)
+        if self.exists():
+            msg = "Machine [%s] already exists" % self.name
+            if kwargs['force']:
+                utils.warn(msg)
+            else:
+                utils.fail(msg)
+                exit(1)
+        if not os.path.exists(self.path_qcow) or kwargs['no_cache']:
+            # Fetch
+            url = '%s/%s.qcow2.gz' % (FETCH_URL_BASE, os_name)
+            utils.fetch(url, self.path_qcow_gz, overwrite=kwargs['no_cache'],
+                        unit=utils.MEBI, msg="fetch disk image")
+
+            # Extract
+            utils.set_msg_prefix("extract image")
+            utils.pend()
+            try:
+                if utils.execute(['gunzip', self.path_qcow_gz], msg="gunzip") != 0:
+                    exit(1)
+            except KeyboardInterrupt:
+                utils.abort("keyboard interrupt")
+                exit(127)
+            utils.ok()
+
+        # Convert:
+        utils.set_msg_prefix("convert image")
+        utils.pend()
+        try:
+            if utils.execute(['qemu-img', 'convert', '-f', 'qcow2', '-O', 'raw',
+                             self.path_qcow, self.path],
+                             msg="convert qemu image") != 0:
+                exit(1)
+        except KeyboardInterrupt:
+            utils.abort("keyboard interrupt")
+            exit(127)
+        utils.ok()
+        utils.set_msg_prefix(None)
 
 
     def delete(self, **kwargs: dict):
@@ -146,8 +181,10 @@ class VM:
         pfetch = pcmd.add_parser('fetch',
                                  help="Download a prepared OS image")
         pfetch.set_defaults(action=VM.fetch)
-        pfetch.add_argument('-f','--force', action='store_true',default=False,
-                            help="Force installation, even if already exists")
+        pfetch.add_argument('-f','--force', action='store_true', default=False,
+                            help="Overwrite existing OS image")
+        pfetch.add_argument('--no-cache', action='store_true', default=False,
+                            help="Don't use locally cached download files")
         pfetch.add_argument('os_name', choices=PREPARED,
                             help="Operating System name")
         pfetch.add_argument('name',
