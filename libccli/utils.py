@@ -3,7 +3,7 @@ import sys
 import grp
 import subprocess
 import signal
-
+import requests
 
 # EXECUTION ====================================================================
 
@@ -25,18 +25,17 @@ def execute(cmd:[str], stdin:str=None, stdout:bool=False, stderr:bool=False,
     old_signals = {}
     try:
         out, err = sp.communicate(input=_indata)
-    except KeyboardInterrupt:
-        alert("keyboard interrupt")
-        #sp.send_signal(signal.SIGINT)
+        if sp.returncode != 0 and msg:
+            fail("could not %s: %s" % (msg, err.decode()), file=sys.stderr)
+    except KeyboardInterrupt as ki:
         try:
             sp.wait()
         except KeyboardInterrupt:
-            alert("second keyboard interrupt")
-        interrupted = True
-    if sp.returncode != 0 and msg:
-        fail("could not %s: %s" % (msg, err.decode()), file=sys.stderr)
+            abort("second keyboard interrupt")
+        finally:
+            raise ki
     if iowrap:
-        return out.decode(), err.decode(), (sp.returncode, 127)[interrupted]
+        return out.decode(), err.decode(), sp.returncode
     else:
         return sp.returncode
 
@@ -45,7 +44,6 @@ def sudo(cmd:[str], sudo_msg:str=None, **kwargs: dict):
     sudo_prompt = '\n(%s) [sudo] ' % (sudo_msg, cmd[0])[sudo_msg is None]
     sudo_cmd = ['sudo', '-p', sudo_prompt] + cmd
     return execute(sudo_cmd, **kwargs)
-
 
 # S2E/CHEF =====================================================================
 
@@ -59,7 +57,6 @@ def set_permissions(path: str):
         print("Cannot modify permissions for %s: Permission denied" % path,
               file=sys.stderr)
         exit(1)
-
 
 # USER INTERACTION =============================================================
 
@@ -81,6 +78,55 @@ def ask(msg: str, default: bool = None):
             break
     return user in yes
 
+# NETWORK ======================================================================
+
+def fetch(url: str, path: str, msg: str=None, msg_exists: str=None,
+          overwrite: bool=False, unit: int=None):
+    global KIBI
+    if not unit:
+        unit = KIBI
+
+    set_msg_prefix(msg if msg else url)
+    pend(pending=True)
+
+    if os.path.exists(path):
+        msg_exists = msg_exists if msg_exists else "%s: file exists" % path
+        if overwrite:
+            warn(msg_exists)
+        else:
+            fail(msg_exists)
+            exit(1)
+
+    r = requests.get(url, stream=True)
+    if r.status_code != 200:
+        fail('%d' % r.status_code)
+        exit(1)
+
+    with open(path, 'wb') as file:
+        file_size = int(r.headers['Content-Length'])
+        file_size_current = 0
+        file_size_block = 8 * unit
+        try:
+            for block in r.iter_content(file_size_block):
+                #file.write(block)
+                file_size_current += len(block)
+                pend("%d MiB / %d MiB (%3d%%)"
+                     % (file_size_current / unit,
+                        file_size / unit,
+                        file_size_current * 100 / file_size),
+                     pending=True)
+        except KeyboardInterrupt:
+            abort("keyboard interrupt")
+            exit(127)
+
+    ok()
+    set_msg_prefix(None)
+
+# VALUES =======================================================================
+
+KIBI = 1024
+MEBI = KIBI * KIBI
+GIBI = KIBI * MEBI
 
 # MESSAGES =====================================================================
 
@@ -96,6 +142,7 @@ _OK_ = '[%s OK %s]' % (ESC_SUCCESS, ESC_RESET)
 SKIP = '[%sSKIP%s]' % (ESC_SUCCESS, ESC_RESET)
 INFO = '[%sINFO%s]' % (ESC_MISC, ESC_RESET)
 ALRT = '[%s !! %s]' % (ESC_SPECIAL, ESC_RESET)
+ABRT = '[%sABORT%s]' % (ESC_ERROR, ESC_RESET)
 PEND = '[ .. ]'
 msg_prefix = None
 
@@ -129,5 +176,9 @@ def warn(msg: str):
 def alert(msg: str):
     print_msg(ALRT, msg)
 
-def pend(pending: bool = False):
-    print_msg(PEND, None, eol=('\n', '\r')[pending])
+def abort(msg: str):
+    print()
+    print_msg(ABRT, msg)
+
+def pend(msg: str = None, pending: bool = False):
+    print_msg(PEND, msg, eol=('\n', '\r')[pending])

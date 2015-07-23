@@ -14,8 +14,8 @@ DATAROOT = os.environ.get('CHEF_DATAROOT', '/var/local/chef')
 INVOKENAME = os.environ.get('INVOKENAME', sys.argv[0])
 SRC_ROOT = os.path.dirname(os.path.dirname(__file__))
 VMROOT = '%s/vm' % DATAROOT
-INSTALLSCRIPTS_ROOT, _ = os.path.splitext(__file__)
 PREPARED = ['Debian']
+FETCH_URL_BASE = 'http://localhost/~ayekat' # TODO real host
 
 
 class VM:
@@ -64,28 +64,6 @@ class VM:
         utils.set_msg_prefix(None)
 
 
-    def format(self, fs:str='ext4'):
-        utils.set_msg_prefix("format disk image")
-        utils.pend(pending=True)
-
-        # Format:
-        try:
-            out,_,retval = utils.sudo(['blkid', '-o', 'value', '-s', 'TYPE',
-                                      '%s' % self.path], iowrap=True)
-            if retval == 0 and out.strip() == fs:
-                utils.skip("already formatted as %s" % fs)
-            else:
-                if utils.sudo(['mkfs.%s' % fs, self.path],
-                            msg="format partition %s" % self.path) != 0:
-                    exit(1)
-                utils.ok()
-        except KeyboardInterrupt:
-            utils.fail("Keyboard interrupt")
-            exit(127)
-
-        utils.set_msg_prefix(None)
-
-
     # ACTIONS ==================================================================
 
     def create(self, size: int, iso_path: str, **kwargs: dict):
@@ -116,21 +94,11 @@ class VM:
         utils.set_msg_prefix(None)
 
 
-    def install(self, size: int, os_name: str, **kwargs: dict):
-        def install_debian(self, size: int):
-            self.format('ext4')
-
-            utils.set_msg_prefix("install Debian")
-            utils.pend()
-            if utils.sudo(['%s/debian.sh' % INSTALLSCRIPTS_ROOT, self.path],
-                         sudo_msg='debootstrap', stdout=True, stderr=True) != 0:
-                utils.fail()
-            else:
-                utils.ok()
-            utils.set_msg_prefix(None)
-
-        self.prepare(size, kwargs['force'])
-        { 'Debian': install_debian }[os_name](self, size)
+    def fetch(self, os_name: str, **kwargs: dict):
+        url = '%s/%s.raw' % (FETCH_URL_BASE, os_name)
+        utils.fetch(url, self.path, overwrite=kwargs['force'], unit=utils.MEBI,
+                    msg="fetch disk image",
+                    msg_exists="Machine [%s] already exists" % self.name)
 
 
     def delete(self, **kwargs: dict):
@@ -151,10 +119,12 @@ class VM:
                 continue
             print(bn)
 
+    # MAIN =====================================================================
 
     @staticmethod
     def main(argv: [str]):
-        p = argparse.ArgumentParser(description="Handle Virtual Machines", prog=INVOKENAME)
+        p = argparse.ArgumentParser(description="Handle Virtual Machines",
+                                    prog=INVOKENAME)
 
         pcmd = p.add_subparsers(dest="Action")
         pcmd.required = True
@@ -172,18 +142,16 @@ class VM:
         pcreate.add_argument('size', type=int, default=5120, nargs='?',
                              help="VM size (in MB)")
 
-        # install
-        pinstall = pcmd.add_parser('install',
-                                   help="Install a prepared OS to a VM")
-        pinstall.set_defaults(action=VM.install)
-        pinstall.add_argument('-f','--force', action='store_true',default=False,
-                             help="Force installation, even if already exists")
-        pinstall.add_argument('os_name', choices=PREPARED,
-                              help="Operating System name")
-        pinstall.add_argument('name',
-                              help="Machine name")
-        pinstall.add_argument('size', type=int, default=5120, nargs='?',
-                              help="VM size (in MB)")
+        # fetch
+        pfetch = pcmd.add_parser('fetch',
+                                 help="Download a prepared OS image")
+        pfetch.set_defaults(action=VM.fetch)
+        pfetch.add_argument('-f','--force', action='store_true',default=False,
+                            help="Force installation, even if already exists")
+        pfetch.add_argument('os_name', choices=PREPARED,
+                            help="Operating System name")
+        pfetch.add_argument('name',
+                            help="Machine name")
 
         # delete
         pdelete = pcmd.add_parser('delete', help="Delete an existing VM")
@@ -197,9 +165,6 @@ class VM:
         args = p.parse_args(argv[1:])
         kwargs = vars(args) # make it a dictionary, for easier use
 
-        #if kwargs['action'] == VM.list:
-        #    VM.list()
-        #else:
         vm = VM(kwargs.get('name', None))
         return kwargs['action'](vm, **kwargs)
 

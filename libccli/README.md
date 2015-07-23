@@ -25,6 +25,7 @@ and managing disk images, or interacting with running Chef instances.
 * python3
 * python3-psutil
 * python3-yaml
+* python3-requests
 * qemu
 
 ## Debian GNU/Linux
@@ -39,6 +40,7 @@ and managing disk images, or interacting with running Chef instances.
 * python
 * python-psutil
 * python-pyyaml
+* python-requests
 * qemu
 
 
