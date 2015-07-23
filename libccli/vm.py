@@ -27,6 +27,7 @@ class VM:
     def __init__(self, name: str):
         self.name = name
         self.path_raw = '%s/%s.raw' % (VMROOT, name)
+        self.path_s2e = '%s/%s.s2e' % (VMROOT, name)
         self.path_qcow = '%s/%s.qcow2' % (VMROOT, name)
         self.path_iso = '%s/%s' % (VMROOT, PREPARED[name])
         self.path_tar_gz = '%s/%s.tar.gz' % (VMROOT, name)
@@ -110,37 +111,50 @@ class VM:
 
         # Extract
         utils.set_msg_prefix("extract bundle")
-        try:
-            for f in [self.path_qcow, self.path_iso]:
-                fb = os.path.basename(f)
-                if not os.path.exists(f) or kwargs['no_cache']:
-                    utils.pend('%s' % fb)
-                    if utils.execute(['tar', '-z', '-x', fb,
-                                      '-f', self.path_tar_gz],
-                                      msg="extract") != 0:
-                        exit(1)
-                    utils.ok('%s' % fb)
-                else:
-                    utils.skip('%s: already extracted' % fb)
-        except KeyboardInterrupt:
-            utils.abort("keyboard interrupt")
-            exit(127)
+        for f in [self.path_qcow, self.path_iso]:
+            fb = os.path.basename(f)
+            if not os.path.exists(f) or kwargs['no_cache']:
+                utils.pend('%s' % fb)
+                if utils.execute(['tar', '-z', '-x', fb,
+                                  '-f', self.path_tar_gz],
+                                  msg="extract") != 0:
+                    exit(1)
+                utils.ok('%s' % fb)
+            else:
+                utils.skip('%s: already extracted' % fb)
 
         # Expand:
         utils.set_msg_prefix("expand image")
         utils.pend()
         if not self.exists() or kwargs['force']:
-            try:
-                if utils.execute(['qemu-img', 'convert', '-f', 'qcow2',
-                                  '-O', 'raw', self.path_qcow, self.path_raw],
-                                  msg="expand qemu image") != 0:
-                    exit(1)
-            except KeyboardInterrupt:
-                utils.abort("keyboard interrupt")
-                exit(127)
+            if utils.execute(['qemu-img', 'convert', '-f', 'qcow2',
+                              '-O', 'raw', self.path_qcow, self.path_raw],
+                              msg="expand qemu image") != 0:
+                exit(1)
             utils.ok()
         else:
             utils.skip("%s already exists" % self.path_raw)
+
+        # Symlink:
+        utils.set_msg_prefix("create S2E image")
+        utils.pend()
+        dest = os.path.basename(self.path_raw)
+        exists = os.path.exists(self.path_s2e)
+        if exists:
+            current_dest = os.readlink(self.path_s2e)
+            overwrite = current_dest != dest
+        if not exists or overwrite:
+            if overwrite:
+                utils.warn("overwriting existing symbolic link %s"
+                           % self.path_s2e)
+            if utils.execute(['ln', '-fs', os.path.basename(self.path_raw),
+                              self.path_s2e], msg="symlink") != 0:
+                exit(1)
+            if not overwrite:
+                utils.ok()
+        else:
+            utils.skip("%s already symlinked" % self.path_s2e)
+
         utils.set_msg_prefix(None)
 
 

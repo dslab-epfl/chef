@@ -443,9 +443,10 @@ help()
 	  -f COMPS   Force-rebuild (configure+make) components COMPS
 	  -i PATH    Path to the Chef source directory root
 	             [default=$SRCPATH_ROOT]
-	  -h         Display this help
+	  -h         Display this help and exit
 	  -j N       Compile with N jobs [default=$JOBS]
-	  -l PATH    Path to where the LLVM-3.2 files are installed
+	  -l         List existing builds and exit
+	  -L PATH    Path to where the LLVM-3.2 files are installed
 	             [default=$LLVM_BASE]
 	  -o PATH    Path to the build output directory
 	             [default=$BUILDPATH_ROOT]
@@ -469,6 +470,34 @@ help()
 	EOF
 }
 
+list()
+{
+	for build in "$BUILDPATH_ROOT"/*; do
+		echo "$(basename "$build")" | sed 's/-/:/g'
+	done
+}
+
+dry_run()
+{
+	util_dryrun
+	cat <<- EOF
+	COMPONENTS='$COMPONENTS'
+	BUILDPATH_ROOT=$BUILDPATH_ROOT
+	FORCE_COMPS='$FORCE_COMPS'
+	EXCLUDED='$EXCLUDED'
+	JOBS=$JOBS
+	LLVM_BASE=$LLVM_BASE
+	QEMU_FLAGS='$QEMU_FLAGS'
+	SILENT=$(as_boolean $SILENT) (CCLI_SILENT_BUILD=$(as_boolean $CCLI_SILENT_BUILD))
+	LLVM_SRC=$LLVM_SRC
+	LLVM_BUILD=$LLVM_BUILD
+	LLVM_NATIVE=$LLVM_NATIVE
+	LLVM_NATIVE_CC=$LLVM_NATIVE_CC
+	LLVM_NATIVE_CXX=$LLVM_NATIVE_CXX
+	LLVM_NATIVE_LIB=$LLVM_NATIVE_LIB
+	EOF
+}
+
 get_options()
 {
 	# Default values:
@@ -483,19 +512,21 @@ get_options()
 		Linux) JOBS=$(grep -c '^processor' /proc/cpuinfo) ;;
 		*) JOBS=1 ;;
 	esac
+	LIST=$FALSE
 	LLVM_BASE='/opt/s2e/llvm'
 	QEMU_FLAGS=''
 	SILENT=${CCLI_SILENT_BUILD:=$FALSE}
 
 	# Options:
-	while getopts :df:hi:j:l:o:q:sx:y opt; do
+	while getopts :df:hi:j:lL:o:q:sx:y opt; do
 		case "$opt" in
 			d) DOCKERIZED=$TRUE ;;
 			f) FORCE_COMPS="$OPTARG" ;;
 			h) help; exit 1 ;;
 			i) SRCPATH_ROOT="$OPTARG" ;;
 			j) JOBS="$OPTARG" ;;
-			l) LLVM_BASE="$OPTARG" ;;
+			l) LIST=$TRUE ;;
+			L) LLVM_BASE="$OPTARG" ;;
 			o) BUILDPATH_ROOT="$OPTARG" ;;
 			q) QEMU_FLAGS="$OPTARG" ;;
 			s) SILENT=$TRUE ;;
@@ -538,28 +569,16 @@ main()
 	# Command line arguments:
 	get_options "$@"
 	shift $ARGSHIFT
+	if [ $LIST -eq $TRUE ]; then
+		list
+		exit 1
+	fi
 	get_release "$@"
 	shift $ARGSHIFT
 	test $# -eq $TRUE || die_help "trailing arguments: $@"
 
 	if [ $DRYRUN -eq $TRUE ]; then
-		util_dryrun
-		cat <<- EOF
-		COMPONENTS='$COMPONENTS'
-		BUILDPATH_ROOT=$BUILDPATH_ROOT
-		FORCE_COMPS='$FORCE_COMPS'
-		EXCLUDED='$EXCLUDED'
-		JOBS=$JOBS
-		LLVM_BASE=$LLVM_BASE
-		QEMU_FLAGS='$QEMU_FLAGS'
-		SILENT=$(as_boolean $SILENT) (CCLI_SILENT_BUILD=$(as_boolean $CCLI_SILENT_BUILD))
-		LLVM_SRC=$LLVM_SRC
-		LLVM_BUILD=$LLVM_BUILD
-		LLVM_NATIVE=$LLVM_NATIVE
-		LLVM_NATIVE_CC=$LLVM_NATIVE_CC
-		LLVM_NATIVE_CXX=$LLVM_NATIVE_CXX
-		LLVM_NATIVE_LIB=$LLVM_NATIVE_LIB
-		EOF
+		dry_run
 		exit 1
 	fi
 

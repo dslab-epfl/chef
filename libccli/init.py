@@ -54,12 +54,8 @@ class Init:
             exit(1)
         try:
             for directory in DATAROOT_TREE:
-                if os.path.isdir(directory):
-                    print('%s [skip]' % directory)
-                    continue
-                else:
-                    print('%s' % directory)
-                os.mkdir(directory)
+                if not os.path.isdir(directory):
+                    os.mkdir(directory)
                 utils.set_permissions(directory)
         except PermissionError:
             print("Permission denied", file=sys.stderr)

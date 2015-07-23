@@ -34,18 +34,18 @@ import signal
 import socket
 import fcntl
 import struct
-import csv
 import sys
 import pipes
 import time
 import subprocess
+import utils
 
 from datetime import datetime, timedelta
 
 THIS_DIR = os.path.dirname(__file__)
 
 # Host:
-HOST_CHEF_ROOT = os.path.abspath(THIS_DIR)
+HOST_CHEF_ROOT = os.path.dirname(os.path.abspath(THIS_DIR))
 HOST_DATA_ROOT = os.path.join("/var", "local", "chef")
 
 # Docker:
@@ -56,10 +56,6 @@ DATA_VM_DIR = os.path.join(DATA_ROOT, "vm")
 DATA_OUT_DIR = os.path.join(DATA_ROOT, "expdata")
 CHEF_CONFIG_DIR = os.path.join(CHEF_ROOT, "config")
 
-# Qemu image:
-RAW_IMAGE_PATH = os.path.join(DATA_VM_DIR, "chef_disk.raw")
-S2E_IMAGE_PATH = os.path.join(DATA_VM_DIR, "chef_disk.s2e")
-
 # Default configuration values:
 DEFAULT_CONFIG_FILE = os.path.join(CHEF_CONFIG_DIR, "default-config.lua")
 DEFAULT_OUTDIR = DATA_OUT_DIR
@@ -68,6 +64,7 @@ DEFAULT_COMMAND_PORT = 1234
 DEFAULT_MONITOR_PORT = 12345
 DEFAULT_VNC_DISPLAY = 0
 DEFAULT_TAP_INTERFACE = "tap0"
+DEFAULT_VM_NAME = 'chef_disk'
 GDB_BIN = "gdb"
 STRACE_BIN = "strace"
 COMMAND_SEND_TIMEOUT = 60
@@ -109,27 +106,6 @@ class Script(object):
 
 class CommandError(Exception):
     pass
-
-
-def get_default_ip():
-    return 'dslab-worf.epfl.ch' #FIXME #TODO #XXX
-
-    iface = "localhost"
-
-    f = open('/proc/net/route')
-    for i in csv.DictReader(f, delimiter="\t"):
-        if i['Destination'] == 0:
-            iface = i['Iface']
-            break
-
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    return socket.inet_ntoa(
-        fcntl.ioctl(
-            s.fileno(),
-            0x8915, # SIOCGIFADDR
-            struct.pack('256s', iface)
-        )[20:24]
-    )
 
 
 def send_command(command, host, port):
@@ -221,6 +197,8 @@ def parse_cmd_line():
     exe_env.add_argument("--strace", action="store_true", default=False,
                          help="Run under strace")
 
+    parser.add_argument('--vm', default=DEFAULT_VM_NAME,
+                        help="Name of the VM to use")
     parser.add_argument("--data-root", default=DEFAULT_HOST_DATA_ROOT,
                         help="location of data root")
     parser.add_argument('--vm-root', default=None,
@@ -280,12 +258,12 @@ def build_docker_cmd_line(args, command: [str]):
         docker_cmd_line.extend(["-t", "-i"])
     if args.vm_root:
         docker_cmd_line.extend(['-v', '%s:%s/vm' % (args.vm_root, DATA_ROOT)])
-    docker_cmd_line.extend(["-v", "%s:%s" % (HOST_CHEF_ROOT, CHEF_ROOT),
-                     "-v", "%s:%s" % (args.data_root, DATA_ROOT),
-                     "-p", "%d:%d" % (args.command_port, args.command_port),
-                     "-p", "%d:%d" % (args.monitor_port, args.monitor_port),
-                     "-p", "%d:%d" % (5900 + args.vnc_display, 5900 + args.vnc_display)
-                     ])
+    docker_cmd_line.extend([
+        '-v', '%s:%s' % (HOST_CHEF_ROOT, CHEF_ROOT),
+        '-v', '%s:%s' % (args.data_root, DATA_ROOT),
+        '-p', '%d:%d' % (args.command_port, args.command_port),
+        '-p', '%d:%d' % (args.monitor_port, args.monitor_port),
+        '-p', '%d:%d' % (5900 + args.vnc_display, 5900 + args.vnc_display)])
     if args.mode == 'sym':
         lua_path = os.environ.get('LUA_PATH', None)
         docker_cmd_line.extend(['-e', 'LUA_PATH=%s%s' %
@@ -320,7 +298,8 @@ def build_qemu_cmd_line(args):
     if args.strace:
         qemu_cmd_line.extend([STRACE_BIN, "-e", "open"])
     qemu_cmd_line.append(qemu_path);
-    qemu_cmd_line.append((S2E_IMAGE_PATH, RAW_IMAGE_PATH)[args.mode == "kvm"])
+    qemu_cmd_line.append(('%s/%s.s2e' % (DATA_VM_DIR, args.vm),
+                          '%s/%s.raw' % (DATA_VM_DIR, args.vm))[args.mode == "kvm"])
 
     # General: CPU and command monitor
     qemu_cmd_line.extend(["-cpu", "pentium",  # Non-Pentium instructions cause spurious concretizations
@@ -369,9 +348,9 @@ def execute(args, cmd_line):
     print("-------------+-------+---------------------------------------------")
     print("Watchdog     | %5d |" % args.command_port)
     print("VNC          | %5d | $vncclient {%s,localhost}:%d"
-          % (5900 + args.vnc_display, get_default_ip(), args.vnc_display))
+          % (5900 + args.vnc_display, utils.get_default_ip(), args.vnc_display))
     print("Qemu monitor | %5d | {nc,telnet} {%s,localhost} %d"
-          % (args.monitor_port, get_default_ip(), args.monitor_port))
+          % (args.monitor_port, utils.get_default_ip(), args.monitor_port))
     print
 
     if args.dry_run:

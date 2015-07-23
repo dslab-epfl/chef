@@ -4,6 +4,9 @@ import grp
 import subprocess
 import signal
 import requests
+import netifaces
+import csv
+import socket
 
 # EXECUTION ====================================================================
 
@@ -21,19 +24,24 @@ def execute(cmd:[str], stdin:str=None, stdout:bool=False, stderr:bool=False,
     _in = subprocess.PIPE if stdin else None
     _out = None if stdout else subprocess.PIPE
     _err = None if stdout else subprocess.PIPE
-    sp = subprocess.Popen(cmd, stdin=_in, stdout=_out, stderr=_err, bufsize=0)
-    old_signals = {}
     try:
+        sp = subprocess.Popen(cmd, stdin=_in, stdout=_out, stderr=_err, bufsize=0)
         out, err = sp.communicate(input=_indata)
         if sp.returncode != 0 and msg:
             fail("could not %s: %s" % (msg, err.decode()))
+    except FileNotFoundError:
+        fail("unknown command: %s" % cmd[0])
+        if iowrap:
+            return None, None, 255
+        else:
+            return 255
     except KeyboardInterrupt as ki:
+        abort("keyboard interrupt")
         try:
             sp.wait()
         except KeyboardInterrupt:
             abort("second keyboard interrupt")
-        finally:
-            raise ki
+        exit(127) # XXX does not allow cleanup
     if iowrap:
         return out.decode(), err.decode(), sp.returncode
     else:
@@ -47,13 +55,18 @@ def sudo(cmd:[str], sudo_msg:str=None, **kwargs: dict):
 
 # S2E/CHEF =====================================================================
 
-def set_permissions(path: str):
+def set_permissions(path: str, docker_user: int = 431):
+    set_msg_prefix("set permissions")
+    pend(path)
     try:
         os.chown(path, -1, grp.getgrnam('kvm').gr_gid)
         os.chmod(path, 0o775 if os.path.isdir(path) else 0o664)
+        if execute(['setfacl', '-d', '-m', 'user:%d:rwx' % docker_user, path]) != 0:
+            exit(1)
     except PermissionError:
         fail("Cannot modify permissions for %s: Permission denied" % path)
         exit(1)
+    ok(path)
 
 # USER INTERACTION =============================================================
 
@@ -111,6 +124,21 @@ def fetch(url: str, path: str, msg: str=None, overwrite: bool=False,
 
     ok()
     set_msg_prefix(None)
+
+
+def get_default_ip():
+    iface = None
+    with open('/proc/net/route') as f:
+        for i in csv.DictReader(f, delimiter='\t'):
+            if i['Destination'] == 0:
+                iface = i['Iface']
+                break
+    if iface:
+        iface_data = netifaces.ifaddresses(iface)
+        # FIXME assuming default route interface has only one address:
+        return iface_data[netifaces.AF_INET][0]['addr']
+    else:
+        return '???'
 
 # VALUES =======================================================================
 
