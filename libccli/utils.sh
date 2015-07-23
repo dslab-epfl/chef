@@ -36,63 +36,46 @@ COLOUR_ERROR=31
 COLOUR_SUCCESS=32
 COLOUR_WARNING=33
 COLOUR_MISC=34
+COLOUR_SPECIAL=36
 
-FATAL_="[\033[31mFATAL\033[0m]"
-FAIL_="[\033[${COLOUR_ERROR}mFAIL\033[0m]"
-WARN_="[\033[${COLOUR_WARNING}mWARN\033[0m]"
-_OK__="[\033[${COLOUR_SUCCESS}m OK \033[0m]"
-SKIP_="[\033[${COLOUR_MISC}mSKIP\033[0m]"
-INFO_="[\033[${COLOUR_MISC}mINFO\033[0m]"
+FATAL="[\033[31mFATAL\033[0m]"
+FAIL="[\033[${COLOUR_ERROR}mFAIL\033[0m]"
+WARN="[\033[${COLOUR_WARNING}mWARN\033[0m]"
+_OK_="[\033[${COLOUR_SUCCESS}m OK \033[0m]"
+SKIP="[\033[${COLOUR_SUCCESS}mSKIP\033[0m]"
+INFO="[\033[${COLOUR_MISC}mINFO\033[0m]"
+ALRT="[\033[${COLOUR_SPECIAL}m "'!!'" \033[0m]"
+PEND="[ .. ]"
 
-note()
+_print()
 {
-	note_format="$1"
-	shift
-	printf "$note_format\n" "$@"
+    _print_prefix="$1"
+    _print_newline=$2
+    _print_format="$3"
+    [ $_print_newline != $TRUE ] || _print_format="$_print_format\n"
+    shift 3
+    printf "${_print_prefix}$_print_format" "$@"
 }
 
-info()
-{
-	info_format="$1"
-	shift
-	printf "$INFO_ $info_format\n" "$@"
-}
+note()  { _print ''       $TRUE "$@"; }
+info()  { _print "$INFO " $TRUE "$@"; }
+warn()  { _print "$WARN " $TRUE "$@" >&2; }
+skip()  { _print "$SKIP " $TRUE "$@"; }
+fail()  { _print "$FAIL " $TRUE "$@" >&2; }
+pend()  { _print "$PEND " $TRUE "$@"; }
+alert() { _print "$ALRT " $TRUE "$@"; }
+ok()    { _print "$_OK_ " $TRUE "$@"; }
 
-warn()
+_print_emphasised()
 {
-	warn_format="$1"
-	shift
-	printf "$WARN_ $warn_format\n" "$@" >&2
-}
-
-skip()
-{
-	skip_format="$1"
-	shift
-	printf "$SKIP_ $skip_format\n" "$@"
-}
-
-emphasised()
-{
-	emphasised_colour=$1
-	emphasised_format="$2"
+	_emphasised_colour=$1
+	_emphasised_format="$2"
 	shift 2
-	printf "\033[1;${emphasised_colour}m>>>\033[0m $emphasised_format" "$@"
+	printf "\033[1;${_emphasised_colour}m>>>\033[0m $_emphasised_format" "$@"
 }
 
-success()
-{
-	success_format="$1"
-	shift
-	emphasised $COLOUR_SUCCESS "$success_format" "$@"
-}
-
-fail()
-{
-	fail_format="$1"
-	shift
-	emphasised $COLOUR_ERROR "$fail_format" "$@"
-}
+success() { _print_emphasised $COLOUR_SUCCESS "$@"; }
+failure() { _print_emphasised $COLOUR_ERROR   "$@"; }
 
 track()
 {
@@ -108,11 +91,12 @@ track()
 			return $FALSE
 		fi
 	else
-		printf "\033[s[ .. ] %s" "$track_msg"
-		track_status="$_OK__"
-		{ "$@" || track_status="$FAIL_"; } >>"$LOGFILE" 2>>"$LOGFILE"
-		printf "\033[u$track_status %s\n" "$track_msg"
-		if [ "$track_status" = "$_OK__" ]; then
+		printf "\033[s"; _print "$PEND " $FALSE '%s' "$track_msg"
+		track_print=ok
+		{ "$@" || track_print=fail; } >>"$LOGFILE" 2>>"$LOGFILE"
+		printf "\033[u"; $track_print '%s' "$track_msg"
+
+		if [ $track_print = ok ]; then
 			return $TRUE
 		else
 			return $FALSE
@@ -134,7 +118,7 @@ ask()
 		*) die_internal "ask(): invalid default '%s'" "$ask_default" ;;
 	esac
 	while true; do
-		emphasised $ask_colour "$ask_format $ask_sel " "$@"
+		_print_emphasised $ask_colour "$ask_format $ask_sel " "$@"
 		read a
 		test -n "$a" || a="$ask_default"
 		case "$a" in
@@ -203,9 +187,12 @@ range_expand()
 die()
 {
 	die_retval=$1
+	shift
 	die_format="$2"
-	shift 2
-	printf "$die_format\n" "$@" >&2
+	if [ -n "$die_format" ]; then
+        shift
+        printf "$die_format\n" "$@" >&2
+    fi
 	exit $die_retval
 }
 
@@ -220,7 +207,7 @@ die_help()
 	if is_command usage; then
 		usage >&2
 	fi
-	die 1 'Run `%s -h` for help.' "$INVOKENAME"
+	die 2 'Run `%s -h` for help.' "$INVOKENAME"
 }
 
 # Internal reasons to crash
@@ -228,7 +215,8 @@ die_internal()
 {
 	die_internal_format="$1"
 	shift
-	die 127 "$FATAL_ Internal Error: $die_internal_format" "$@"
+	fatal "Internal error: $die_internal_format" "$@"
+	die 127
 }
 
 # SHELL ========================================================================
@@ -246,6 +234,14 @@ is_numeric()
 	esac
 }
 
+is_boolean()
+{
+    [ -n "$1" ] || return $FALSE
+    is_numeric || return $FALSE
+    [ $1 -eq $TRUE ] || [ $1 -eq $FALSE ] || return $FALSE
+    return $TRUE
+}
+
 # Test if a command is available
 is_command()
 {
@@ -259,10 +255,7 @@ is_command()
 # Give human readable representation for boolean
 as_boolean()
 {
-	test -n "$1" || die_internal "as_boolean(): empty value"
-	is_numeric "$1" || die_internal "as_boolean(): non-numeric value"
-
-	if [ $1 -eq $TRUE ]; then
+	if is_boolean "$1" && [ $1 -eq $TRUE ]; then
 		echo 'true'
 	else
 		echo 'false'

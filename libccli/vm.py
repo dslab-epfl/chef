@@ -7,6 +7,7 @@ import psutil
 import utils
 import tempfile
 import subprocess
+import signal
 
 
 DATAROOT = os.environ.get('CHEF_DATAROOT', '/var/local/chef')
@@ -28,95 +29,71 @@ class VM:
         self.path = '%s/%s.raw' % (VMROOT, name)
 
 
+    # UTILITIES ================================================================
+
     def exists(self):
         return self.name and os.path.exists(self.path)
 
 
     def prepare(self, size: int, force: bool):
+        utils.set_msg_prefix("prepare disk image")
+        utils.pend(pending=True)
+
         if self.exists():
+            msg = "Machine [%s] already exists" % self.name
             if force:
-                print("[SKIP] image creation: Machine [%s] already exists" % self.name)
+                utils.skip(msg)
                 return
             else:
-                print("Machine [%s] already exists" % self.name, file=sys.stderr)
+                utils.fail(msg)
                 exit(1)
         if not os.path.isdir(VMROOT):
-            print("%s: directory not found (you may need to initialise Chef first)"
-                  % VMROOT, file=sys.stderr)
+            utils.fail("%s: Directory not found (you may need to initialise Chef first)"
+                       % VMROOT)
             exit(1)
         try:
             open(self.path, 'a').close()
         except PermissionError:
-            print("Permission denied", file=sys.stderr)
+            utils.fail("Permission denied")
             exit(1)
         if utils.execute(['qemu-img', 'create', self.path, '%dM' % size],
                          msg="execute qemu-img") != 0:
             exit(1)
         utils.set_permissions(self.path)
-
-
-    def partition(self):
-        if utils.execute(['sfdisk', '-d', self.path]) == 0:
-            print("[SKIP] partitioning: partition table already exists")
-            return
-
-        print("creating partition table ...")
-        if utils.execute(['fdisk', self.path],
-        #                             , create a new empty DOS partition table
-        #                             |  , add a new partition
-        #                             |  |  , partition type (primary)
-        #                             |  |  |  , partition number
-        #                             |  |  |  |  , first sector
-        #                             |  |  |  |  | , last sector
-        #                             |  |  |  |  | | , table to disk and exit
-        #                             |  |  |  |  | | |
-                         stdin='o\nn\np\n1\n\n\nw\n',
-                         msg="create partition") != 0:
-            exit(1)
+        utils.ok()
+        utils.set_msg_prefix(None)
 
 
     def format(self, fs:str='ext4'):
-        # Get free loop device:
-        out, _, retval = utils.execute(['losetup', '-f'], iowrap=True,
-                                             msg="get free loop device")
-        if retval != 0:
-            exit(1)
-        loopdev = out.strip()
-        print("[INFO] using %s as loop device" % loopdev)
-
-        # Connect loop device:
-        try:
-            if utils.sudo(['losetup', '--partscan', loopdev, self.path],
-                          msg="attach to loop device %s" % loopdev) != 0:
-                exit(1)
-        except KeyboardInterrupt:
-            exit(127)
+        utils.set_msg_prefix("format disk image")
+        utils.pend(pending=True)
 
         # Format:
         try:
             out,_,retval = utils.sudo(['blkid', '-o', 'value', '-s', 'TYPE',
-                                      '%sp1' % loopdev], iowrap=True)
+                                      '%s' % self.path], iowrap=True)
             if retval == 0 and out.strip() == fs:
-                print('[SKIP] formatting: already formatted as %s' % fs)
+                utils.skip("already formatted as %s" % fs)
             else:
-                retval = utils.sudo(['mkfs.%s' % fs, '%sp1' % loopdev],
-                                    msg="format partition %sp1" % loopdev)
+                if utils.sudo(['mkfs.%s' % fs, self.path],
+                            msg="format partition %s" % self.path) != 0:
+                    exit(1)
+                utils.ok()
         except KeyboardInterrupt:
-            retval = 127
+            utils.fail("Keyboard interrupt")
+            exit(127)
 
-        # Disconnect loopdevice:
-        finally:
-            utils.sudo(['losetup', '-d', loopdev],
-                          msg="detach from loop device %s" % loopdev)
+        utils.set_msg_prefix(None)
 
-        # Evaluate progress:
-        if retval != 0:
-            exit(retval)
 
+    # ACTIONS ==================================================================
 
     def create(self, size: int, iso_path: str, **kwargs: dict):
+        utils.set_msg_prefix("create")
+        utils.pend(pending=True)
+
         if not os.path.exists(iso_path):
-            print("%s: ISO image not found" % iso_path, file=sys.stderr)
+            utils.fail("%s: ISO image not found" % iso_path, file=sys.stderr)
             exit(1)
 
         self.prepare(size, kwargs['force'])
@@ -135,30 +112,35 @@ class VM:
         print("executing: `%s`" % ' '.join(qemu_cmd))
         subprocess.call(qemu_cmd)
 
+        utils.ok()
+        utils.set_msg_prefix(None)
+
 
     def install(self, size: int, os_name: str, **kwargs: dict):
+        def install_debian(self, size: int):
+            self.format('ext4')
+
+            utils.set_msg_prefix("install Debian")
+            utils.pend()
+            if utils.sudo(['%s/debian.sh' % INSTALLSCRIPTS_ROOT, self.path],
+                         sudo_msg='debootstrap', stdout=True, stderr=True) != 0:
+                utils.fail()
+            else:
+                utils.ok()
+            utils.set_msg_prefix(None)
+
         self.prepare(size, kwargs['force'])
-        { 'Debian': VM.install_debian }[os_name](self, size)
-
-
-    def install_debian(self, size: int):
-        self.partition()
-        self.format('ext4')
-        try:
-            utils.sudo(['%s/debian.sh' % INSTALLSCRIPTS_ROOT, self.path],
-                       sudo_msg='debootstrap', stdout=True, stderr=True)
-        except KeyboardInterrupt:
-            exit(127)
+        { 'Debian': install_debian }[os_name](self, size)
 
 
     def delete(self, **kwargs: dict):
         if not self.exists():
-            print("Machine [%s] does not exist" % self.name)
+            utils.fail("Machine [%s] does not exist" % self.name)
             exit(1)
         try:
             os.unlink(self.path)
         except PermissionError:
-            print("Permission denied", file=sys.stderr)
+            utils.fail("Permission denied")
             exit(1)
 
 

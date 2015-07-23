@@ -10,8 +10,11 @@
 
 DEBIAN_RELEASE='wheezy'
 DEBIAN_URL='http://http.debian.net/debian'
-CHROOT_ROOT='/ccli'
 DEBIAN_PATH='/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
+DEBIAN_LANG='en_GB.UTF-8'
+DEBIAN_LANGUAGE='en_GB:en'
+
+CHROOT_ROOT='/ccli'
 
 # UTILITIES ====================================================================
 
@@ -21,85 +24,98 @@ DEBIAN_PATH='/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
 
 stamp()
 {
-	stampfile="${DIRECTORY}${CHROOT_ROOT}/${1}.stamp"
-	function="$1"
+	stamp_action="$1"
+	stamp_file="${DIRECTORY}${CHROOT_ROOT}/${stamp_action}.stamp"
+	stamp_function="debian_$stamp_action"
 	shift
-	if [ -e "$stampfile" ]; then
-		skip '%s(): stamp file %s exists' "$function" "$stampfile"
+
+	if [ -e "$stamp_file" ]; then
+		skip '%s: previously completed' "$stamp_action"
 		return
 	fi
-	retval=$TRUE
-	if "$function" "$@"; then
-		retval=$TRUE
-		note "$_OK__ %s()" "$function"
-		touch "$stampfile"
-	else
-		retval=$FALSE
-		note "$FAIL_ %s()" "$function"
+
+	pend "$stamp_action"
+	if ! "$stamp_function" "$@"; then
+		return $FALSE
 	fi
-	return $retval
+	ok "$stamp_action"
+	touch "$stamp_file"
+	return 0
 }
 
 # INSTALLATION (OUTSIDE CHROOT) ================================================
 
-_losetup()
+debian_mount()
 {
-	LOOPDEV="$(losetup -f)"
-	info 'using %s as loop device' "$LOOPDEV"
-	losetup --partscan "$LOOPDEV" "$RAW"
+	mkdir -p "$DIRECTORY"
+	track "mount disk image: $RAW => $DIRECTORY" \
+		mount -o loop "$RAW" "$DIRECTORY" \
+	|| return $FALSE
+	CLEANUP="umount $CLEANUP"
+	mkdir -p "${DIRECTORY}$CHROOT_ROOT"
 }
 
-_ulosetup()
+debian_debootstrap()
 {
-	losetup -d "$LOOPDEV"
+	debootstrap --arch i386 "$DEBIAN_RELEASE" "$DIRECTORY" "$DEBIAN_URL" \
+	|| return $FALSE
 }
 
-_mount()
+debian_mount_sysfs()
 {
-	mount "${LOOPDEV}p1" "$DIRECTORY"
+	if ! track 'mount sysfs' mount -t sysfs sysfs "$DIRECTORY"/sys; then
+		examine_logs
+		return $FALSE
+	fi
+	CLEANUP="umount_sysfs $CLEANUP"
 }
 
-_umount()
+debian_mount_proc()
 {
-	umount "$DIRECTORY"
+	if ! track 'mount proc' mount -t proc proc "$DIRECTORY"/proc; then
+		examine_logs
+		return $FALSE
+	fi
+	CLEANUP="umount_proc $CLEANUP"
 }
 
-_debootstrap()
+debian_chroot()
 {
-	if ! debootstrap --arch i386 "$DEBIAN_RELEASE" "$DIRECTORY" "$DEBIAN_URL"
-	then
-		fail "debootstrap failed\n"
+	cp "$RUNPATH/$RUNNAME" "${DIRECTORY}$CHROOT_ROOT/$RUNNAME"
+	cp "$UTILS" "${DIRECTORY}$CHROOT_ROOT/utils.sh"
+	PATH="$DEBIAN_PATH" chroot "$DIRECTORY" "$CHROOT_ROOT/$RUNNAME" \
+	|| return $FALSE
+}
+
+debian_umount_proc()
+{
+	if ! track 'unmount proc' umount "$DIRECTORY"/proc; then
+		examine_logs
 		return $FALSE
 	fi
 }
 
-_chroot()
+debian_umount_sysfs()
 {
-	mount -t sysfs sysfs "$DIRECTORY"/sys
-	mount -t proc proc "$DIRECTORY"/proc
-	cp "$RUNPATH/$RUNNAME" "${DIRECTORY}$CHROOT_ROOT/$RUNNAME"
-	cp "$UTILS" "${DIRECTORY}$CHROOT_ROOT/utils.sh"
-	PATH="$DEBIAN_PATH" chroot "$DIRECTORY" "$CHROOT_ROOT/$RUNNAME" \
-	|| fail "chroot failed\n"
-	umount "$DIRECTORY"/sys
-	umount "$DIRECTORY"/proc
+	if ! track 'unmount sysfs' umount "$DIRECTORY"/sys; then
+		examine_logs
+		return $FALSE
+	fi
+}
+
+debian_umount()
+{
+	if ! track 'unmount disk image' umount "$DIRECTORY"; then
+		examine_logs
+		return $FALSE
+	fi
 }
 
 # INSTALLATION (INSIDE CHROOT) =================================================
 
-_base()
+debian_packages()
 {
-	# Locale
-	printf "%s/#\\(en_GB.UTF-8\\)/\\1/g\nwq\n" | ex -s /etc/locale.gen
-	cat > /etc/default/locale <<- EOF
-	LANG="en_GB.UTF-8"
-	LANGUAGE="en_GB:en"
-	EOF
-}
-
-_update()
-{
-	cat >>/etc/apt/sources.list <<- EOF
+	cat >/etc/apt/sources.list <<- EOF
 	deb http://ftp.ch.debian.org/debian/ $DEBIAN_RELEASE main contrib non-free
 	deb-src http://ftp.ch.debian.org/debian/ $DEBIAN_RELEASE main
 
@@ -110,49 +126,91 @@ _update()
 	deb http://ftp.ch.debian.org/debian/ $DEBIAN_RELEASE-updates main
 	deb-src http://ftp.ch.debian.org/debian/ $DEBIAN_RELEASE-updates main
 	EOF
-	apt-get -y update
 }
 
-_grub()
+debian_update()
 {
-	aptitude -y install grub
-	ls /dev
-	return $FALSE
+	aptitude -y update
 }
 
-_kernel()
+debian_locale()
 {
-	: # TODO custom kernel
+	aptitude -y install locales
+	dpkg-reconfigure locales  # is handled by debconf-set-selections
 }
 
 # MAIN =========================================================================
 
+interrupt()
+{
+	INTERRUPTED=$TRUE
+	if [ $FID -ne 0 ]; then
+		if [ "$FNAME" = 'debootstrap' ]; then
+			pkill -1 debootstrap # debootstrap spawns multiple processes
+		else
+			kill -1 $FID
+		fi
+	fi
+}
+
+cleanup()
+{
+	for c in $CLEANUP; do
+		if ! debian_$c; then
+			warn 'could not %s' "$c"
+		fi
+	done
+}
+
 main()
 {
 	RAW="$1"
+	RETVAL=0
 	if [ -z "$RAW" ]; then
 		# Running inside chroot:
 		UTILS="$CHROOT_ROOT"/utils.sh
 		. "$UTILS"
 		DIRECTORY=''
 
-		stamp _base
-		stamp _update
-		stamp _grub
-		stamp _kernel
+		for action in packages update locale; do
+			if ! stamp $action; then
+				fail '%s' "$action"
+				die 1
+			fi
+		done
 	else
 		# Invoked:
 		UTILS="$(dirname "$(readlink -f "$(dirname "$0")")")/utils.sh"
 		. "$UTILS"
 		DIRECTORY="${RAW}.mount"
-		mkdir -p "${DIRECTORY}$CHROOT_ROOT"
-
-		_losetup
-		_mount
-		stamp _debootstrap && _chroot
-		_umount
-		_ulosetup
+		LOGFILE="${RAW}.log"
+		INTERRUPTED=$FALSE
+		FID=0
+		CLEANUP=''
+		trap interrupt INT
+		trap interrupt TERM
+		for i in mount debootstrap mount_sysfs mount_proc chroot; do
+			test $INTERRUPTED = $FALSE || break
+			stamp=''
+			prefix='debian_'
+			FNAME=''
+			if [ $i = debootstrap ]; then
+				FNAME=debootstrap
+				stamp='stamp'
+				prefix=''
+			fi
+			if ! case $i in (debootstrap|chroot) false ;; esac; then
+				$stamp ${prefix}$i &
+				FID=$!
+				wait $FID || RETVAL=$?
+			else
+				$stamp ${prefix}$i || RETVAL=$?
+			fi
+			test $RETVAL -eq $TRUE || break
+		done
+		cleanup
 	fi
+	return $RETVAL
 }
 
 set -e
