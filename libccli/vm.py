@@ -29,7 +29,6 @@ class VM:
         self.path_raw = '%s/%s.raw' % (VMROOT, name)
         self.path_s2e = '%s/%s.s2e' % (VMROOT, name)
         self.path_qcow = '%s/%s.qcow2' % (VMROOT, name)
-        self.path_iso = '%s/%s' % (VMROOT, PREPARED[name])
         self.path_tar_gz = '%s/%s.tar.gz' % (VMROOT, name)
 
 
@@ -99,12 +98,17 @@ class VM:
 
 
     def fetch(self, os_name: str, **kwargs: dict):
+        remote_tar_gz = '%s.tar.gz' % os_name
+        remote_qcow = '%s.qcow2' % os_name
+        remote_iso = PREPARED[os_name]
+        self.path_iso = '%s/%s' % (VMROOT, remote_iso)
+
         utils.info("URL: %s" % FETCH_URL_BASE)
         if not os.path.exists(self.path_qcow) \
         or not os.path.exists(self.path_iso) \
         or kwargs['no_cache']:
             # Fetch
-            url = '%s/%s' % (FETCH_URL_BASE, os.path.basename(self.path_tar_gz))
+            url = '%s/%s' % (FETCH_URL_BASE, remote_tar_gz)
             utils.fetch(url, self.path_tar_gz, overwrite=kwargs['no_cache'],
                         unit=utils.MEBI, msg="fetch image bundle")
         elif not os.path.exists(self.path_tar_gz):
@@ -112,17 +116,20 @@ class VM:
 
         # Extract
         utils.set_msg_prefix("extract bundle")
-        for f in [self.path_qcow, self.path_iso]:
-            fb = os.path.basename(f)
-            if not os.path.exists(f) or kwargs['no_cache']:
-                utils.pend('%s' % fb)
-                if utils.execute(['tar', '-z', '-x', fb,
-                                  '-f', self.path_tar_gz],
-                                  msg="extract") != 0:
+        mapping = {remote_qcow: self.path_qcow,
+                   remote_iso: self.path_iso}
+        for remote in mapping:
+            local = mapping[remote]
+            if not os.path.exists(local) or kwargs['no_cache']:
+                msg = '%s => %s' % (remote, local)
+                utils.pend(msg)
+                if utils.execute(['tar', '-z', '-f', self.path_tar_gz,
+                                  '-x', remote, '-O'],
+                                 msg="extract", outfile=local) != 0:
                     exit(1)
-                utils.ok('%s' % fb)
+                utils.ok(msg)
             else:
-                utils.skip('%s: already extracted' % fb)
+                utils.skip('%s: already extracted' % local)
 
         # Expand:
         utils.set_msg_prefix("expand image")
@@ -143,10 +150,10 @@ class VM:
         exists = os.path.exists(self.path_s2e)
         if exists:
             current_dest = os.readlink(self.path_s2e)
-            overwrite = current_dest != dest
+        overwrite = exists and current_dest != dest
         if not exists or overwrite:
             if overwrite:
-                utils.warn("overwriting existing symbolic link %s"
+                utils.warn("overwrite existing symbolic link %s"
                            % self.path_s2e)
             if utils.execute(['ln', '-fs', os.path.basename(self.path_raw),
                               self.path_s2e], msg="symlink") != 0:
