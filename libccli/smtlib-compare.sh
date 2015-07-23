@@ -71,7 +71,7 @@ compare()
 	if [ $compare_wrong -eq 0 ]; then
 		success "queries passed (%d)\n" $ID_COUNT
 	else
-		fail "queries failed (%d):%s\n" $compare_wrong "$compare_array"
+		failure "queries failed (%d):%s\n" $compare_wrong "$compare_array"
 	fi
 
 	# Detailed output (if single)

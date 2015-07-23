@@ -100,7 +100,7 @@ main()
 	else
 		LOGFILE='clean.log'
 		if ! clean; then
-			fail "Cleaning failed.\n"
+			failure "Cleaning failed.\n"
 			examine_logs
 			exit 2
 		fi

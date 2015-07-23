@@ -32,19 +32,35 @@ GIBI=$(($MEBI * $KIBI))
 
 # MESSAGES =====================================================================
 
-COLOUR_ERROR=31
-COLOUR_SUCCESS=32
-COLOUR_WARNING=33
-COLOUR_MISC=34
-COLOUR_SPECIAL=36
+if [ -t $1 ] && [ -t $2 ]; then
+    COLOUR_ERROR="\033[31m"
+    COLOUR_SUCCESS="\033[32m"
+    COLOUR_WARNING="\033[33m"
+    COLOUR_MISC="\033[34m"
+    COLOUR_SPECIAL="\033[35m"
+    ESC_BOLD="\033[1m"
+    ESC_RESET="\033[0m"
+    ESC_SAVE="\033[s"
+    ESC_RESTORE="\033[u"
+else
+    COLOUR_ERROR=''
+    COLOUR_SUCCESS=''
+    COLOUR_WARNING=''
+    COLOUR_MISC=''
+    COLOUR_SPECIAL=''
+    ESC_BOLD=''
+    ESC_RESET=''
+    ESC_SAVE=''
+    ESC_RESTORE="\n"
+fi
 
-FATAL="[\033[31mFATAL\033[0m]"
-FAIL="[\033[${COLOUR_ERROR}mFAIL\033[0m]"
-WARN="[\033[${COLOUR_WARNING}mWARN\033[0m]"
-_OK_="[\033[${COLOUR_SUCCESS}m OK \033[0m]"
-SKIP="[\033[${COLOUR_SUCCESS}mSKIP\033[0m]"
-INFO="[\033[${COLOUR_MISC}mINFO\033[0m]"
-ALRT="[\033[${COLOUR_SPECIAL}m "'!!'" \033[0m]"
+FATAL="[${COLOUR_ERROR}FATAL${COLOUR_RESET}]"
+FAIL="[${COLOUR_ERROR}FAIL${COLOUR_RESET}]"
+WARN="[${COLOUR_WARNING}WARN${COLOUR_RESET}]"
+_OK_="[${COLOUR_SUCCESS} OK ${COLOUR_RESET}]"
+SKIP="[${COLOUR_SUCCESS}SKIP${COLOUR_RESET}]"
+INFO="[${COLOUR_MISC}INFO${COLOUR_RESET}]"
+ALRT="[${COLOUR_SPECIAL} !! ${COLOUR_RESET}]"
 PEND="[ .. ]"
 
 _print()
@@ -71,11 +87,12 @@ _print_emphasised()
 	_emphasised_colour=$1
 	_emphasised_format="$2"
 	shift 2
-	printf "\033[1;${_emphasised_colour}m>>>\033[0m $_emphasised_format" "$@"
+	printf "${COLOUR_BOLD}${_emphasised_colour}>>>\033[0m $_emphasised_format" \
+	       "$@"
 }
 
-success() { _print_emphasised $COLOUR_SUCCESS "$@"; }
-failure() { _print_emphasised $COLOUR_ERROR   "$@"; }
+success() { _print_emphasised "$COLOUR_SUCCESS" "$@"; }
+failure() { _print_emphasised "$COLOUR_ERROR"   "$@"; }
 
 track()
 {
@@ -91,10 +108,10 @@ track()
 			return $FALSE
 		fi
 	else
-		printf "\033[s"; _print "$PEND " $FALSE '%s' "$track_msg"
+		printf "$ESC_SAVE"; _print "$PEND " $FALSE '%s' "$track_msg"
 		track_print=ok
 		{ "$@" || track_print=fail; } >>"$LOGFILE" 2>>"$LOGFILE"
-		printf "\033[u"; $track_print '%s' "$track_msg"
+		printf "$ESC_RESTORE"; $track_print '%s' "$track_msg"
 
 		if [ $track_print = ok ]; then
 			return $TRUE
@@ -133,7 +150,7 @@ examine_logs()
 {
 	util_check
 	if [ $VERBOSE -eq $FALSE ]; then
-		if ask $COLOUR_ERROR 'yes' 'Examine %s?' "$LOGFILE"; then
+		if ask "$COLOUR_ERROR" 'yes' 'Examine %s?' "$LOGFILE"; then
 			less "$LOGFILE"
 		else
 			note '"ignoring the error logs - the path to dark side is" -- Yoda'

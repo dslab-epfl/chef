@@ -148,12 +148,21 @@ GIBI = KIBI * MEBI
 
 # MESSAGES =====================================================================
 
-ESC_ERROR = '\033[31m'
-ESC_WARNING = '\033[33m'
-ESC_SUCCESS = '\033[32m'
-ESC_MISC = '\033[34m'
-ESC_SPECIAL = '\033[35m'
-ESC_RESET = '\033[0m'
+if sys.stdout.isatty() and sys.stderr.isatty():
+    ESC_ERROR = '\033[31m'
+    ESC_SUCCESS = '\033[32m'
+    ESC_WARNING = '\033[33m'
+    ESC_MISC = '\033[34m'
+    ESC_SPECIAL = '\033[35m'
+    ESC_RESET = '\033[0m'
+else:
+    ESC_ERROR = ''
+    ESC_SUCCESS = ''
+    ESC_WARNING = ''
+    ESC_MISC = ''
+    ESC_SPECIAL = ''
+    ESC_RESET = ''
+
 WARN = '[%sWARN%s]' % (ESC_WARNING, ESC_RESET)
 FAIL = '[%sFAIL%s]' % (ESC_ERROR, ESC_RESET)
 _OK_ = '[%s OK %s]' % (ESC_SUCCESS, ESC_RESET)

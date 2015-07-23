@@ -58,8 +58,6 @@ stp_configure()
 
 stp_build()
 {
-	pwd
-	ls
 	make -j$JOBS || return $FALSE
 }
 

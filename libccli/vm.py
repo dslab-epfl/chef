@@ -99,6 +99,7 @@ class VM:
 
 
     def fetch(self, os_name: str, **kwargs: dict):
+        utils.info("URL: %s" % FETCH_URL_BASE)
         if not os.path.exists(self.path_qcow) \
         or not os.path.exists(self.path_iso) \
         or kwargs['no_cache']:
