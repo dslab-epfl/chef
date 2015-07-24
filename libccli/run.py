@@ -298,8 +298,8 @@ def build_qemu_cmd_line(args):
     if args.strace:
         qemu_cmd_line.extend([STRACE_BIN, "-e", "open"])
     qemu_cmd_line.append(qemu_path);
-    qemu_cmd_line.append(('%s/%s.s2e' % (DATA_VM_DIR, args.vm),
-                          '%s/%s.raw' % (DATA_VM_DIR, args.vm))[args.mode == "kvm"])
+    qemu_cmd_line.append(('%s/%s/disk.s2e' % (DATA_VM_DIR, args.vm),
+                          '%s/%s/disk.raw' % (DATA_VM_DIR, args.vm))[args.mode == "kvm"])
 
     # General: CPU and command monitor
     qemu_cmd_line.extend(["-cpu", "pentium",  # Non-Pentium instructions cause spurious concretizations
