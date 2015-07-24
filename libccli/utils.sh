@@ -32,7 +32,7 @@ GIBI=$(($MEBI * $KIBI))
 
 # MESSAGES =====================================================================
 
-if [ -t $1 ] && [ -t $2 ]; then
+if [ -t 1 ] && [ -t 2 ]; then
     COLOUR_ERROR="\033[31m"
     COLOUR_SUCCESS="\033[32m"
     COLOUR_WARNING="\033[33m"
