@@ -61,12 +61,12 @@ fixing some permission-related issues when interacting across
 
 The currently supported environment variables are:
 
-	CCLI_ARCH         # Default architecture (default: i386)
-	CCLI_TARGET       # Default target (default: release)
-	CCLI_MODE         # Default mode (default: normal)
-	CCLI_SILENT_BUILD # Whether to run builds silently by default (default: false)
-	CCLI_DIRECT       # Whether to run in direct mode (without docker) by default (default: true)
-	CHEF_DATAROOT     # Where Chef stores its virtual machines on the system (default: /var/local/chef)
+	CCLI_ARCH       # Default architecture - default: i386
+	CCLI_TARGET     # Default target - default: release
+	CCLI_MODE       # Default mode - default: normal
+	CCLI_VERBOSE    # Whether to be verbose by default - default: false (except for `build`)
+	CCLI_DIRECT     # Whether to run in direct mode (without docker) by default - default: true
+	CHEF_DATAROOT   # Where Chef stores its data on the system - default: /var/local/chef
 
 Note that values for booleans are **0 for true, and non-0 for false**.
 

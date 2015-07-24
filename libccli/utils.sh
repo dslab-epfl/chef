@@ -33,34 +33,34 @@ GIBI=$(($MEBI * $KIBI))
 # MESSAGES =====================================================================
 
 if [ -t 1 ] && [ -t 2 ]; then
-    COLOUR_ERROR="\033[31m"
-    COLOUR_SUCCESS="\033[32m"
-    COLOUR_WARNING="\033[33m"
-    COLOUR_MISC="\033[34m"
-    COLOUR_SPECIAL="\033[35m"
+    ESC_ERROR="\033[31m"
+    ESC_SUCCESS="\033[32m"
+    ESC_WARNING="\033[33m"
+    ESC_MISC="\033[34m"
+    ESC_SPECIAL="\033[35m"
     ESC_BOLD="\033[1m"
     ESC_RESET="\033[0m"
     ESC_SAVE="\033[s"
     ESC_RESTORE="\033[u"
 else
-    COLOUR_ERROR=''
-    COLOUR_SUCCESS=''
-    COLOUR_WARNING=''
-    COLOUR_MISC=''
-    COLOUR_SPECIAL=''
+    ESC_ERROR=''
+    ESC_SUCCESS=''
+    ESC_WARNING=''
+    ESC_MISC=''
+    ESC_SPECIAL=''
     ESC_BOLD=''
     ESC_RESET=''
     ESC_SAVE=''
     ESC_RESTORE="\n"
 fi
 
-FATAL="[${COLOUR_ERROR}FATAL${COLOUR_RESET}]"
-FAIL="[${COLOUR_ERROR}FAIL${COLOUR_RESET}]"
-WARN="[${COLOUR_WARNING}WARN${COLOUR_RESET}]"
-_OK_="[${COLOUR_SUCCESS} OK ${COLOUR_RESET}]"
-SKIP="[${COLOUR_SUCCESS}SKIP${COLOUR_RESET}]"
-INFO="[${COLOUR_MISC}INFO${COLOUR_RESET}]"
-ALRT="[${COLOUR_SPECIAL} !! ${COLOUR_RESET}]"
+FATAL="[${ESC_ERROR}FATAL${ESC_RESET}]"
+FAIL="[${ESC_ERROR}FAIL${ESC_RESET}]"
+WARN="[${ESC_WARNING}WARN${ESC_RESET}]"
+_OK_="[${ESC_SUCCESS} OK ${ESC_RESET}]"
+SKIP="[${ESC_SUCCESS}SKIP${ESC_RESET}]"
+INFO="[${ESC_MISC}INFO${ESC_RESET}]"
+ALRT="[${ESC_SPECIAL} !! ${ESC_RESET}]"
 PEND="[ .. ]"
 
 _print()
@@ -73,7 +73,6 @@ _print()
     printf "${_print_prefix}$_print_format" "$@"
 }
 
-note()  { _print ''       $TRUE "$@"; }
 info()  { _print "$INFO " $TRUE "$@"; }
 warn()  { _print "$WARN " $TRUE "$@" >&2; }
 skip()  { _print "$SKIP " $TRUE "$@"; }
@@ -87,12 +86,12 @@ _print_emphasised()
 	_emphasised_colour=$1
 	_emphasised_format="$2"
 	shift 2
-	printf "${COLOUR_BOLD}${_emphasised_colour}>>>\033[0m $_emphasised_format" \
+	printf "${ESC_BOLD}${_emphasised_colour}>>>\033[0m $_emphasised_format" \
 	       "$@"
 }
 
-success() { _print_emphasised "$COLOUR_SUCCESS" "$@"; }
-failure() { _print_emphasised "$COLOUR_ERROR"   "$@"; }
+success() { _print_emphasised "$ESC_SUCCESS" "$@"; }
+failure() { _print_emphasised "$ESC_ERROR"   "$@"; }
 
 track()
 {
@@ -150,10 +149,10 @@ examine_logs()
 {
 	util_check
 	if [ $VERBOSE -eq $FALSE ]; then
-		if ask "$COLOUR_ERROR" 'yes' 'Examine %s?' "$LOGFILE"; then
+		if ask "$ESC_ERROR" 'yes' 'Examine %s?' "$LOGFILE"; then
 			less "$LOGFILE"
 		else
-			note '"ignoring the error logs - the path to dark side is" -- Yoda'
+			echo '"the error logs to ignore - to dark side the path is" -- Yoda'
 		fi
 	fi
 }
@@ -251,6 +250,7 @@ is_numeric()
 	esac
 }
 
+# Test if a variable is purely boolean (1 or 0):
 is_boolean()
 {
     [ -n "$1" ] || return $FALSE
@@ -272,7 +272,7 @@ is_command()
 # Give human readable representation for boolean
 as_boolean()
 {
-	if is_boolean "$1" && [ $1 -eq $TRUE ]; then
+	if is_numeric "$1" && [ $1 -eq $TRUE ]; then
 		echo 'true'
 	else
 		echo 'false'

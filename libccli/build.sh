@@ -400,10 +400,10 @@ docker_build()
 			-f "$FORCE_COMPS" \
 			-i "$DOCKER_HOSTPATH_IN" \
 			-j $JOBS \
-			-l "$LLVM_BASE" \
+			-L "$LLVM_BASE" \
 			-o "$DOCKER_HOSTPATH_OUT" \
 			-q "$QEMU_FLAGS" \
-			$(test $SILENT -eq $TRUE && printf '%s' '-s') \
+			$(test $VERBOSE -eq $FALSE && printf '%s' '-s') \
 			-x "$EXCLUDED" \
 			"$RELEASE"
 }
@@ -486,7 +486,6 @@ dry_run()
 	JOBS=$JOBS
 	LLVM_BASE=$LLVM_BASE
 	QEMU_FLAGS='$QEMU_FLAGS'
-	SILENT=$(as_boolean $SILENT) (CCLI_SILENT_BUILD=$(as_boolean $CCLI_SILENT_BUILD))
 	LLVM_SRC=$LLVM_SRC
 	LLVM_BUILD=$LLVM_BUILD
 	LLVM_NATIVE=$LLVM_NATIVE
@@ -513,7 +512,8 @@ get_options()
 	LIST=$FALSE
 	LLVM_BASE='/opt/s2e/llvm'
 	QEMU_FLAGS=''
-	SILENT=${CCLI_SILENT_BUILD:=$FALSE}
+	#VERBOSE=${CCLI_VERBOSE:-$DEFAULT_VERBOSE}
+	VERBOSE=${CCLI_VERBOSE:-$TRUE}
 
 	# Options:
 	while getopts :df:hi:j:lL:o:q:sx:y opt; do
@@ -527,7 +527,7 @@ get_options()
 			L) LLVM_BASE="$OPTARG" ;;
 			o) BUILDPATH_ROOT="$OPTARG" ;;
 			q) QEMU_FLAGS="$OPTARG" ;;
-			s) SILENT=$TRUE ;;
+			s) VERBOSE=$FALSE ;;
 			x) EXCLUDED="$OPTARG" ;;
 			y) DRYRUN=$TRUE ;;
 			'?') die_help 'Invalid option: -%s' "$OPTARG";;
@@ -542,7 +542,6 @@ get_options()
 	LLVM_NATIVE_CC="$LLVM_NATIVE/bin/clang"
 	LLVM_NATIVE_CXX="$LLVM_NATIVE/bin/clang++"
 	LLVM_NATIVE_LIB="$LLVM_NATIVE/lib"
-	VERBOSE=$(! $(as_boolean $SILENT); echo $?)
 }
 
 get_release()
@@ -580,19 +579,22 @@ main()
 		exit 1
 	fi
 
+	test -d "$BUILDPATH_ROOT" || mkdir "$BUILDPATH_ROOT"
+
 	if [ $DOCKERIZED -eq $TRUE ]; then
-		mkdir -p "$BUILDPATH_ROOT"
 		setfacl -m user:$(id -u):rwx "$BUILDPATH_ROOT"
 		setfacl -m user:431:rwx "$BUILDPATH_ROOT"
 		setfacl -d -m user:$(id -u):rwx "$BUILDPATH_ROOT"
 		setfacl -d -m user:431:rwx "$BUILDPATH_ROOT"
 		docker_build
 	else
-		note 'Building %s (jobs=%d)' "$RELEASE" "$JOBS"
+		info 'Building %s (jobs=%d)' "$RELEASE" "$JOBS"
 		BUILDPATH_ROOT="$BUILDPATH_ROOT/$ARCH-$TARGET-$MODE"
 		CODE_TERM='restart'
 		while [ "$CODE_TERM" = 'restart' ]; do
-			mkdir -p "$BUILDPATH_ROOT"
+			if ! mkdir -p "$BUILDPATH_ROOT"; then
+				die 1 'Permission denied'
+			fi
 			all_build
 		done
 		case "$CODE_TERM" in
