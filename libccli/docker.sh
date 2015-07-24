@@ -10,7 +10,7 @@
 
 . "$(readlink -f "$(dirname "$0")")/utils.sh"
 
-# RUN ==========================================================================
+# ACTIONS ======================================================================
 
 run()
 {
@@ -21,6 +21,11 @@ run()
 		-v "$SRCPATH_ROOT":"$DOCKER_HOSTPATH" \
 		"$DOCKER_IMAGE" \
 		/bin/bash
+}
+
+fetch()
+{
+	exec docker pull "$DOCKER_IMAGE"
 }
 
 # MAIN =========================================================================
@@ -42,6 +47,7 @@ help()
 
 	Actions:
 	  run     Run docker container
+	  fetch   Fetch the prepared docker image from hub.docker.com
 	EOF
 }
 
@@ -60,7 +66,7 @@ read_subcommand()
 {
 	SUBCOMMAND="$1"
 	case "$SUBCOMMAND" in
-		run) ;;
+		run|fetch) ;;
 		'') die_help 'Missing subcommand' ;;
 		*) die_help 'Unknown subcommand: %s' "$SUBCOMMAND" ;;
 	esac
@@ -76,6 +82,7 @@ main()
 
 	case "$SUBCOMMAND" in
 		run) run ;;
+		fetch) fetch ;;
 		*) die_internal 'main(): Unknown subcommand: %s' "$SUBCOMMAND" ;;
 	esac
 }
