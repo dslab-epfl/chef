@@ -165,6 +165,8 @@ if sys.stdout.isatty() and sys.stderr.isatty():
     ESC_MISC = '\033[34m'
     ESC_SPECIAL = '\033[35m'
     ESC_RESET = '\033[0m'
+    ESC_ERASE = '\033[K'
+    ESC_RETURN = '\r'
 else:
     ESC_ERROR = ''
     ESC_SUCCESS = ''
@@ -172,6 +174,8 @@ else:
     ESC_MISC = ''
     ESC_SPECIAL = ''
     ESC_RESET = ''
+    ESC_ERASE = ''
+    ESC_RETURN = '\n'
 
 WARN = '[%sWARN%s]' % (ESC_WARNING, ESC_RESET)
 FAIL = '[%sFAIL%s]' % (ESC_ERROR, ESC_RESET)
@@ -189,10 +193,11 @@ def set_msg_prefix(prefix: str):
 
 def print_msg(status: str, msg: str, file = sys.stdout, eol = '\n'):
     global msg_prefix
-    print("%s%s%s%s" % (('%s ' % status, '')[status is None],
-                      ('%s' % msg_prefix, '')[msg_prefix is None],
-                      (': ', '')[msg_prefix is None or msg is None],
-                      (msg, '')[msg is None]),
+    print("%s%s%s%s%s" % (ESC_ERASE,
+                          ('%s ' % status, '')[status is None],
+                          ('%s' % msg_prefix, '')[msg_prefix is None],
+                          (': ', '')[msg_prefix is None or msg is None],
+                          (msg, '')[msg is None]),
           file=file, end=eol)
 
 def info(msg: str, eol: str='\n'):
@@ -218,4 +223,4 @@ def abort(msg: str, eol: str='\n'):
     print_msg(ABRT, msg, eol=eol)
 
 def pend(msg: str=None, pending: bool=True):
-    print_msg(PEND, msg, eol=('\n', '\r')[pending])
+    print_msg(PEND, msg, eol=('\n', ESC_RETURN)[pending])

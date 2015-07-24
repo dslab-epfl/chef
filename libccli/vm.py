@@ -106,8 +106,6 @@ class VM:
         self.path_tar_gz = '%s/%s' % (self.path, remote_tar_gz)
 
         # Prepare
-        utils.set_msg_prefix("create directory")
-        utils.pend()
         try:
             os.mkdir(self.path)
         except OSError as ce:
@@ -123,7 +121,6 @@ class VM:
             else:
                 utils.info(msg)
                 exit(1)
-        utils.set_msg_prefix(None)
 
         # Fetch
         url = '%s/%s' % (FETCH_URL_BASE, remote_tar_gz)
@@ -138,11 +135,14 @@ class VM:
             local = mapping[remote]
             msg = '%s => %s' % (remote, local)
             utils.pend(msg)
-            if utils.execute(['tar', '-z', '-f', self.path_tar_gz,
-                              '-x', remote, '-O'],
-                             msg="extract", outfile=local) != 0:
-                exit(1)
-            utils.ok(msg)
+            if os.path.exists(local):
+                utils.skip("%s: already extracted" % local)
+            else:
+                if utils.execute(['tar', '-z', '-f', self.path_tar_gz,
+                                  '-x', remote, '-O'],
+                                 msg="extract", outfile=local) != 0:
+                    exit(1)
+                utils.ok(msg)
 
         # Expand
         utils.set_msg_prefix("expand image")
