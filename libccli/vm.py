@@ -1,5 +1,15 @@
 #!/usr/bin/env python3
 
+# This script is part of ccli.
+#
+# `vm` provides means for managing virtual machines that are used with Chef. The
+# virtual machines are basically raw disk image files containing operating
+# systems that can be booted by qemu/S²E/Chef.
+#
+# Maintainers:
+#   Tinu Weber <martin.weber@epfl.ch>
+
+
 import os
 import argparse
 import sys
@@ -9,14 +19,21 @@ import tempfile
 import subprocess
 import signal
 import shutil
+import json
 
 
 DATAROOT = os.environ.get('CHEF_DATAROOT', '/var/local/chef')
 INVOKENAME = os.environ.get('INVOKENAME', sys.argv[0])
 SRC_ROOT = os.path.dirname(os.path.dirname(__file__))
 VMROOT = '%s/vm' % DATAROOT
-PREPARED = {'Debian':{'iso':'debian-7.8.0-i386-netinst.iso'}}
 FETCH_URL_BASE = 'http://localhost/~ayekat' # TODO real host
+PREPARED = {
+    'Debian': {
+        'iso': 'debian-7.8.0-i386-netinst.iso',
+        'description': 'Debian 7.8 with a custom kernel, prepared for being ' +
+                       'used with Chef'
+    },
+}
 
 
 class VM:
@@ -28,58 +45,164 @@ class VM:
     def __init__(self, name: str):
         self.name = name
         self.path = '%s/%s' % (VMROOT, name)
-        self.path_raw = '%s/disk.raw' % (self.path)
-        self.path_s2e = '%s/disk.s2e' % (self.path)
-        self.path_qcow = '%s/disk.qcow2' % (self.path)
+        self.path_qcow = '%s/disk.qcow2' % self.path
+        self.path_raw = '%s/disk.raw' % self.path
+        self.path_s2e = '%s/disk.s2e' % self.path
+        self.path_meta = '%s/meta' % self.path
+        self.load_meta()
+
+
+    def __str__(self):
+        return "%s (OS: %s)" % (self.name, self.os_name)
+
+
+    def load_meta(self):
+        meta = {}
+        if os.path.exists(self.path_meta):
+            with open(self.path_meta, 'r') as f:
+                try:
+                    meta = json.load(f)
+                except ValueError as ve:
+                    utils.warn(ve)
+        utils.set_msg_prefix(None)
+        self.path_tar_gz = meta.get('path_tar_gz', '/dev/null')
+        self.path_iso = meta.get('path_iso', '/dev/null')
+        self.os_name = meta.get('os_name', '<custom>')
+        self.description = meta.get('description', '<custom>')
+
+
+    def store_meta(self):
+        utils.set_msg_prefix("store metadata")
+        utils.pend()
+        meta = {
+            'path_tar_xz': self.path_tar_gz,
+            'path_iso': self.path_iso,
+            'os_name': self.os_name,
+            'description': self.description,
+        }
+        with open(self.path_meta, 'w') as f:
+            json.dump(meta, f)
+        utils.ok()
+        utils.set_msg_prefix(None)
 
 
     # UTILITIES ================================================================
 
     def exists(self):
-        return self.name and os.path.isdir(self.path_raw)
+        return self.name \
+        and os.path.isdir(self.path) \
+        and os.path.exists(self.path_raw) \
+        and os.path.exists(self.path_s2e)
 
 
-    def prepare(self, size: int, force: bool):
-        utils.set_msg_prefix("prepare disk image")
+    def initialise(self, force: bool):
+        utils.set_msg_prefix("initialise VM")
         utils.pend()
-
-        if self.exists():
-            msg = "Machine [%s] already exists" % self.name
-            if force:
-                utils.skip(msg)
-                return
-            else:
-                utils.fail(msg)
-                exit(1)
         if not os.path.isdir(VMROOT):
-            utils.fail("%s: Directory not found (you may need to initialise Chef first)"
+            utils.fail("%s: Directory not found (please initialise Chef first)"
                        % VMROOT)
             exit(1)
         try:
-            open(self.path_raw, 'a').close()
-        except PermissionError:
-            utils.fail("Permission denied")
+            os.mkdir(self.path)
+            utils.ok()
+        except PermissionError as pe:
+            utils.fail(pe)
             exit(1)
-        if utils.execute(['qemu-img', 'create', self.path_raw, '%dM' % size],
-                         msg="execute qemu-img") != 0:
-            exit(1)
-        utils.set_permissions(self.path_raw)
-        utils.ok()
+        except OSError as ose:
+            msg = "%s already exists" % self.name
+            if force:
+                utils.info("%s, overwriting" % msg)
+                try:
+                    shutil.rmtree(self.path) # FIXME case PWD == self.path
+                    os.mkdir(self.path)
+                except PermissionError as pe:
+                    utils.fail(pe)
+                    exit(1)
+                except OSError as ose2:
+                    utils.fail(ose)
+                    exit(1)
+            else:
+                utils.info(msg)
+                exit(1)
         utils.set_msg_prefix(None)
+
+
+    def create_s2e(self):
+        utils.set_msg_prefix("symlink S2E image")
+        utils.pend()
+        dest = os.path.basename(self.path_raw)
+        exists = os.path.exists(self.path_s2e)
+        if exists:
+            dest_real = os.path.readlink(self.path_s2e)
+        invalid = exists and dest != dest_real
+        if not exists or invalid:
+            if utils.execute(['ln', '-fs', dest, self.path_s2e],
+                             msg="symlink") != 0:
+                exit(1)
+            if invalid:
+                utils.note("fix invalid S2E image (pointed")
+            else:
+                utils.ok()
+
+        utils.set_msg_prefix(None)
+
+
+    def set_permissions(self):
+        for f in [self.path, self.path_raw]:
+            utils.set_permissions(f)
 
 
     # ACTIONS ==================================================================
 
-    def create(self, size: int, iso_path: str, **kwargs: dict):
-        utils.set_msg_prefix("create")
-        utils.pend()
+    def create(self, size: int, force: bool, **kwargs: dict):
+        self.initialise(force)
 
-        if not os.path.exists(iso_path):
-            utils.fail("%s: ISO image not found" % iso_path, file=sys.stderr)
+        # Raw image:
+        utils.set_msg_prefix("create image")
+        utils.pend()
+        if utils.execute(['qemu-img', 'create', self.path_raw, '%dM' % size],
+                         msg="execute qemu-img") != 0:
+            exit(1)
+        utils.ok()
+        utils.set_msg_prefix(None)
+
+        # S2E image:
+        self.create_s2e()
+
+        # Metadata:
+        self.store_meta()
+
+        # Permissions:
+        self.set_permissions()
+
+
+    def install(self, path_iso: str, **kwargs: dict):
+        if not self.exists():
+            utils.fail("%s: VM does not exist" % self.name)
+            exit(1)
+        if not os.path.exists(path_iso):
+            utils.fail("%s: ISO file not found" % path_iso)
             exit(1)
 
-        self.prepare(size, kwargs['force'])
+        # Copy ISO:
+        self.path_iso = '%s/%s' % (VMROOT, os.path.basename(path_iso))
+        utils.set_msg_prefix("copy ISO: %s => %s" % path_iso, self.path_iso)
+        utils.pend()
+        if not os.path.exists(self.path_iso):
+            try:
+                shutil.copy(path_iso, self.path_iso)
+            except PermissionError as pe:
+                utils.fail(pe)
+                exit(1)
+            except OSError as ose:
+                utils.fail(ose)
+                exit(1)
+            utils.ok()
+        else:
+            utils.skip("%s already exists")
 
+        # Launch qemu:
+        utils.set_msg_prefix("qemu")
         qemu_cmd = ['qemu-system-%s' % VM.arch,
                     '-enable-kvm',
                     '-cpu', 'host',
@@ -89,45 +212,35 @@ class VM:
                     '-net', 'user',
                     '-monitor', 'tcp::1234,server,nowait',
                     '-drive', 'file=%s,if=virtio,format=raw' % self.path_raw,
-                    '-drive', 'file=%s,media=cdrom,readonly' % iso_path,
+                    '-drive', 'file=%s,media=cdrom,readonly' % self.path_iso,
                     '-boot', 'order=d']
-        print("executing: `%s`" % ' '.join(qemu_cmd))
-        subprocess.call(qemu_cmd)
-
+        utils.info("command line: %s" % ' '.join(qemu_cmd))
+        utils.pend(pending=False)
+        if utils.execute(qemu_cmd, msg="run qemu", stdout=True, stderr=True) != 0:
+            exit(1)
         utils.ok()
-        utils.set_msg_prefix(None)
 
 
-    def fetch(self, os_name: str, **kwargs: dict):
-        remote_tar_gz = '%s.tar.gz' % os_name
-        remote_qcow = os.path.basename(self.path_qcow)
+    def fetch(self, os_name: str, force: bool, **kwargs: dict):
+        self.os_name = os_name
+        self.description = PREPARED[os_name]['description']
         remote_iso = PREPARED[os_name]['iso']
         self.path_iso = '%s/%s' % (VMROOT, remote_iso)
+        remote_qcow = os.path.basename(self.path_qcow)
+        remote_tar_gz = '%s.tar.gz' % os_name
         self.path_tar_gz = '%s/%s' % (self.path, remote_tar_gz)
 
-        # Prepare
-        try:
-            os.mkdir(self.path)
-        except OSError as ce:
-            msg = "%s already exists" % self.name
-            if kwargs['force']:
-                utils.info("%s, overwriting" % msg)
-                try:
-                    shutil.rmtree(self.path)
-                    os.mkdir(self.path)
-                except OSError as re:
-                    fail("%s" % re, eol='')
-                    exit(1)
-            else:
-                utils.info(msg)
-                exit(1)
+        # Initialise:
+        self.initialise(force)
 
-        # Fetch
+        # Fetch:
         url = '%s/%s' % (FETCH_URL_BASE, remote_tar_gz)
         utils.info("URL: %s" % url)
-        utils.fetch(url, self.path_tar_gz, unit=utils.MEBI, msg="fetch image bundle")
+        if utils.fetch(url, self.path_tar_gz, unit=utils.MEBI,
+                       msg="fetch image bundle") != 0:
+            exit(1)
 
-        # Extract
+        # Extract:
         utils.set_msg_prefix("extract bundle")
         mapping = {remote_qcow: self.path_qcow,
                    remote_iso: self.path_iso}
@@ -144,8 +257,8 @@ class VM:
                     exit(1)
                 utils.ok(msg)
 
-        # Expand
-        utils.set_msg_prefix("expand image")
+        # Raw image:
+        utils.set_msg_prefix("expand raw image")
         utils.pend()
         if utils.execute(['qemu-img', 'convert', '-f', 'qcow2',
                           '-O', 'raw', self.path_qcow, self.path_raw],
@@ -153,35 +266,49 @@ class VM:
             exit(1)
         utils.ok()
 
-        # Symlink
-        utils.set_msg_prefix("create S2E image")
-        utils.pend()
-        dest = os.path.basename(self.path_raw)
-        if utils.execute(['ln', '-fs', os.path.basename(self.path_raw),
-                          self.path_s2e], msg="symlink") != 0:
-            exit(1)
-        utils.ok()
+        # S2E image:
+        self.create_s2e()
+
+        # Metadata:
+        self.store_meta()
+
+        # Permissions:
+        self.set_permissions()
 
         utils.set_msg_prefix(None)
 
 
     def delete(self, **kwargs: dict):
-        if not self.exists():
-            utils.fail("Machine [%s] does not exist" % self.name)
-            exit(1)
+        utils.set_msg_prefix("delete %s" % self.name)
+        utils.pend()
         try:
-            os.unlink(self.path_raw)
+            shutil.rmtree(self.path)
         except PermissionError:
             utils.fail("Permission denied")
             exit(1)
+        except FileNotFoundError:
+            utils.fail("does not exist")
+            exit(1)
+        utils.ok()
 
 
-    def list(self, **kwargs: dict):
-        for f in os.listdir(VMROOT):
-            bn, ext = os.path.splitext(f)
-            if not ext == '.raw':
-                continue
-            print(bn)
+    def list(self, iso: bool, remote: bool, **kwargs: dict):
+        if remote:
+            for name in PREPARED:
+                print("%s\n  %s\n  Based on: %s" % (name,
+                                                PREPARED[name]['description'],
+                                                PREPARED[name]['iso']))
+        else:
+            for name in os.listdir(VMROOT):
+                if iso:
+                    _, ext = os.path.splitext(name)
+                    if ext != '.iso':
+                        continue
+                    print(name)
+                else:
+                    if not os.path.isdir('%s/%s' % (VMROOT, name)):
+                        continue
+                    print(VM(name))
 
     # MAIN =====================================================================
 
@@ -194,22 +321,27 @@ class VM:
         pcmd.required = True
 
         # create
-        pcreate = pcmd.add_parser('create',
-                                  help="Install an OS from an ISO to a VM")
+        pcreate = pcmd.add_parser('create', help="Create a new VM")
         pcreate.set_defaults(action=VM.create)
         pcreate.add_argument('-f','--force', action='store_true', default=False,
                              help="Force creation, even if VM already exists")
-        pcreate.add_argument('iso_path',
-                             help="Path to ISO file containing the OS")
         pcreate.add_argument('name',
                              help="Machine name")
         pcreate.add_argument('size', type=int, default=5120, nargs='?',
-                             help="VM size (in MB)")
+                             help="VM size (in MB) [default=5120]")
+
+        # install
+        pinstall = pcmd.add_parser('install',
+                                   help="Install an OS from an ISO to a VM")
+        pinstall.set_defaults(action=VM.install)
+        pinstall.add_argument('iso_path',
+                             help="Path to ISO file containing the OS")
+        pinstall.add_argument('name',
+                              help="Machine name")
 
         # fetch
         prepared_list = list(PREPARED)
-        pfetch = pcmd.add_parser('fetch',
-                                 help="Download a prepared OS image")
+        pfetch = pcmd.add_parser('fetch', help="Download a prepared VM")
         pfetch.set_defaults(action=VM.fetch)
         pfetch.add_argument('-f','--force', action='store_true', default=False,
                             help="Overwrite existing OS image")
@@ -224,8 +356,15 @@ class VM:
         pdelete.add_argument('name', help="Machine name")
 
         # list
-        plist = pcmd.add_parser('list', help="List existing VMs")
+        plist = pcmd.add_parser('list', help="List VMs and ISOs")
         plist.set_defaults(action=VM.list)
+        plist_source = plist.add_mutually_exclusive_group()
+        plist_source.add_argument('-i', '--iso', action='store_true',
+                                  default=False,
+                                  help="List existing ISOs instead")
+        plist_source.add_argument('-r', '--remote', action='store_true',
+                                  default=False,
+                                  help="List remotely available VMs instead")
 
         args = p.parse_args(argv[1:])
         kwargs = vars(args) # make it a dictionary, for easier use

@@ -7,6 +7,7 @@ import requests
 import netifaces
 import csv
 import socket
+import stat
 
 # EXECUTION ====================================================================
 
@@ -62,19 +63,28 @@ def set_permissions(path: str, docker_uid: int = 431):
     pend(path)
     try:
         os.chown(path, -1, grp.getgrnam('kvm').gr_gid)
-        os.chmod(path, 0o775 if os.path.isdir(path) else 0o664)
+        if os.path.isdir(path):
+            os.chmod(path, 0o2775)
+        else:
+            os.chmod(path, 0o0664)
         for mode in ['normal', 'default']:
             cmd = ['setfacl']
             if mode == 'default':
-                cmd.append('-d')
-            cmd.extend(['-m', 'user:%d:rwx' % docker_uid, path])
-            if execute(cmd, "set %s ACL permissions for user %d"
+                if os.path.isdir(path):
+                    cmd.append('-d')
+                else:
+                    continue
+            cmd.extend(['-m', 'user:%d:rw%s'
+                              % (docker_uid, ('', 'x')[os.path.isdir(path)]),
+                        path])
+            if execute(cmd, msg="set %s ACL permissions for user %d"
                        % (mode, docker_uid)) != 0:
                 exit(1)
+        ok(path)
     except PermissionError:
         fail("Cannot modify permissions for %s: Permission denied" % path)
         exit(1)
-    ok(path)
+    set_msg_prefix(None)
 
 # USER INTERACTION =============================================================
 
@@ -113,7 +123,7 @@ def fetch(url: str, path: str, msg: str=None, overwrite: bool=False,
     r = requests.get(url, stream=True)
     if r.status_code != 200:
         fail("%s: %d" % (url, r.status_code))
-        exit(1)
+        return -1
 
     with open(path, 'wb') as file:
         file_size = int(r.headers['Content-Length'])
@@ -123,17 +133,18 @@ def fetch(url: str, path: str, msg: str=None, overwrite: bool=False,
             for block in r.iter_content(file_size_block):
                 file.write(block)
                 file_size_current += len(block)
-                pend("%d MiB / %d MiB (%3d%%)"
-                     % (file_size_current / unit,
-                        file_size / unit,
-                        file_size_current * 100 / file_size),
-                     pending=True)
+                progress = '%d MiB / %d MiB (%3d%%)' \
+                           % (file_size_current / unit,
+                              file_size / unit,
+                              file_size_current * 100 / file_size)
+                pend(progress, pending=True)
         except KeyboardInterrupt:
             abort("keyboard interrupt")
             exit(127)
 
-    ok()
+    ok(progress)
     set_msg_prefix(None)
+    return 0
 
 
 def get_default_ip():
