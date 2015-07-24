@@ -176,21 +176,21 @@ class VM:
         self.set_permissions()
 
 
-    def install(self, path_iso: str, **kwargs: dict):
+    def install(self, iso_path: str, **kwargs: dict):
         if not self.exists():
             utils.fail("%s: VM does not exist" % self.name)
             exit(1)
-        if not os.path.exists(path_iso):
-            utils.fail("%s: ISO file not found" % path_iso)
+        if not os.path.exists(iso_path):
+            utils.fail("%s: ISO file not found" % iso_path)
             exit(1)
 
         # Copy ISO:
-        self.path_iso = '%s/%s' % (VMROOT, os.path.basename(path_iso))
-        utils.set_msg_prefix("copy ISO: %s => %s" % path_iso, self.path_iso)
+        self.path_iso = '%s/%s' % (VMROOT, os.path.basename(iso_path))
+        utils.set_msg_prefix("copy ISO: %s => %s" % (iso_path, self.path_iso))
         utils.pend()
         if not os.path.exists(self.path_iso):
             try:
-                shutil.copy(path_iso, self.path_iso)
+                shutil.copy(iso_path, self.path_iso)
             except PermissionError as pe:
                 utils.fail(pe)
                 exit(1)
@@ -214,7 +214,7 @@ class VM:
                     '-drive', 'file=%s,if=virtio,format=raw' % self.path_raw,
                     '-drive', 'file=%s,media=cdrom,readonly' % self.path_iso,
                     '-boot', 'order=d']
-        utils.info("command line: %s" % ' '.join(qemu_cmd))
+        utils.info("command line\n%s" % ' '.join(qemu_cmd))
         utils.pend(pending=False)
         if utils.execute(qemu_cmd, msg="run qemu", stdout=True, stderr=True) != 0:
             exit(1)

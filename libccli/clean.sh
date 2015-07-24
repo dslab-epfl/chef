@@ -56,6 +56,8 @@ help()
 	usage
 	cat <<- EOF
 
+	Delete builds.
+
 	Options:
 	  -d       Dockerized (wrap execution inside docker container)
 	  -h       Display this help
