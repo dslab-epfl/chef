@@ -8,13 +8,14 @@ import utils
 import tempfile
 import subprocess
 import signal
+import shutil
 
 
 DATAROOT = os.environ.get('CHEF_DATAROOT', '/var/local/chef')
 INVOKENAME = os.environ.get('INVOKENAME', sys.argv[0])
 SRC_ROOT = os.path.dirname(os.path.dirname(__file__))
 VMROOT = '%s/vm' % DATAROOT
-PREPARED = {'Debian':'debian-7.8.0-i386-netinst.iso'}
+PREPARED = {'Debian':{'iso':'debian-7.8.0-i386-netinst.iso'}}
 FETCH_URL_BASE = 'http://localhost/~ayekat' # TODO real host
 
 
@@ -26,16 +27,16 @@ class VM:
 
     def __init__(self, name: str):
         self.name = name
-        self.path_raw = '%s/%s.raw' % (VMROOT, name)
-        self.path_s2e = '%s/%s.s2e' % (VMROOT, name)
-        self.path_qcow = '%s/%s.qcow2' % (VMROOT, name)
-        self.path_tar_gz = '%s/%s.tar.gz' % (VMROOT, name)
+        self.path = '%s/%s' % (VMROOT, name)
+        self.path_raw = '%s/disk.raw' % (self.path)
+        self.path_s2e = '%s/disk.s2e' % (self.path)
+        self.path_qcow = '%s/disk.qcow2' % (self.path)
 
 
     # UTILITIES ================================================================
 
     def exists(self):
-        return self.name and os.path.exists(self.path_raw)
+        return self.name and os.path.isdir(self.path_raw)
 
 
     def prepare(self, size: int, force: bool):
@@ -99,20 +100,35 @@ class VM:
 
     def fetch(self, os_name: str, **kwargs: dict):
         remote_tar_gz = '%s.tar.gz' % os_name
-        remote_qcow = '%s.qcow2' % os_name
-        remote_iso = PREPARED[os_name]
+        remote_qcow = os.path.basename(self.path_qcow)
+        remote_iso = PREPARED[os_name]['iso']
         self.path_iso = '%s/%s' % (VMROOT, remote_iso)
+        self.path_tar_gz = '%s/%s' % (self.path, remote_tar_gz)
 
-        utils.info("URL: %s" % FETCH_URL_BASE)
-        if not os.path.exists(self.path_qcow) \
-        or not os.path.exists(self.path_iso) \
-        or kwargs['no_cache']:
-            # Fetch
-            url = '%s/%s' % (FETCH_URL_BASE, remote_tar_gz)
-            utils.fetch(url, self.path_tar_gz, overwrite=kwargs['no_cache'],
-                        unit=utils.MEBI, msg="fetch image bundle")
-        elif not os.path.exists(self.path_tar_gz):
-            utils.warn('no local version of archive available')
+        # Prepare
+        utils.set_msg_prefix("create directory")
+        utils.pend()
+        try:
+            os.mkdir(self.path)
+        except OSError as ce:
+            msg = "%s already exists" % self.name
+            if kwargs['force']:
+                utils.info("%s, overwriting" % msg)
+                try:
+                    shutil.rmtree(self.path)
+                    os.mkdir(self.path)
+                except OSError as re:
+                    fail("%s" % re, eol='')
+                    exit(1)
+            else:
+                utils.info(msg)
+                exit(1)
+        utils.set_msg_prefix(None)
+
+        # Fetch
+        url = '%s/%s' % (FETCH_URL_BASE, remote_tar_gz)
+        utils.info("URL: %s" % url)
+        utils.fetch(url, self.path_tar_gz, unit=utils.MEBI, msg="fetch image bundle")
 
         # Extract
         utils.set_msg_prefix("extract bundle")
@@ -120,48 +136,31 @@ class VM:
                    remote_iso: self.path_iso}
         for remote in mapping:
             local = mapping[remote]
-            if not os.path.exists(local) or kwargs['no_cache']:
-                msg = '%s => %s' % (remote, local)
-                utils.pend(msg)
-                if utils.execute(['tar', '-z', '-f', self.path_tar_gz,
-                                  '-x', remote, '-O'],
-                                 msg="extract", outfile=local) != 0:
-                    exit(1)
-                utils.ok(msg)
-            else:
-                utils.skip('%s: already extracted' % local)
+            msg = '%s => %s' % (remote, local)
+            utils.pend(msg)
+            if utils.execute(['tar', '-z', '-f', self.path_tar_gz,
+                              '-x', remote, '-O'],
+                             msg="extract", outfile=local) != 0:
+                exit(1)
+            utils.ok(msg)
 
-        # Expand:
+        # Expand
         utils.set_msg_prefix("expand image")
         utils.pend()
-        if not self.exists() or kwargs['force']:
-            if utils.execute(['qemu-img', 'convert', '-f', 'qcow2',
-                              '-O', 'raw', self.path_qcow, self.path_raw],
-                              msg="expand qemu image") != 0:
-                exit(1)
-            utils.ok()
-        else:
-            utils.skip("%s already exists" % self.path_raw)
+        if utils.execute(['qemu-img', 'convert', '-f', 'qcow2',
+                          '-O', 'raw', self.path_qcow, self.path_raw],
+                          msg="expand qemu image") != 0:
+            exit(1)
+        utils.ok()
 
-        # Symlink:
+        # Symlink
         utils.set_msg_prefix("create S2E image")
         utils.pend()
         dest = os.path.basename(self.path_raw)
-        exists = os.path.exists(self.path_s2e)
-        if exists:
-            current_dest = os.readlink(self.path_s2e)
-        overwrite = exists and current_dest != dest
-        if not exists or overwrite:
-            if overwrite:
-                utils.warn("overwrite existing symbolic link %s"
-                           % self.path_s2e)
-            if utils.execute(['ln', '-fs', os.path.basename(self.path_raw),
-                              self.path_s2e], msg="symlink") != 0:
-                exit(1)
-            if not overwrite:
-                utils.ok()
-        else:
-            utils.skip("%s already symlinked" % self.path_s2e)
+        if utils.execute(['ln', '-fs', os.path.basename(self.path_raw),
+                          self.path_s2e], msg="symlink") != 0:
+            exit(1)
+        utils.ok()
 
         utils.set_msg_prefix(None)
 
@@ -214,8 +213,6 @@ class VM:
         pfetch.set_defaults(action=VM.fetch)
         pfetch.add_argument('-f','--force', action='store_true', default=False,
                             help="Overwrite existing OS image")
-        pfetch.add_argument('--no-cache', action='store_true', default=False,
-                            help="Don't use locally cached download files")
         pfetch.add_argument('os_name', choices=prepared_list,
                             help="Operating System name")
         pfetch.add_argument('name',

@@ -99,6 +99,8 @@ def fetch(url: str, path: str, msg: str=None, overwrite: bool=False,
     global KIBI
     if not unit:
         unit = KIBI
+    if os.path.isdir(path):
+        path = '%s/%s' % (path, os.path.basename(url))
 
     set_msg_prefix(msg if msg else url)
     pend(pending=True)
@@ -193,27 +195,27 @@ def print_msg(status: str, msg: str, file = sys.stdout, eol = '\n'):
                       (msg, '')[msg is None]),
           file=file, end=eol)
 
-def info(msg: str):
-    print_msg(INFO, msg)
+def info(msg: str, eol: str='\n'):
+    print_msg(INFO, msg, eol=eol)
 
-def skip(msg: str):
-    print_msg(SKIP, msg)
+def skip(msg: str, eol: str='\n'):
+    print_msg(SKIP, msg, eol=eol)
 
-def ok(msg: str=None):
-    print_msg(_OK_, msg)
+def ok(msg: str=None, eol: str='\n'):
+    print_msg(_OK_, msg, eol=eol)
 
-def fail(msg: str=None):
-    print_msg(FAIL, msg, file=sys.stderr)
+def fail(msg: str=None, eol: str='\n'):
+    print_msg(FAIL, msg, eol=eol, file=sys.stderr)
 
-def warn(msg: str):
-    print_msg(WARN, msg, file=sys.stderr)
+def warn(msg: str, eol: str='\n'):
+    print_msg(WARN, msg, eol=eol, file=sys.stderr)
 
-def alert(msg: str):
-    print_msg(ALRT, msg)
+def alert(msg: str, eol: str='\n'):
+    print_msg(ALRT, msg, eol=eol)
 
-def abort(msg: str):
+def abort(msg: str, eol: str='\n'):
     print()
-    print_msg(ABRT, msg)
+    print_msg(ABRT, msg, eol=eol)
 
 def pend(msg: str=None, pending: bool=True):
     print_msg(PEND, msg, eol=('\n', '\r')[pending])
