@@ -74,6 +74,10 @@ cl::opt<Z3ArrayConsMode> ArrayConsMode("z3-array-cons-mode",
                 clEnumValN(Z3_ARRAY_ASSERTS, "asserts", "Assertions over array values"),
                 clEnumValEnd),
         cl::init(Z3_ARRAY_ASSERTS));
+
+cl::opt<unsigned> AssumptionResetThreshold("z3-assum-reset-thrs",
+        cl::desc("Reset threshold for the number of Z3 assumptions"),
+        cl::init(50));
 }
 
 
@@ -92,9 +96,10 @@ public:
                               std::vector<std::vector<unsigned char> > &values,
                               bool &hasSolution);
 
+    void initializeSolver();
+
 protected:
-    void configureSolver();
-    void createBuilder();
+    virtual void createBuilderCache() = 0;
 
     virtual z3::check_result check(const Query&) = 0;
     virtual void postCheck(const Query&) = 0;
@@ -122,6 +127,10 @@ protected:
 
     scoped_ptr<Z3BuilderCache> builder_cache_;
     scoped_ptr<Z3Builder> builder_;
+
+private:
+    void configureSolver();
+    void createBuilder();
 };
 
 
@@ -132,6 +141,8 @@ public:
 
 protected:
     typedef std::list<ConditionNodeRef> ConditionNodeList;
+
+    virtual void createBuilderCache();
 
     virtual z3::check_result check(const Query&);
     virtual void postCheck(const Query&);
@@ -146,6 +157,7 @@ public:
     virtual ~Z3ResetSolverImpl();
 
 protected:
+    virtual void createBuilderCache();
     virtual z3::check_result check(const Query&);
     virtual void postCheck(const Query&);
 };
@@ -157,6 +169,7 @@ public:
     virtual ~Z3AssumptionSolverImpl();
 
 protected:
+    virtual void createBuilderCache();
     virtual z3::check_result check(const Query&);
     virtual void postCheck(const Query&);
 
@@ -174,15 +187,24 @@ private:
 
 
 Z3Solver *Z3Solver::createResetSolver() {
-    return new Z3Solver(new Z3ResetSolverImpl());
+    Z3BaseSolverImpl *impl = new Z3ResetSolverImpl();
+    impl->initializeSolver();
+
+    return new Z3Solver(impl);
 }
 
 Z3Solver *Z3Solver::createStackSolver() {
-    return new Z3Solver(new Z3StackSolverImpl());
+    Z3BaseSolverImpl *impl = new Z3StackSolverImpl();
+    impl->initializeSolver();
+
+    return new Z3Solver(impl);
 }
 
 Z3Solver *Z3Solver::createAssumptionSolver() {
-    return new Z3Solver(new Z3AssumptionSolverImpl());
+    Z3BaseSolverImpl *impl = new Z3AssumptionSolverImpl();
+    impl->initializeSolver();
+
+    return new Z3Solver(impl);
 }
 
 
@@ -196,33 +218,11 @@ Z3Solver::Z3Solver(SolverImpl *impl)
 
 Z3BaseSolverImpl::Z3BaseSolverImpl()
     : solver_(context_, "QF_ABV") {
-
-    configureSolver();
-    createBuilder();
 }
 
 
 Z3BaseSolverImpl::~Z3BaseSolverImpl() {
 
-}
-
-
-void Z3BaseSolverImpl::createBuilder() {
-    switch (ArrayConsMode) {
-#if 0
-    case Z3_ARRAY_ITE:
-        builder_.reset(new Z3IteBuilder(context_));
-        break;
-#endif
-    case Z3_ARRAY_STORES:
-        builder_cache_.reset(new Z3ArrayBuilderCacheInc());
-        builder_.reset(new Z3StoreArrayBuilder(context_, (Z3ArrayBuilderCache*)builder_cache_.get()));
-        break;
-    case Z3_ARRAY_ASSERTS:
-        builder_cache_.reset(new Z3ArrayBuilderCacheInc());
-        builder_.reset(new Z3AssertArrayBuilder(solver_, (Z3ArrayBuilderCache*)builder_cache_.get()));
-        break;
-    }
 }
 
 
@@ -269,26 +269,6 @@ void Z3BaseSolverImpl::extractModel(const std::vector<const Array*> &objects,
         }
         values.push_back(data);
     }
-}
-
-
-void Z3BaseSolverImpl::configureSolver() {
-    // TODO: Turn this into some sort of optional logging...
-    errs() << "[Z3] Initializing..." << '\n';
-
-    Z3_param_descrs solver_params = Z3_solver_get_param_descrs(context_, solver_);
-    Z3_param_descrs_inc_ref(context_, solver_params);
-
-    errs() << "[Z3] Available parameters:" << '\n';
-    errs() << "[Z3]  " << Z3_param_descrs_to_string(context_, solver_params) << '\n';
-
-    z3::params params(context_);
-    params.set("array.extensional", false);
-    Z3_params_validate(context_, params, solver_params);
-
-    solver_.set(params);
-
-    Z3_param_descrs_dec_ref(context_, solver_params);
 }
 
 
@@ -347,6 +327,50 @@ bool Z3BaseSolverImpl::computeInitialValues(const Query &query,
         ++stats::queriesInvalid;
         return true;
     }
+}
+
+
+void Z3BaseSolverImpl::configureSolver() {
+    // TODO: Turn this into some sort of optional logging...
+    errs() << "[Z3] Initializing..." << '\n';
+
+    Z3_param_descrs solver_params = Z3_solver_get_param_descrs(context_, solver_);
+    Z3_param_descrs_inc_ref(context_, solver_params);
+
+    errs() << "[Z3] Available parameters:" << '\n';
+    errs() << "[Z3]  " << Z3_param_descrs_to_string(context_, solver_params) << '\n';
+
+    z3::params params(context_);
+    params.set("array.extensional", false);
+    Z3_params_validate(context_, params, solver_params);
+
+    solver_.set(params);
+
+    Z3_param_descrs_dec_ref(context_, solver_params);
+}
+
+
+void Z3BaseSolverImpl::createBuilder() {
+    assert(builder_cache_ && "The cache needs to be created first");
+
+    switch (ArrayConsMode) {
+    case Z3_ARRAY_ITE:
+        builder_.reset(new Z3IteBuilder(context_, (Z3IteBuilderCache*)builder_cache_.get()));
+        break;
+    case Z3_ARRAY_STORES:
+        builder_.reset(new Z3StoreArrayBuilder(context_, (Z3ArrayBuilderCache*)builder_cache_.get()));
+        break;
+    case Z3_ARRAY_ASSERTS:
+        builder_.reset(new Z3AssertArrayBuilder(solver_, (Z3ArrayBuilderCache*)builder_cache_.get()));
+        break;
+    }
+}
+
+
+void Z3BaseSolverImpl::initializeSolver() {
+    configureSolver();
+    createBuilderCache();
+    createBuilder();
 }
 
 
@@ -423,6 +447,22 @@ void Z3StackSolverImpl::postCheck(const Query&) {
     pop();
 }
 
+
+void Z3StackSolverImpl::createBuilderCache() {
+    switch (ArrayConsMode) {
+    case Z3_ARRAY_ITE:
+        builder_cache_.reset(new Z3IteBuilderCacheNoninc());
+        break;
+    case Z3_ARRAY_STORES:
+        builder_cache_.reset(new Z3ArrayBuilderCacheInc());
+        break;
+    case Z3_ARRAY_ASSERTS:
+        builder_cache_.reset(new Z3ArrayBuilderCacheInc());
+        break;
+    }
+}
+
+
 // Z3ResetSolverImpl ///////////////////////////////////////////////////////////
 
 
@@ -461,6 +501,21 @@ void Z3ResetSolverImpl::postCheck(const Query&) {
     reset();
 }
 
+
+void Z3ResetSolverImpl::createBuilderCache() {
+    switch (ArrayConsMode) {
+    case Z3_ARRAY_ITE:
+        builder_cache_.reset(new Z3IteBuilderCacheNoninc());
+        break;
+    case Z3_ARRAY_STORES:
+        builder_cache_.reset(new Z3ArrayBuilderCacheNoninc());
+        break;
+    case Z3_ARRAY_ASSERTS:
+        builder_cache_.reset(new Z3ArrayBuilderCacheNoninc());
+        break;
+    }
+}
+
 // Z3AssumptionSolverImpl //////////////////////////////////////////////////////
 
 
@@ -497,7 +552,7 @@ z3::check_result Z3AssumptionSolverImpl::check(const Query &query) {
 
 void Z3AssumptionSolverImpl::postCheck(const Query&) {
     errs() << "==> Number of assumptions: " << guards_.size() << '\n';
-    if (guards_.size() > 50) {
+    if (guards_.size() > AssumptionResetThreshold) {
         reset();
         guards_.clear();
     }
@@ -519,6 +574,21 @@ z3::expr Z3AssumptionSolverImpl::getAssumption(ref<Expr> assertion) {
             Z3_mk_implies(context_, result, builder_->construct(assertion))));
 
     return result;
+}
+
+
+void Z3AssumptionSolverImpl::createBuilderCache() {
+    switch (ArrayConsMode) {
+    case Z3_ARRAY_ITE:
+        builder_cache_.reset(new Z3IteBuilderCacheNoninc());
+        break;
+    case Z3_ARRAY_STORES:
+        builder_cache_.reset(new Z3ArrayBuilderCacheNoninc());
+        break;
+    case Z3_ARRAY_ASSERTS:
+        builder_cache_.reset(new Z3ArrayBuilderCacheNoninc());
+        break;
+    }
 }
 
 

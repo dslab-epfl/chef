@@ -46,7 +46,8 @@ namespace klee {
 /* Z3IteBuilder --------------------------------------------------------------*/
 
 Z3IteBuilder::Z3IteBuilder(z3::context &context, Z3IteBuilderCache *cache)
-    : Z3Builder(context, cache) {
+    : Z3Builder(context, cache),
+      cache_(cache) {
 
 }
 
@@ -67,13 +68,12 @@ z3::expr Z3IteBuilder::makeReadExpr(ref<ReadExpr> re) {
 
 z3::expr Z3IteBuilder::getReadForArray(z3::expr index, const Array *root,
             const UpdateNode *un) {
-    ReadMap::iterator it = read_map_.find(std::make_pair(index,
-            std::make_pair(root, un)));
-    if (it != read_map_.end()) {
-        return it->second;
-    }
-
+    Z3IteBuilderCache::ReadUpdatePair rup = std::make_pair(index,
+            std::make_pair(root, un));
     z3::expr result(context_);
+    if (cache_->findRead(rup, result)) {
+        return result;
+    }
 
     if (!un) {
         result = getReadForInitialArray(index, root);
@@ -83,8 +83,7 @@ z3::expr Z3IteBuilder::getReadForArray(z3::expr index, const Array *root,
                 getOrMakeExpr(un->value),
                 getReadForArray(index, root, un->next)));
     }
-    read_map_.insert(std::make_pair(std::make_pair(index,
-            std::make_pair(root, un)), result));
+    cache_->insertRead(rup, result);
     return result;
 }
 
@@ -104,12 +103,12 @@ z3::expr Z3IteBuilder::getReadForInitialArray(z3::expr index, const Array *root)
 }
 
 shared_ptr<Z3IteBuilder::ExprVector> Z3IteBuilder::getArrayValues(const Array *root) {
-    ArrayVariableMap::iterator it = array_variables_.find(root);
-    if (it != array_variables_.end()) {
-        return it->second;
+    shared_ptr<Z3IteBuilder::ExprVector> elem_vector;
+    if (cache_->findArray(root, elem_vector)) {
+        return elem_vector;
     }
 
-    shared_ptr<ExprVector> elem_vector = make_shared<ExprVector>();
+    elem_vector = make_shared<ExprVector>();
 
     if (root->isConstantArray()) {
         for (unsigned i = 0, e = root->size; i != e; ++i) {
@@ -125,7 +124,7 @@ shared_ptr<Z3IteBuilder::ExprVector> Z3IteBuilder::getArrayValues(const Array *r
         }
     }
 
-    array_variables_.insert(std::make_pair(root, elem_vector));
+    cache_->insertArray(root, elem_vector);
     return elem_vector;
 }
 
