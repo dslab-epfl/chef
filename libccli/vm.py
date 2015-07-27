@@ -20,6 +20,7 @@ import subprocess
 import signal
 import shutil
 import json
+import re
 
 
 DATAROOT = os.environ.get('CHEF_DATAROOT', '/var/local/chef')
@@ -27,7 +28,7 @@ INVOKENAME = os.environ.get('INVOKENAME', sys.argv[0])
 SRC_ROOT = os.path.dirname(os.path.dirname(__file__))
 VMROOT = '%s/vm' % DATAROOT
 FETCH_URL_BASE = 'http://localhost/~ayekat' # TODO real host
-PREPARED = {
+REMOTES = {
     'Debian': {
         'iso': 'debian-7.8.0-i386-netinst.iso',
         'description': 'Debian 7.8 with a custom kernel, prepared for being ' +
@@ -43,6 +44,10 @@ class VM:
 
 
     def __init__(self, name: str):
+        if not name:
+            # not a VM operation (e.g. `list`)
+            return
+
         self.name = name
         self.path = '%s/%s' % (VMROOT, name)
         self.path_qcow = '%s/disk.qcow2' % self.path
@@ -50,6 +55,7 @@ class VM:
         self.path_s2e = '%s/disk.s2e' % self.path
         self.path_meta = '%s/meta' % self.path
         self.load_meta()
+        self.scan_snapshots()
 
 
     def load_meta(self):
@@ -80,6 +86,26 @@ class VM:
             json.dump(meta, f)
         utils.ok()
         utils.set_msg_prefix(None)
+
+
+    def scan_snapshots(self):
+        self.snapshots = []
+        if not os.path.isdir(self.path):
+            utils.warn("%s: scan_snapshot: VM does not exist" % self.name)
+            return
+        for name in os.listdir(self.path):
+            if re.match('^disk\.s2e\..+', name):
+                self.snapshots.append(name)
+
+
+    def __str__(self, remote: bool=False):
+        string = "%s" % self.name
+        string += "\n  Operating System: %s" % self.os_name
+        if self.snapshots:
+            string += "\n  Snapshots:"
+            for snapshot in self.snapshots:
+                string += "\n    %s/%s" % (self.path, snapshot)
+        return string
 
 
     # UTILITIES ================================================================
@@ -154,7 +180,7 @@ class VM:
         self.initialise(force)
 
         # Raw image:
-        utils.set_msg_prefix("create image")
+        utils.set_msg_prefix("create %dMiB image" % size)
         utils.pend()
         if utils.execute(['qemu-img', 'create', self.path_raw, '%dM' % size],
                          msg="execute qemu-img") != 0:
@@ -182,8 +208,8 @@ class VM:
 
         # Copy ISO:
         self.path_iso = '%s/%s' % (VMROOT, os.path.basename(iso_path))
-        utils.set_msg_prefix("copy ISO: %s => %s" % (iso_path, self.path_iso))
-        utils.pend()
+        utils.set_msg_prefix("register ISO")
+        utils.pend("%s => %s" % (iso_path, self.path_iso))
         if not os.path.exists(self.path_iso):
             try:
                 shutil.copy(iso_path, self.path_iso)
@@ -195,7 +221,7 @@ class VM:
                 exit(1)
             utils.ok()
         else:
-            utils.skip("%s already exists")
+            utils.skip("%s already exists" % self.path_iso)
 
         # Launch qemu:
         utils.set_msg_prefix("qemu")
@@ -219,8 +245,8 @@ class VM:
 
     def fetch(self, os_name: str, force: bool, **kwargs: dict):
         self.os_name = os_name
-        self.description = PREPARED[os_name]['description']
-        remote_iso = PREPARED[os_name]['iso']
+        self.description = REMOTES[os_name]['description']
+        remote_iso = REMOTES[os_name]['iso']
         self.path_iso = '%s/%s' % (VMROOT, remote_iso)
         remote_qcow = os.path.basename(self.path_qcow)
         remote_tar_gz = '%s.tar.gz' % os_name
@@ -288,12 +314,12 @@ class VM:
         utils.ok()
 
 
-    def list(self, iso: bool, remote: bool, **kwargs: dict):
+    def list(self, iso: bool, remote: bool, filter: str=None, **kwargs: dict):
         if remote:
-            for name in PREPARED:
+            for name in REMOTES:
                 print(name)
-                print("  %s" % PREPARE[name]['description'])
-                print("  Based on: %s" % PREPARED[name]['iso'])
+                print("  %s" % REMOTES[name]['description'])
+                print("  Based on: %s" % REMOTES[name]['iso'])
         else:
             for name in os.listdir(VMROOT):
                 if iso:
@@ -304,9 +330,7 @@ class VM:
                 else:
                     if not os.path.isdir('%s/%s' % (VMROOT, name)):
                         continue
-                    vm = VM(name)
-                    print(vm.name)
-                    print("  Operating System: %s" % vm.os_name)
+                    print(VM(name))
 
     # MAIN =====================================================================
 
@@ -338,12 +362,11 @@ class VM:
                               help="Machine name")
 
         # fetch
-        prepared_list = list(PREPARED)
         pfetch = pcmd.add_parser('fetch', help="Download a prepared VM")
         pfetch.set_defaults(action=VM.fetch)
         pfetch.add_argument('-f','--force', action='store_true', default=False,
                             help="Overwrite existing OS image")
-        pfetch.add_argument('os_name', choices=prepared_list,
+        pfetch.add_argument('os_name', choices=list(REMOTES),
                             help="Operating System name")
         pfetch.add_argument('name',
                             help="Machine name")
@@ -359,7 +382,7 @@ class VM:
         plist_source = plist.add_mutually_exclusive_group()
         plist_source.add_argument('-i', '--iso', action='store_true',
                                   default=False,
-                                  help="List existing ISOs instead")
+                                  help="List registered ISOs instead")
         plist_source.add_argument('-r', '--remote', action='store_true',
                                   default=False,
                                   help="List remotely available VMs instead")
