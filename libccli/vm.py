@@ -31,8 +31,12 @@ FETCH_URL_BASE = 'http://localhost/~ayekat' # TODO real host
 REMOTES = {
     'Debian': {
         'iso': 'debian-7.8.0-i386-netinst.iso',
-        'description': 'Debian 7.8 with a custom kernel, prepared for being ' +
-                       'used with Chef'
+        'description': "Debian 7.8 (Wheezy) with a custom kernel, prepared " +
+                       "for being used with Chef"
+    },
+    'Ubuntu': {
+        'iso': 'ubuntu-14.04-desktop-i386.iso',
+        'description': "Ubuntu 14.04 (Trusty Tahr)"
     },
 }
 
@@ -44,16 +48,14 @@ class VM:
 
 
     def __init__(self, name: str):
-        if not name:
-            # not a VM operation (e.g. `list`)
-            return
-
         self.name = name
         self.path = '%s/%s' % (VMROOT, name)
         self.path_qcow = '%s/disk.qcow2' % self.path
         self.path_raw = '%s/disk.raw' % self.path
         self.path_s2e = '%s/disk.s2e' % self.path
         self.path_meta = '%s/meta' % self.path
+        self.path_dysfunct = '%s/dysfunct' % self.path
+        self.dysfunct = os.path.exists(self.path_dysfunct)
         self.load_meta()
         self.scan_snapshots()
 
@@ -67,10 +69,10 @@ class VM:
                 except ValueError as ve:
                     utils.warn(ve)
         utils.set_msg_prefix(None)
-        self.path_tar_gz = meta.get('path_tar_gz', '/dev/null')
-        self.path_iso = meta.get('path_iso', '/dev/null')
-        self.os_name = meta.get('os_name', '<custom>')
-        self.description = meta.get('description', '<custom>')
+        self.path_tar_gz = meta.get('path_tar_gz', None)
+        self.path_iso = meta.get('path_iso', None)
+        self.os_name = meta.get('os_name', None)
+        self.description = meta.get('description', None)
 
 
     def store_meta(self):
@@ -80,7 +82,7 @@ class VM:
             'path_tar_xz': self.path_tar_gz,
             'path_iso': self.path_iso,
             'os_name': self.os_name,
-            'description': self.description,
+            'description': self.description
         }
         with open(self.path_meta, 'w') as f:
             json.dump(meta, f)
@@ -91,16 +93,21 @@ class VM:
     def scan_snapshots(self):
         self.snapshots = []
         if not os.path.isdir(self.path):
-            utils.warn("%s: scan_snapshot: VM does not exist" % self.name)
             return
         for name in os.listdir(self.path):
             if re.match('^disk\.s2e\..+', name):
                 self.snapshots.append(name)
 
 
-    def __str__(self, remote: bool=False):
+    def __str__(self):
         string = "%s" % self.name
-        string += "\n  Operating System: %s" % self.os_name
+        if self.dysfunct:
+            string += "\n  %s<dysfunct>%s" % (utils.ESC_ERROR, utils.ESC_RESET)
+            return string
+        if self.os_name:
+            string += "\n  Operating System: %s" % self.os_name
+        if self.path_iso:
+            string += "\n  Based on: %s" % self.path_iso
         if self.snapshots:
             string += "\n  Snapshots:"
             for snapshot in self.snapshots:
@@ -160,6 +167,7 @@ class VM:
         if not exists or invalid:
             if utils.execute(['ln', '-fs', dest, self.path_s2e],
                              msg="symlink") != 0:
+                self.mark_dysfunct()
                 exit(1)
             if invalid:
                 utils.note("fix invalid S2E image (pointed")
@@ -172,6 +180,11 @@ class VM:
     def set_permissions(self):
         for f in [self.path, self.path_raw]:
             utils.set_permissions(f)
+
+
+    def mark_dysfunct(self):
+        self.dysfunct = True
+        open(self.path_dysfunct, 'w').close()
 
 
     # ACTIONS ==================================================================
@@ -260,6 +273,7 @@ class VM:
         utils.info("URL: %s" % url)
         if utils.fetch(url, self.path_tar_gz, unit=utils.MEBI,
                        msg="fetch image bundle") != 0:
+            self.mark_dysfunct()
             exit(1)
 
         # Extract:
@@ -276,6 +290,7 @@ class VM:
                 if utils.execute(['tar', '-z', '-f', self.path_tar_gz,
                                   '-x', remote, '-O'],
                                  msg="extract", outfile=local) != 0:
+                    self.mark_dysfunct()
                     exit(1)
                 utils.ok(msg)
 
@@ -285,6 +300,7 @@ class VM:
         if utils.execute(['qemu-img', 'convert', '-f', 'qcow2',
                           '-O', 'raw', self.path_qcow, self.path_raw],
                           msg="expand qemu image") != 0:
+            self.mark_dysfunct()
             exit(1)
         utils.ok()
 
@@ -309,7 +325,7 @@ class VM:
             utils.fail("Permission denied")
             exit(1)
         except FileNotFoundError:
-            utils.fail("does not exist")
+            utils.fail("VM does not exist")
             exit(1)
         utils.ok()
 
@@ -380,12 +396,15 @@ class VM:
         plist = pcmd.add_parser('list', help="List VMs and ISOs")
         plist.set_defaults(action=VM.list)
         plist_source = plist.add_mutually_exclusive_group()
+        plist_source.add_argument('-l', '--local', action='store_true',
+                                  default=True,
+                                  help="List locally available VMs [default]")
         plist_source.add_argument('-i', '--iso', action='store_true',
                                   default=False,
-                                  help="List registered ISOs instead")
+                                  help="List locally registered ISOs")
         plist_source.add_argument('-r', '--remote', action='store_true',
                                   default=False,
-                                  help="List remotely available VMs instead")
+                                  help="List remotely available VMs")
 
         args = p.parse_args(argv[1:])
         kwargs = vars(args) # make it a dictionary, for easier use
