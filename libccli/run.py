@@ -46,15 +46,15 @@ THIS_DIR = os.path.dirname(__file__)
 
 # Host:
 HOST_CHEF_ROOT = os.path.dirname(os.path.abspath(THIS_DIR))
-HOST_DATA_ROOT = os.path.join("/var", "local", "chef")
+HOST_DATA_ROOT = os.sep + os.path.join('var', 'local', 'chef')
 
 # Docker:
-VERSION = "v0.6"
-CHEF_ROOT = "/chef"
-DATA_ROOT = "/data"
-DATA_VM_DIR = os.path.join(DATA_ROOT, "vm")
-DATA_OUT_DIR = os.path.join(DATA_ROOT, "expdata")
-CHEF_CONFIG_DIR = os.path.join(CHEF_ROOT, "config")
+VERSION = 'v0.6'
+CHEF_ROOT = os.sep + 'chef'
+DATA_ROOT = os.sep + 'data'
+DATA_VM_DIR = os.path.join(DATA_ROOT, 'vm')
+DATA_OUT_DIR = os.path.join(DATA_ROOT, 'expdata')
+CHEF_CONFIG_DIR = os.path.join(CHEF_ROOT, 'config')
 
 # Default configuration values:
 DEFAULT_CONFIG_FILE = os.path.join(CHEF_CONFIG_DIR, "default-config.lua")
@@ -70,6 +70,12 @@ STRACE_BIN = "strace"
 COMMAND_SEND_TIMEOUT = 60
 MAX_DEFAULT_CORES = 4
 
+
+class CommandError(Exception):
+    pass
+
+
+# COMMUNICATION WITH CHEF ======================================================
 
 class Command(object):
     url_path = '/command'
@@ -102,10 +108,6 @@ class Script(object):
             "code": self.code,
             "test": self.test,
         })
-
-
-class CommandError(Exception):
-    pass
 
 
 def send_command(command, host, port):
@@ -151,6 +153,8 @@ def async_send_command(command, host, port, timeout=COMMAND_SEND_TIMEOUT):
     exit(0)
 
 
+# EXECUTE ======================================================================
+
 def kill_me_later(timeout, extra_time=60):
     pid = os.getpid()
     if os.fork() != 0:
@@ -176,29 +180,72 @@ def kill_me_later(timeout, extra_time=60):
     exit(0)
 
 
+def execute(args, cmd_line):
+    # Setup information:
+    utils.info("VNC: port %d (connect with `$vncclient {%s,localhost}:%d`"
+               % (utils.VNC_PORT_BASE + args.vnc_display,
+                  utils.get_default_ip(),
+                  args.vnc_display))
+    utils.info("Qemu monitor: port %d (connect with `{nc,telnet} {%s,localhost} %d"
+               % (args.monitor_port, utils.get_default_ip(), args.monitor_port))
+    utils.info("Watchdog: port %d"
+               % (args.command_port))
+    utils.debug("Command line:\n%s"
+                % ' '.join(cmd_line))
+
+    if args.dry_run:
+        return
+
+    environ = dict(os.environ)
+
+    if args.mode == "sym":
+        environ["LUA_PATH"] = ';'.join([os.path.join(os.path.dirname(args.config), "?.lua"),
+                                        environ.get("LUA_PATH", "")])
+        utils.debug("LUA_PATH=%s" % environ['LUA_PATH'])
+
+        if args.time_out:
+            kill_me_later(args.time_out)
+        if args.script:
+            module_file, test = args.script
+            with open(module_file, "r") as f:
+                code = f.read()
+            async_send_command(Script(code=code, test=test), "localhost", args.command_port)
+        elif args.command:
+            async_send_command(Command.from_cmd_args(args.command, args.env_var or []),
+                               "localhost", args.command_port)
+
+    os.execvpe(cmd_line[0], cmd_line, environ)
+
+
+# PARSE COMMAND LINE ARGUMENTS =================================================
+
 def parse_cmd_line():
     parser = argparse.ArgumentParser(description="High-level interface to S2E.")
 
+    # Interaction mode (headless, X):
     host_env = parser.add_mutually_exclusive_group()
     host_env.add_argument("-b", "--batch", action="store_true", default=False,
                           help="Headless (no GUI) mode")
     host_env.add_argument("-x", "--x-forward", action="store_true", default=False,
                           help="Optimize for X forwarding")
 
+    # Network mode (tap, none):
     network = parser.add_mutually_exclusive_group()
     network.add_argument("-t", "--net-tap", action="store_true", default=False,
                          help="Use a tap interface for networking")
     network.add_argument("-n", "--net-none", action="store_true", default=False,
                          help="Disable networking")
 
+    # Debug mode (gdb, strace, none):
     exe_env = parser.add_mutually_exclusive_group()
     exe_env.add_argument("--gdb", action="store_true", default=False,
                          help="Run under gdb")
     exe_env.add_argument("--strace", action="store_true", default=False,
                          help="Run under strace")
 
-    parser.add_argument('--vm', default=DEFAULT_VM_NAME,
-                        help="Name of the VM to use")
+    # General options:
+    parser.add_argument('--dockerized', action='store_true', default=False,
+                        help="Wrap execution in a docker container")
     parser.add_argument("--data-root", default=DEFAULT_HOST_DATA_ROOT,
                         help="location of data root")
     parser.add_argument('--vm-root', default=None,
@@ -215,21 +262,28 @@ def parse_cmd_line():
     parser.add_argument("-y", "--dry-run", action="store_true", default=False,
                         help="Only display the S2E command to be run, don't run anything.")
 
+    # Positional: VM name:
+    parser.add_argument('vm', help="Name of the VM to use (see `ccli vm list`)")
+
+    # Positional: Run mode:
     modes = parser.add_subparsers(help="The S2E operation mode")
     modes.required = True
     modes.dest = 'operation mode'
 
+    #             Run mode: KVM:
     kvm_mode = modes.add_parser("kvm", help="KVM mode")
     kvm_mode.add_argument("--cores", type=int,
                           default=min(multiprocessing.cpu_count(), MAX_DEFAULT_CORES),
                           help="Number of virtual cores")
     kvm_mode.set_defaults(mode="kvm")
 
+    #             Run mode: non-KVM, preparation:
     prepare_mode = modes.add_parser("prep", help="Prepare mode")
     prepare_mode.add_argument("-l", "--load", action="store_true", default=False,
                               help="Load from snapshot 1")
     prepare_mode.set_defaults(mode="prep")
 
+    #             Run mode: non-KVM, symbolic:
     symbolic_mode = modes.add_parser("sym", help="Symbolic mode")
     symbolic_mode.add_argument("-f", "--config", default=DEFAULT_CONFIG_FILE,
                                help="The S2E configuration file")
@@ -251,6 +305,8 @@ def parse_cmd_line():
 
     return parser.parse_args()
 
+
+# BUILD COMMAND LINE ===========================================================
 
 def build_docker_cmd_line(args, command: [str]):
     docker_cmd_line = ["docker", "run", "--rm"]
@@ -343,42 +399,14 @@ def build_parallel_cmd_line():
     return ['parallel', '--delay', '1']
 
 
-def execute(args, cmd_line):
-    print("Service      | Port  | How to connect")
-    print("-------------+-------+---------------------------------------------")
-    print("Watchdog     | %5d |" % args.command_port)
-    print("VNC          | %5d | $vncclient {%s,localhost}:%d"
-          % (5900 + args.vnc_display, utils.get_default_ip(), args.vnc_display))
-    print("Qemu monitor | %5d | {nc,telnet} {%s,localhost} %d"
-          % (args.monitor_port, utils.get_default_ip(), args.monitor_port))
-    print
+def build_cmd_line(args):
+    cmd_line = build_qemu_cmd_line(args)
+    if args.dockerized:
+        cmd_line = build_docker_cmd_line(args, cmd_line)
+    return cmd_line
 
-    if args.dry_run:
-        print(' '.join(cmd_line))
-        return
 
-    print("** Executing %s\n" % ' '.join(cmd_line), file=sys.stderr)
-
-    environ = dict(os.environ)
-
-    if args.mode == "sym":
-        environ["LUA_PATH"] = ";".join([os.path.join(os.path.dirname(args.config), "?.lua"),
-                                        environ.get("LUA_PATH", "")])
-        print("** Setting LUA_PATH=%s" % environ["LUA_PATH"], file=sys.stderr)
-
-        if args.time_out:
-            kill_me_later(args.time_out)
-        if args.script:
-            module_file, test = args.script
-            with open(module_file, "r") as f:
-                code = f.read()
-            async_send_command(Script(code=code, test=test), "localhost", args.command_port)
-        elif args.command:
-            async_send_command(Command.from_cmd_args(args.command, args.env_var or []),
-                               "localhost", args.command_port)
-
-    os.execvpe(cmd_line[0], cmd_line, environ)
-
+# MAIN =========================================================================
 
 def main():
     args = parse_cmd_line()
@@ -423,8 +451,7 @@ def main():
                               stdin=subprocess.PIPE)
         p2.communicate(bytes(printable_cmd_lines, 'utf-8'))
     else:
-        cmd_line = build_docker_cmd_line(args, build_qemu_cmd_line(args))
-        execute(args, cmd_line)
+        execute(args, build_cmd_line(args))
 
 
 if __name__ == "__main__":

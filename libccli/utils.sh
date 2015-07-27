@@ -1,13 +1,12 @@
 # Shell script utilities shared by most ccli scripts.
 # Compatible with set -e
 #
-# To be included as follows:
+# To be (mostly) included as follows:
 #
-#     . "$(readlink -f "$(dirname "$0")")/utils.sh"
+#   . "$(readlink -f "$(dirname "$0")")/utils.sh"
 #
-# XXX $VERBOSE and $LOGFILE *must* be set for track() and examine_logs()
-#
-# Maintainer: Tinu Weber <martin.weber@epfl.ch>
+# Maintainers:
+#   Tinu Weber <martin.weber@epfl.ch>
 
 # PATHS/NAMES ==================================================================
 

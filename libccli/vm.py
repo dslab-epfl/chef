@@ -52,10 +52,6 @@ class VM:
         self.load_meta()
 
 
-    def __str__(self):
-        return "%s (OS: %s)" % (self.name, self.os_name)
-
-
     def load_meta(self):
         meta = {}
         if os.path.exists(self.path_meta):
@@ -113,7 +109,7 @@ class VM:
             if force:
                 utils.info("%s, overwriting" % msg)
                 try:
-                    shutil.rmtree(self.path) # FIXME case PWD == self.path
+                    shutil.rmtree(self.path) # FIXME what if PWD == self.path ?
                     os.mkdir(self.path)
                 except PermissionError as pe:
                     utils.fail(pe)
@@ -295,9 +291,9 @@ class VM:
     def list(self, iso: bool, remote: bool, **kwargs: dict):
         if remote:
             for name in PREPARED:
-                print("%s\n  %s\n  Based on: %s" % (name,
-                                                PREPARED[name]['description'],
-                                                PREPARED[name]['iso']))
+                print(name)
+                print("  %s" % PREPARE[name]['description'])
+                print("  Based on: %s" % PREPARED[name]['iso'])
         else:
             for name in os.listdir(VMROOT):
                 if iso:
@@ -308,7 +304,9 @@ class VM:
                 else:
                     if not os.path.isdir('%s/%s' % (VMROOT, name)):
                         continue
-                    print(VM(name))
+                    vm = VM(name)
+                    print(vm.name)
+                    print("  Operating System: %s" % vm.os_name)
 
     # MAIN =====================================================================
 

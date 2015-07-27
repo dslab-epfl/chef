@@ -149,14 +149,15 @@ def fetch(url: str, path: str, msg: str=None, overwrite: bool=False,
 
 def get_default_ip():
     iface = None
+    # XXX assuming machine is only accessible via default route
     with open('/proc/net/route') as f:
         for i in csv.DictReader(f, delimiter='\t'):
-            if i['Destination'] == 0:
+            if int(i['Destination']) == 0:
                 iface = i['Iface']
                 break
     if iface:
         iface_data = netifaces.ifaddresses(iface)
-        # FIXME assuming default route interface has only one address:
+        # XXX assuming default route interface has only one address
         return iface_data[netifaces.AF_INET][0]['addr']
     else:
         return '???'
@@ -166,6 +167,8 @@ def get_default_ip():
 KIBI = 1024
 MEBI = KIBI * KIBI
 GIBI = KIBI * MEBI
+
+VNC_PORT_BASE = 5900
 
 # MESSAGES =====================================================================
 
@@ -195,6 +198,7 @@ SKIP = '[%sSKIP%s]' % (ESC_SUCCESS, ESC_RESET)
 INFO = '[%sINFO%s]' % (ESC_MISC, ESC_RESET)
 ALRT = '[%s !! %s]' % (ESC_SPECIAL, ESC_RESET)
 ABRT = '[%sABORT%s]' % (ESC_ERROR, ESC_RESET)
+DEBG = '[%sDEBUG%s]' % (ESC_SPECIAL, ESC_RESET)
 PEND = '[ .. ]'
 msg_prefix = None
 
@@ -211,27 +215,22 @@ def print_msg(status: str, msg: str, file = sys.stdout, eol = '\n'):
                           (msg, '')[msg is None]),
           file=file, end=eol)
 
-def info(msg: str, eol: str='\n'):
+def info(msg: str='', eol: str='\n'):
     print_msg(INFO, msg, eol=eol)
-
 def skip(msg: str, eol: str='\n'):
     print_msg(SKIP, msg, eol=eol)
-
 def ok(msg: str=None, eol: str='\n'):
     print_msg(_OK_, msg, eol=eol)
-
 def fail(msg: str=None, eol: str='\n'):
     print_msg(FAIL, msg, eol=eol, file=sys.stderr)
-
 def warn(msg: str, eol: str='\n'):
     print_msg(WARN, msg, eol=eol, file=sys.stderr)
-
 def alert(msg: str, eol: str='\n'):
     print_msg(ALRT, msg, eol=eol)
-
 def abort(msg: str, eol: str='\n'):
     print()
     print_msg(ABRT, msg, eol=eol)
-
 def pend(msg: str=None, pending: bool=True):
     print_msg(PEND, msg, eol=('\n', ESC_RETURN)[pending])
+def debug(msg: str, eol='\n'):
+    print_msg(DEBG, msg, eol=eol, file=sys.stderr)
