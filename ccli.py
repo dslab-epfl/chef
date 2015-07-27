@@ -87,7 +87,7 @@ def help():
     used = []
     for group in COMMAND_GROUPS:
         help_group(group, used)
-    print("\nRun with `-h` for more information")
+    print("\nEach command can be run with `-h` for more information")
     exit(1)
 
 
