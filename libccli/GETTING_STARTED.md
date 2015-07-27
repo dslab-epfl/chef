@@ -1,7 +1,7 @@
 Getting Started
 ===============
 
-This is a brief overview to get, build and run Chef.
+This is a brief introduction for how to get, build and run S²E-Chef.
 
 
 Chef Command Line Interface
@@ -90,6 +90,7 @@ docker image:
 	.
 	.
 	Status: Image is up to date for dslab/s2e-chef:v0.6
+	$
 
 You can check whether the image has been fetched correctly:
 
@@ -101,9 +102,21 @@ You can check whether the image has been fetched correctly:
 
 Compilation of one Chef version takes a little moment (3+ minutes):
 
-	ccli build -d
+	$ ccli build -d -s
+	[INFO] Building i386:release:normal (jobs=4)
+	[ OK ] preparing lua
+	[ OK ] building lua
+	[ OK ] preparing stp
+	.
+	.
+	.
+	[SKIP] tests: excluded
+	>>> Successfully built S²E-chef in /host-out/i386-release-normal.
+	$
 
-The `-d` flag tells *ccli* to compile insided a docker container.
+The `-d` flag tells *ccli* to compile inside a docker container. `-s` tells
+*ccli* to be a little less verbose (in case there is an error, it will ask you
+to inspect the log files).
 
 ### Environment
 
@@ -111,6 +124,14 @@ Chef stores its persistent data (virtual machines, experiment data) in
 `/var/local/chef`. If you wish to change the location, set the environment
 variable `CHEF_DATAROOT` to the desired path (see also the output of `ccli env`
 for other Chef-related environment variables).
+
+To create the directory, run
+
+	$ sudo ccli init
+	[ OK ] set permissions: /var/local/chef
+	[ OK ] set permissions: /var/local/chef/expdata
+	[ OK ] set permissions: /var/local/chef/vm
+	$
 
 The machines will be accessible for all users in the `kvm` group; you will need
 to add yourself to it:
@@ -134,6 +155,7 @@ overview, run
 	Debian
 	  Debian 7.8 (Wheezy) with a custom kernel, prepared for being used with Chef
 	  Based on: debian-7.8.0-i386-netinst.iso
+	$
 
 In order to fetch an image, run
 
@@ -148,6 +170,7 @@ In order to fetch an image, run
 	[ OK ] store metadata
 	[ OK ] set permissions: /var/local/chef/vm/Debian
 	[ OK ] set permissions: /var/local/chef/vm/Debian/disk.raw
+	$
 
 If everything works out, there is now a new VM named *MyChefVM*; you can list
 existing VMs with
@@ -155,6 +178,7 @@ existing VMs with
 	$ ccli vm list
 	MyChefVM
 	  Operating System: Debian
+	$
 
 
 Workflow
@@ -180,6 +204,7 @@ instance, to stop the machine:
 	QEMU 1.0.50 monitor - type 'help' for more information
 	(qemu) system_powerdown
 	system_powerdown
+	$
 
 ### Preparation mode
 
@@ -199,14 +224,16 @@ monitor:
 	savevm mysnapshot
 	(qemu) quit
 	quit
+	$
 
-Running
+Then, running
 
 	$ ccli vm list
 	MyChefVM
 	  Operating System: Debian
 	  Snapshots:
 	    /var/local/chef/vm/MyChefVM/disk.s2e.mysnapshot
+	$
 
 will show that the machine *MyChefVM* has a snapshot *mysnapshot*.
 

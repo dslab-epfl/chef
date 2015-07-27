@@ -127,10 +127,6 @@ class VM:
     def initialise(self, force: bool):
         utils.set_msg_prefix("initialise VM")
         utils.pend()
-        if not os.path.isdir(VMROOT):
-            utils.fail("%s: Directory not found (please initialise Chef first)"
-                       % VMROOT)
-            exit(1)
         try:
             os.mkdir(self.path)
             utils.ok()
@@ -351,7 +347,7 @@ class VM:
     # MAIN =====================================================================
 
     @staticmethod
-    def main(argv: [str]):
+    def parse_args(argv: [str]):
         p = argparse.ArgumentParser(description="Handle Virtual Machines",
                                     prog=INVOKENAME)
 
@@ -407,8 +403,21 @@ class VM:
                                   help="List remotely available VMs")
 
         args = p.parse_args(argv[1:])
-        kwargs = vars(args) # make it a dictionary, for easier use
+        return vars(args) # make it a dictionary, for easier use
 
+
+    @staticmethod
+    def main(argv: [str]):
+        # Check environment:
+        if not os.path.isdir(VMROOT):
+            utils.fail("%s: Directory not found (please initialise Chef first)"
+                       % VMROOT)
+            exit(1)
+
+        # Parse command line arguments:
+        kwargs = VM.parse_args(argv)
+
+        # Create VM and handle action:
         vm = VM(kwargs.get('name', None))
         return kwargs['action'](vm, **kwargs)
 
