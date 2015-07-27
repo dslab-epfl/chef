@@ -26,8 +26,8 @@ clean()
 	if [ ! -d "$BUILDPATH" ]; then
 		die 2 '%s: Directory does not exist' "$BUILDPATH"
 	fi
-	track "Removing $BUILDPATH" rm -r "$BUILDPATH" \
-	|| return $FALSE
+	track "Removing $BUILDPATH" rm -rf "$BUILDPATH" \
+	|| return $FAILURE
 }
 
 # DOCKER =======================================================================
@@ -100,7 +100,7 @@ main()
 	if [ $DOCKERIZED -eq $TRUE ]; then
 		docker_clean
 	else
-		LOGFILE='clean.log'
+		LOGFILE="$SRCPATH_ROOT/clean.log"
 		if ! clean; then
 			failure "Cleaning failed.\n"
 			examine_logs

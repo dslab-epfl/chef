@@ -1,23 +1,26 @@
-# NAME
+# Chef Command Line Iterface
+
+
+## Name
 
 ccli - Chef Command Line Interface
 
 
-# SYNOPSIS
+## Synopsis
 
 	ccli COMMAND [ARGS ...]
 
 
-# DESCRIPTION
+## Description
 
 The Chef Command Line Interface is a common interface to a collection of scripts
 that offer a simplified way for using Chef, including building Chef, creating
 and managing disk images, or interacting with running Chef instances.
 
 
-# DEPENDENCIES
+## Dependencies
 
-## Ubuntu
+### Ubuntu
 
 * acl
 * coreutils
@@ -29,7 +32,7 @@ and managing disk images, or interacting with running Chef instances.
 * python3-yaml
 * qemu-kvm
 
-## Debian GNU/Linux
+### Debian GNU/Linux
 
 * acl
 * coreutils
@@ -40,7 +43,7 @@ and managing disk images, or interacting with running Chef instances.
 * python3-yaml
 * qemu-kvm
 
-## Arch Linux
+### Arch Linux
 
 * acl
 * coreutils
@@ -57,17 +60,15 @@ fixing some permission-related issues when interacting across
 "container-boundaries".
 
 
-# ENVIRONMENT VARIABLES
+## Environment Variables
 
 The currently supported environment variables are:
 
-	CCLI_ARCH       # Default architecture - default: i386
-	CCLI_TARGET     # Default target - default: release
-	CCLI_MODE       # Default mode - default: normal
-	CCLI_VERBOSE    # Whether to be verbose by default - default: false (except for `build`)
-	CCLI_DIRECT     # Whether to run in direct mode (without docker) by default - default: true
-	CHEF_DATAROOT   # Where Chef stores its data on the system - default: /var/local/chef
-
-Note that values for booleans are **0 for true, and non-0 for false**.
-
-Because.
+	CHEF_ARCH             # [default: i386]     Default architecture
+	CHEF_TARGET           # [default: release]  Default target
+	CHEF_MODE             # [default: normal]   Default mode
+	CHEF_VERBOSE          # [default: 0]  Whether to be verbose by default
+	CHEF_DOCKERIZED       # [default: 0]  Whether to wrap execution in docker by default
+	CHEF_DATAROOT         # [default:/var/local/chef]        Where Chef stores its data on the system
+	CHEF_DATAROOT_VMROOT  # [default:$CHEF_DATAROOT/vm]      Where Chef manages VM images
+	CHEF_DATAROOT_EXPDATA # [default:$CHEF_DATAROOT/expdata] Where Chef stores experiment output data

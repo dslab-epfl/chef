@@ -67,7 +67,7 @@ _print()
     _print_prefix="$1"
     _print_newline=$2
     _print_format="$3"
-    [ $_print_newline != $TRUE ] || _print_format="$_print_format\n"
+    test $_print_newline = $FALSE || _print_format="$_print_format\n"
     shift 3
     printf "${_print_prefix}$_print_format" "$@"
 }
@@ -101,9 +101,9 @@ track()
 
 	if [ $VERBOSE -eq $TRUE ]; then
 		if "$@"; then
-			return $TRUE
+			return $SUCCESS
 		else
-			return $FALSE
+			return $FAILURE
 		fi
 	else
 		printf "$ESC_SAVE"; _print "$PEND " $FALSE '%s' "$track_msg"
@@ -112,9 +112,9 @@ track()
 		printf "$ESC_RESTORE"; $track_print '%s' "$track_msg"
 
 		if [ $track_print = ok ]; then
-			return $TRUE
+			return $SUCCESS
 		else
-			return $FALSE
+			return $FAILURE
 		fi
 	fi
 }
@@ -236,35 +236,37 @@ die_internal()
 
 # SHELL ========================================================================
 
-# Yes, fuck logic
-TRUE=0
-FALSE=1
+# Don't mix these up!
+SUCCESS=0
+FAILURE=1
+TRUE=1
+FALSE=0
 
 # Test if a variable is purely (decimal) numeric
 is_numeric()
 {
 	case "$1" in
-		''|*[!0-9]*) return $FALSE ;;
-		*) return $TRUE ;;
+		''|*[!0-9]*) return $FAILURE ;;
+		*) return $SUCCESS ;;
 	esac
 }
 
 # Test if a variable is purely boolean (1 or 0):
 is_boolean()
 {
-    [ -n "$1" ] || return $FALSE
-    is_numeric || return $FALSE
-    [ $1 -eq $TRUE ] || [ $1 -eq $FALSE ] || return $FALSE
-    return $TRUE
+    [ -n "$1" ] || return $FAILURE
+    is_numeric || return $FAILURE
+    [ $1 -eq $TRUE ] || [ $1 -eq $FALSE ] || return $FAILURE
+    return $SUCCESS
 }
 
 # Test if a command is available
 is_command()
 {
 	if type "$1" >"$NULL" 2>&1; then
-		return $TRUE
+		return $SUCCESS
 	else
-		return $FALSE
+		return $FAILURE
 	fi
 }
 
@@ -323,9 +325,9 @@ DOCKER_HOSTPATH='/host'
 docker_image_exists()
 {
 	if docker inspect "$1" >"$NULL" 2>&1; then
-		return $TRUE
+		return $SUCCESS
 	else
-		return $FALSE
+		return $FAILURE
 	fi
 }
 
@@ -334,14 +336,14 @@ docker_image_exists()
 ARCHS='i386 x86_64'
 TARGETS='release debug'
 MODES='normal asan libmemtracer'
-DEFAULT_ARCH="${CCLI_ARCH:-"i386"}"
-DEFAULT_TARGET="${CCLI_TARGET:-"release"}"
-DEFAULT_MODE="${CCLI_MODE:-"normal"}"
-DEFAULT_RELEASE="${CCLI_RELEASE:-"$DEFAULT_ARCH:$DEFAULT_TARGET:$DEFAULT_MODE"}"
+DEFAULT_ARCH="${CHEF_ARCH:-"i386"}"
+DEFAULT_TARGET="${CHEF_TARGET:-"release"}"
+DEFAULT_MODE="${CHEF_MODE:-"normal"}"
+DEFAULT_RELEASE="${CHEF_RELEASE:-"$DEFAULT_ARCH:$DEFAULT_TARGET:$DEFAULT_MODE"}"
 DEFAULT_DATAROOT="${CHEF_DATAROOT:-"/var/lib/chef"}"
 DEFAULT_VERBOSE=$FALSE
 DEFAULT_LOGFILE="$NULL"
-DEFAULT_DOCKERIZED=${CCLI_DOCKERIZED:-$FALSE}
+DEFAULT_DOCKERIZED=${CHEF_DOCKERIZED:-$FALSE}
 
 split_release()
 {

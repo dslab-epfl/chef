@@ -24,7 +24,7 @@ lua_prepare()
 	lua_tarball="${lua_vname}.tar.gz"
 
 	if [ ! -e "$lua_tarball" ]; then
-		wget "$lua_baseurl/$lua_tarball" || return $FALSE
+		wget "$lua_baseurl/$lua_tarball" || return $FAILURE
 	fi
 	tar xzf "$lua_tarball"
 	mv "$(basename "$lua_tarball" .tar.gz)" "$BUILDPATH"
@@ -32,7 +32,7 @@ lua_prepare()
 
 lua_build()
 {
-	make -j$JOBS linux || return $FALSE
+	make -j$JOBS linux || return $FAILURE
 }
 
 # STP ==========================================================================
@@ -53,12 +53,12 @@ stp_configure()
 		--with-gcc="$LLVM_NATIVE_CC" \
 		--with-g++="$LLVM_NATIVE_CXX" \
 		$(test "$MODE" = 'asan' && echo '--with-address-sanitizer') \
-	|| return $FALSE
+	|| return $FAILURE
 }
 
 stp_build()
 {
-	make -j$JOBS || return $FALSE
+	make -j$JOBS || return $FAILURE
 }
 
 # KLEE =========================================================================
@@ -90,7 +90,7 @@ klee_configure()
 		CFLAGS="$klee_cflags" \
 		CXXFLAGS="$klee_cxxflags" \
 		LDFLAGS="$klee_ldflags" \
-	|| return $FALSE
+	|| return $FAILURE
 }
 
 klee_build()
@@ -100,7 +100,7 @@ klee_build()
 	else
 		klee_buildopts='ENABLE_OPTIMIZED=1'
 	fi
-	make -j$JOBS $klee_buildopts || return $FALSE
+	make -j$JOBS $klee_buildopts || return $FAILURE
 }
 
 # LIBMEMTRACER =================================================================
@@ -111,13 +111,13 @@ libmemtracer_configure()
 		--enable-debug \
 		CC="$LLVM_NATIVE_CC" \
 		CXX="$LLVM_NATIVE_CXX" \
-	|| return $FALSE
+	|| return $FAILURE
 }
 
 libmemtracer_build()
 {
 	libmemtracer_buildopts="CLANG_CC=$LLVM_NATIVE_CC CLANG_CXX=$LLVM_NATIVE_CXX"
-	make -j$JOBS $libmemtracer_buildopts || return $FALSE
+	make -j$JOBS $libmemtracer_buildopts || return $FAILURE
 }
 
 # LIBVMI =======================================================================
@@ -130,12 +130,12 @@ libvmi_configure()
 		$(test "$TARGET" = 'debug' && echo '--enable-debug') \
 		CC=$LLVM_NATIVE_CC \
 		CXX=$LLVM_NATIVE_CXX \
-	|| return $FALSE
+	|| return $FAILURE
 }
 
 libvmi_build()
 {
-	make -j$JOBS || return $FALSE
+	make -j$JOBS || return $FAILURE
 }
 
 # QEMU =========================================================================
@@ -169,17 +169,17 @@ qemu_configure()
 		--extra-ldflags="$(test "$MODE" = 'libmemtracer' && \
 		  echo "-L$BUILDPATH_ROOT/libmemtracer -lmemtracer")"\
 		$QEMU_FLAGS \
-	|| return $FALSE
+	|| return $FAILURE
 }
 
 qemu_build()
 {
-	make -j$JOBS || return $FALSE
+	make -j$JOBS || return $FAILURE
 }
 
 qemu_install()
 {
-	make install || return $FALSE
+	make install || return $FAILURE
 	cp "$ARCH-s2e-softmmu/op_helper.bc" \
 		"$BUILDPATH_ROOT/opt/share/qemu/op_helper.bc.$ARCH"
 	cp "$ARCH-softmmu/qemu-system-$ARCH" \
@@ -201,19 +201,19 @@ tools_configure()
 		CXX="$LLVM_NATIVE_CXX" \
 		ENABLE_OPTIMIZED=$(test "$TARGET" = 'release' && echo 1 || echo 0) \
 		REQUIRES_RTTI=1 \
-	|| return $FALSE
+	|| return $FAILURE
 }
 
 tools_build()
 {
-	make -j$JOBS || return $FALSE
+	make -j$JOBS || return $FAILURE
 }
 
 # GUEST TOOLS ==================================================================
 
 guest_configure()
 {
-	"$SRCPATH"/configure || return $FALSE
+	"$SRCPATH"/configure || return $FAILURE
 }
 
 guest_build()
@@ -222,7 +222,7 @@ guest_build()
 		i386) guest_cflags='-m32' ;;
 		x86_64) guest_cflags='-m64' ;;
 	esac
-	make -j$JOBS CFLAGS="$guest_cflags" || return $FALSE
+	make -j$JOBS CFLAGS="$guest_cflags" || return $FAILURE
 }
 
 # GMOCK ========================================================================
@@ -237,7 +237,7 @@ gmock_prepare()
 	gmock_dir="$(basename "$gmock_zip" .zip)"
 
 	if [ ! -e "$gmock_zip" ]; then
-		wget "$gmock_baseurl/$gmock_zip" || return $FALSE
+		wget "$gmock_baseurl/$gmock_zip" || return $FAILURE
 	fi
 	unzip -q "$gmock_zip"
 	mv "$gmock_dir" "$BUILDPATH"
@@ -248,14 +248,14 @@ gmock_configure()
 	./configure \
 		CC="$LLVM_NATIVE_CC" \
 		CXX="$LLVM_NATIVE_CXX" \
-	|| return $FALSE
+	|| return $FAILURE
 }
 
 gmock_build()
 {
 	gtest_path="$LLVM_SRC/utils/unittest/googletest"
 
-	make -j$JOBS || return $FALSE
+	make -j$JOBS || return $FAILURE
 	cd lib
 	"$LLVM_NATIVE_CC" \
 		-D__STDC_LIMIT_MACROS \
@@ -267,8 +267,8 @@ gmock_build()
 		-I"$BUILDPATH/include" \
 		-I"$BUILDPATH" \
 		-c "$BUILDPATH/src/gmock-all.cc" \
-	|| return $FALSE
-	ar -rv libgmock.a gmock-all.o || return $FALSE
+	|| return $FAILURE
+	ar -rv libgmock.a gmock-all.o || return $FAILURE
 }
 
 # TEST SUITE ===================================================================
@@ -290,14 +290,14 @@ test_configure()
 		CC="$LLVM_NATIVE_CC" \
 		CXX="$LLVM_NATIVE_CXX" \
 		REQUIRES_EH=1 \
-	|| return $FALSE
+	|| return $FAILURE
 }
 
 tests_build()
 {
 	tests_isopt=$(test "$TARGET" = 'debug' && echo 0 || echo 1)
 	tests_buildopts="REQUIRES_RTTI=1 REQUIRE_EH=1 ENABLE_OPTIMIZED=$tests_isopt"
-	make -j$JOBS $tests_buildopts || return $FALSE
+	make -j$JOBS $tests_buildopts || return $FAILURE
 }
 
 # ALL ==========================================================================
@@ -366,7 +366,7 @@ all_build()
 			# action:
 			if ! track "$msg $component" "${component}_${action}"; then
 				examine_logs
-				if ask $COLOUR_ERROR 'yes' 'Restart?'; then
+				if ask "$ESC_ERROR" 'yes' 'Restart?'; then
 					CODE_TERM='restart'
 				else
 					CODE_TERM='abort'
@@ -512,8 +512,8 @@ get_options()
 	LIST=$FALSE
 	LLVM_BASE='/opt/s2e/llvm'
 	QEMU_FLAGS=''
-	#VERBOSE=${CCLI_VERBOSE:-$DEFAULT_VERBOSE}
-	VERBOSE=${CCLI_VERBOSE:-$TRUE}
+	#VERBOSE=${CHEF_VERBOSE:-$DEFAULT_VERBOSE}
+	VERBOSE=${CHEF_VERBOSE:-$TRUE}
 
 	# Options:
 	while getopts :df:hi:j:lL:o:q:sx:y opt; do
@@ -572,7 +572,7 @@ main()
 	fi
 	get_release "$@"
 	shift $ARGSHIFT
-	test $# -eq $TRUE || die_help "trailing arguments: $@"
+	test $# -eq 0 || die_help "trailing arguments: $@"
 
 	if [ $DRYRUN -eq $TRUE ]; then
 		dry_run
