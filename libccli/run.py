@@ -20,7 +20,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-"""Wrapper script for running S2E by following the RAW/S2E image manipulation workflow."""
+"""Wrapper script for running Chef by following the RAW/S2E image manipulation workflow."""
 
 __author__ = "stefan.bucur@epfl.ch (Stefan Bucur)"
 
@@ -39,43 +39,37 @@ import pipes
 import time
 import subprocess
 import utils
+from vm import VM
 
 from datetime import datetime, timedelta
 
-THIS_DIR = os.path.dirname(__file__)
+RUNPATH = os.path.abspath(os.path.dirname(__file__))
+SRCROOT = os.path.dirname(RUNPATH)
 
-# Host:
-HOST_CHEF_ROOT = os.path.dirname(os.path.abspath(THIS_DIR))
-HOST_DATA_ROOT = os.sep + os.path.join('var', 'local', 'chef')
+# Default values:
+BUILDROOT = '%s/build' % SRCROOT
+COMMAND_PORT = 1234
+MONITOR_PORT = 12345
+VNC_DISPLAY = 0
+VNC_PORT_BASE = 5900
+TIMEOUT = 60
+CONFIGFILE = '%s/config/default-config.lua' % SRCROOT
+NETWORK_MODE = 'user'
+TAP_INTERFACE = 'tap0'
 
 # Docker:
-VERSION = 'v0.6'
-CHEF_ROOT = os.sep + 'chef'
-DATA_ROOT = os.sep + 'data'
-DATA_VM_DIR = os.path.join(DATA_ROOT, 'vm')
-DATA_OUT_DIR = os.path.join(DATA_ROOT, 'expdata')
-CHEF_CONFIG_DIR = os.path.join(CHEF_ROOT, 'config')
+DOCKER_IMAGE = 'dslab/s2e-chef:v0.6'
+DOCKER_BUILDROOT = '/chef/build'
+DOCKER_CONFIGROOT = '/chef/config'
+DOCKER_DATAROOT_VMROOT = '/data/vm'
+DOCKER_DATAROOT_EXPDATA = '/data/expdata'
 
-# Default configuration values:
-DEFAULT_CONFIG_FILE = os.path.join(CHEF_CONFIG_DIR, "default-config.lua")
-DEFAULT_OUTDIR = DATA_OUT_DIR
-DEFAULT_HOST_DATA_ROOT = HOST_DATA_ROOT
-DEFAULT_COMMAND_PORT = 1234
-DEFAULT_MONITOR_PORT = 12345
-DEFAULT_VNC_DISPLAY = 0
-DEFAULT_TAP_INTERFACE = "tap0"
-DEFAULT_VM_NAME = 'chef_disk'
-GDB_BIN = "gdb"
-STRACE_BIN = "strace"
-COMMAND_SEND_TIMEOUT = 60
-MAX_DEFAULT_CORES = 4
 
+# COMMUNICATION WITH CHEF ======================================================
 
 class CommandError(Exception):
     pass
 
-
-# COMMUNICATION WITH CHEF ======================================================
 
 class Command(object):
     url_path = '/command'
@@ -113,7 +107,7 @@ class Script(object):
 def send_command(command, host, port):
     conn = None
     try:
-        conn = http.client.HTTPConnection(host, port=port, timeout=COMMAND_SEND_TIMEOUT)
+        conn = http.client.HTTPConnection(host, port=port, timeout=TIMEOUT)
         conn.request("POST", command.url_path, command.to_json())
         response = conn.getresponse()
         if response.status != http.client.OK:
@@ -125,7 +119,7 @@ def send_command(command, host, port):
             conn.close()
 
 
-def async_send_command(command, host, port, timeout=COMMAND_SEND_TIMEOUT):
+def async_send_command(command, host, port, timeout=TIMEOUT):
     pid = os.getpid()
     if os.fork() != 0:
         return
@@ -181,38 +175,40 @@ def kill_me_later(timeout, extra_time=60):
 
 
 def execute(args, cmd_line):
-    # Setup information:
-    utils.info("VNC: port %d (connect with `$vncclient {%s,localhost}:%d`"
-               % (utils.VNC_PORT_BASE + args.vnc_display,
-                  utils.get_default_ip(),
-                  args.vnc_display))
-    utils.info("Qemu monitor: port %d (connect with `{nc,telnet} {%s,localhost} %d"
-               % (args.monitor_port, utils.get_default_ip(), args.monitor_port))
-    utils.info("Watchdog: port %d"
-               % (args.command_port))
-    utils.debug("Command line:\n%s"
-                % ' '.join(cmd_line))
+    # Informative:
+    ip = utils.get_default_ip()
+    utils.info("VNC: port %d (connect with `$vncclient %s:%d`"
+               % (args['vnc_port'], ip, args['vnc_display']))
+    utils.info("Qemu monitor: port %d (connect with `{nc,telnet} %s %d"
+               % (args['monitor_port'], ip, args['monitor_port']))
+    if args['mode'] == 'sym':
+        utils.info("Watchdog: port %d" % args['command_port'])
+    utils.debug("Command line:\n%s" % ' '.join(cmd_line))
 
-    if args.dry_run:
-        return
+    if args['dry_run']:
+        exit(1)
 
     environ = dict(os.environ)
 
-    if args.mode == "sym":
-        environ["LUA_PATH"] = ';'.join([os.path.join(os.path.dirname(args.config), "?.lua"),
-                                        environ.get("LUA_PATH", "")])
+    if args['mode'] == 'sym':
+        environ['LUA_PATH'] = ';'.join(['%s/?.lua' % args['config_root'],
+                                        environ.get('LUA_PATH', '')])
         utils.debug("LUA_PATH=%s" % environ['LUA_PATH'])
 
-        if args.time_out:
-            kill_me_later(args.time_out)
-        if args.script:
-            module_file, test = args.script
-            with open(module_file, "r") as f:
+        if args['timeout']:
+            kill_me_later(args['timeout'])
+
+        obj = None
+        if args['script']:
+            module_file, test = args['script']
+            with open(module_file, 'r') as f:
                 code = f.read()
-            async_send_command(Script(code=code, test=test), "localhost", args.command_port)
-        elif args.command:
-            async_send_command(Command.from_cmd_args(args.command, args.env_var or []),
-                               "localhost", args.command_port)
+            obj = Script(code=code, test=test)
+        if args['command']:
+            obj = Command.from_cmd_args(args['command'], args['env_var'] or [])
+        if obj:
+            async_send_command(obj, 'localhost', args['command_port'],
+                               timeout=args['timeout'])
 
     os.execvpe(cmd_line[0], cmd_line, environ)
 
@@ -220,236 +216,308 @@ def execute(args, cmd_line):
 # PARSE COMMAND LINE ARGUMENTS =================================================
 
 def parse_cmd_line():
-    parser = argparse.ArgumentParser(description="High-level interface to S2E.")
+    parser = argparse.ArgumentParser(description="High-level interface to running Chef.")
 
-    # Interaction mode (headless, X):
-    host_env = parser.add_mutually_exclusive_group()
-    host_env.add_argument("-b", "--batch", action="store_true", default=False,
-                          help="Headless (no GUI) mode")
-    host_env.add_argument("-x", "--x-forward", action="store_true", default=False,
-                          help="Optimize for X forwarding")
+    # Chef release:
+    parser.add_argument('-r', '--release', default=utils.RELEASE,
+                        help="Tuple (architecture:target:mode) describing the Chef binary release")
 
-    # Network mode (tap, none):
-    network = parser.add_mutually_exclusive_group()
-    network.add_argument("-t", "--net-tap", action="store_true", default=False,
-                         help="Use a tap interface for networking")
-    network.add_argument("-n", "--net-none", action="store_true", default=False,
-                         help="Disable networking")
+    # Network:
+    parser.add_argument('-n','--network', default='user', choices=['none','user','tap'],
+                        help="Network mode [default=user]")
 
-    # Debug mode (gdb, strace, none):
+    # Debug:
     exe_env = parser.add_mutually_exclusive_group()
-    exe_env.add_argument("--gdb", action="store_true", default=False,
+    exe_env.add_argument('--gdb', action='store_true', default=False,
                          help="Run under gdb")
-    exe_env.add_argument("--strace", action="store_true", default=False,
+    exe_env.add_argument('--strace', action='store_true', default=False,
                          help="Run under strace")
 
-    # General options:
-    parser.add_argument('--dockerized', action='store_true', default=False,
-                        help="Wrap execution in a docker container")
-    parser.add_argument("--data-root", default=DEFAULT_HOST_DATA_ROOT,
-                        help="location of data root")
+    # Paths:
+    parser.add_argument('--data-root', default=utils.DATAROOT,
+                        help="Location of Chef data [default=%s]" % utils.DATAROOT)
     parser.add_argument('--vm-root', default=None,
-                        help="location of VM (default: $DATA_ROOT/vm)")
-    parser.add_argument("-p", "--command-port", type=int, default=DEFAULT_COMMAND_PORT,
-                        help="The command port configured for port forwarding")
-    parser.add_argument("-m", "--monitor-port", type=int, default=DEFAULT_MONITOR_PORT,
-                        help="The port on which the qemu monitor can be accessed")
-    parser.add_argument("-v", "--vnc-display", type=int, default=DEFAULT_VNC_DISPLAY,
-                        help="Display on which VNC can be accessed")
+                        help="Location of VM images")
+    parser.add_argument('--build-root', default=BUILDROOT,
+                        help="Location of Chef builds [default=%s]" % BUILDROOT)
 
-    parser.add_argument("-d", "--debug", action="store_true", default=False,
-                        help="Run in debug mode")
-    parser.add_argument("-y", "--dry-run", action="store_true", default=False,
-                        help="Only display the S2E command to be run, don't run anything.")
+    # Communication:
+    parser.add_argument('-d','--dockerized', action='store_true', default=False,
+                        help="Wrap execution in a docker container")
+    parser.add_argument('-b','--background', action='store_true', default=False,
+                        help="Fork execution to background") # XXX internal option for batch execution
+    parser.add_argument('-m','--monitor-port', type=int,
+                        default=MONITOR_PORT,
+                        help="Port on which the qemu monitor is accessible")
+    parser.add_argument('-v','--vnc-display', type=int,
+                        default=VNC_DISPLAY,
+                        help="VNC display number on which the VM is accessible")
+
+    # Dry run:
+    parser.add_argument('-y','--dry-run', action='store_true', default=False,
+                        help="Only display the runtime configuration and exit")
 
     # Positional: VM name:
-    parser.add_argument('vm', help="Name of the VM to use (see `ccli vm list`)")
+    parser.add_argument('vm_name',
+                        help="Name of the VM to use (see `ccli vm list`)")
 
     # Positional: Run mode:
-    modes = parser.add_subparsers(help="The S2E operation mode")
+    modes = parser.add_subparsers(help="The Chef operation mode")
     modes.required = True
     modes.dest = 'operation mode'
 
     #             Run mode: KVM:
-    kvm_mode = modes.add_parser("kvm", help="KVM mode")
-    kvm_mode.add_argument("--cores", type=int,
-                          default=min(multiprocessing.cpu_count(), MAX_DEFAULT_CORES),
+    kvm_mode = modes.add_parser('kvm', help="KVM mode")
+    kvm_mode.set_defaults(mode='kvm')
+    kvm_mode.add_argument('-j', '--cores', type=int,
+                          default=multiprocessing.cpu_count(),
                           help="Number of virtual cores")
-    kvm_mode.set_defaults(mode="kvm")
 
-    #             Run mode: non-KVM, preparation:
-    prepare_mode = modes.add_parser("prep", help="Prepare mode")
-    prepare_mode.add_argument("-l", "--load", action="store_true", default=False,
-                              help="Load from snapshot 1")
-    prepare_mode.set_defaults(mode="prep")
+    #             Run mode: Preparation:
+    prepare_mode = modes.add_parser('prep', help="Prepare mode")
+    prepare_mode.set_defaults(mode='prep')
+    prepare_mode.add_argument('-s', '--snapshot', default=None,
+                              help="Snapshot to load from")
 
-    #             Run mode: non-KVM, symbolic:
-    symbolic_mode = modes.add_parser("sym", help="Symbolic mode")
-    symbolic_mode.add_argument("-f", "--config", default=DEFAULT_CONFIG_FILE,
-                               help="The S2E configuration file")
-                               # XXX path is for docker container
-    symbolic_mode.add_argument("-o", "--out-dir", default=DEFAULT_OUTDIR,
-                               help="S2E output directory")
-                               # XXX path is for docker container
-    symbolic_mode.add_argument("-t", "--time-out", type=int,
+    #             Run mode: Symbolic:
+    symbolic_mode = modes.add_parser('sym', help="Symbolic mode")
+    symbolic_mode.set_defaults(mode='sym')
+    symbolic_mode.add_argument('--expdata-root', default=None,
+                               help="Destination of experiment data output")
+    symbolic_mode.add_argument('-f','--config-file', default=CONFIGFILE,
+                               help="The Chef configuration file")
+    symbolic_mode.add_argument('-t','--timeout', type=int, default=TIMEOUT,
                                help="Timeout (in seconds)")
-    symbolic_mode.add_argument("--batch-file", type=str, default=None,
-                               help="YAML file that contains the commands to be executed")
-    symbolic_mode.add_argument("-e", "--env-var", action="append",
+    symbolic_mode.add_argument('-p','--command-port', type=int, default=COMMAND_PORT,
+                               help="Port on which the watchdog is accessible")
+    symbolic_mode.add_argument('-e','--env-var', action='append',
                                help="Environment variable for the command (can be used multiple times)")
-    symbolic_mode.add_argument("--script", nargs=2,
+    symbolic_mode.add_argument('--script', nargs=2,
                                help="Execute script given as a pair <test file, test name>")
-    symbolic_mode.add_argument("command", nargs=argparse.REMAINDER,
+    symbolic_mode.add_argument('-b','--batch-file', default=None,
+                               help="YAML file that contains the commands to be executed")
+    symbolic_mode.add_argument('--batch-delay', type=int, default=1,
+                               help="Seconds to wait before executing next command")
+    symbolic_mode.add_argument('snapshot',
+                               help="Snapshot to resume from")
+    symbolic_mode.add_argument('command', nargs=argparse.REMAINDER,
                                help="The command to execute")
-    symbolic_mode.set_defaults(mode="sym")
 
-    return parser.parse_args()
+    # Parse arguments:
+    args = parser.parse_args()
+    kwargs = vars(args) # make it a dictionary, for easier use
+
+    # Adapt a few options:
+    kwargs['vnc_port'] = VNC_PORT_BASE + kwargs['vnc_display']
+    kwargs['vm_root'] = kwargs['vm_root'] or '%s/vm' % utils.DATAROOT
+    if kwargs['mode'] == 'sym':
+        kwargs['expdata_root'] = kwargs['expdata_root'] or '%s/expdata' % utils.DATAROOT
+        kwargs['config_root'], kwargs['config_filename'] = os.path.split(kwargs['config_file'])
+
+    return kwargs
 
 
 # BUILD COMMAND LINE ===========================================================
 
 def build_docker_cmd_line(args, command: [str]):
-    docker_cmd_line = ["docker", "run", "--rm"]
-    if not args.batch:
-        docker_cmd_line.extend(["-t", "-i"])
-    if args.vm_root:
-        docker_cmd_line.extend(['-v', '%s:%s/vm' % (args.vm_root, DATA_ROOT)])
+    docker_cmd_line = ['docker', 'run', '--rm']
+    if not args['background']:
+        docker_cmd_line.extend(['-t', '-i'])
     docker_cmd_line.extend([
-        '-v', '%s:%s' % (HOST_CHEF_ROOT, CHEF_ROOT),
-        '-v', '%s:%s' % (args.data_root, DATA_ROOT),
-        '-p', '%d:%d' % (args.command_port, args.command_port),
-        '-p', '%d:%d' % (args.monitor_port, args.monitor_port),
-        '-p', '%d:%d' % (5900 + args.vnc_display, 5900 + args.vnc_display)])
-    if args.mode == 'sym':
-        lua_path = os.environ.get('LUA_PATH', None)
-        docker_cmd_line.extend(['-e', 'LUA_PATH=%s%s' %
-                                (os.path.join(os.path.dirname(args.config), '?.lua'),
-                                 (';%s' % lua_path, '')[lua_path is None])])
-    if args.mode == "kvm":
-        docker_cmd_line.append("--privileged=true")
-    docker_cmd_line.append("dslab/s2e-chef:%s" % VERSION)
-    if args.mode == 'kvm':
-        docker_cmd_line.extend(['/bin/bash', '-c',
-                                'sudo setfacl -m group:kvm:rw /dev/kvm; exec %s'
-                                                           % ' '.join(command)])
+        '-v', '%s:%s' % (BUILDROOT, DOCKER_BUILDROOT),
+        '-v', '%s:%s' % (args['vm_root'], DOCKER_DATAROOT_VMROOT),
+        '-p', '%d:%d' % (args['monitor_port'], args['monitor_port']),
+        '-p', '%d:%d' % (args['vnc_port'], args['vnc_port']),
+    ])
+
+    # Mode-specific: KVM:
+    if args['mode'] == 'kvm':
+        docker_cmd_line.append('--privileged=true')
+
+    # Mode-specific: Symbolic:
+    if args['mode'] == 'sym':
+        docker_cmd_line.extend([
+            '-p', '%d:%d' % (args['command_port'], args['command_port']),
+            '-v', '%s:%s' % (args['expdata_root'], DOCKER_DATAROOT_EXPDATA),
+            '-v', '%s:%s' % (args['config_root'], DOCKER_CONFIGROOT),
+        ])
+        lua_path = os.environ.get('LUA_PATH', '')
+        lua_path_additional = '%s/?.lua' % os.path.dirname(args['config_file'])
+        docker_cmd_line.extend([
+            '-e', 'LUA_PATH=%s;%s' % (lua_path_additional, lua_path)
+        ])
+
+    docker_cmd_line.append(DOCKER_IMAGE)
+
+    # In KVM, adapt ACL for KVM device:
+    if args['mode'] == 'kvm':
+        docker_cmd_line.extend([
+            '/bin/bash', '-c', 'sudo setfacl -m group:kvm:rw /dev/kvm; exec %s'
+                               % ' '.join(command)
+        ])
     else:
         docker_cmd_line.extend(command)
+
     return docker_cmd_line
 
 
 def build_qemu_cmd_line(args):
-    # Qemu path
-    qemu_path = os.path.join(CHEF_ROOT, "build",
-                             "%s-%s-%s" % ("i386",
-                                           ("release", "debug")[args.debug],
-                                           "normal"),
-                             "opt", "bin",
-                             "qemu-system-i386%s" % ("", "-s2e")[args.mode == "sym"]
-                            )
-
-    # Base command
     qemu_cmd_line = []
-    if args.gdb:
-        qemu_cmd_line.extend([GDB_BIN, "--args"])
-    if args.strace:
-        qemu_cmd_line.extend([STRACE_BIN, "-e", "open"])
+
+    # VM:
+    vm = VM(args['vm_name'])
+    if not vm.exists():
+        utils.fail('%s: VM does not exist' % vm.name)
+        exit(1)
+
+    # Debug:
+    if args['gdb']:
+        qemu_cmd_line.extend(['gdb', '--args'])
+    if args['strace']:
+        qemu_cmd_line.append('strace')
+
+    # Qemu path:
+    arch, target, mode = utils.split_release(args['release'])
+    qemu_path = os.path.join(
+        (args['build_root'], DOCKER_BUILDROOT)[args['dockerized']],
+        '%s-%s-%s' % (arch, target, mode),
+        'opt',
+        'bin',
+        'qemu-system-%s%s' % (arch, ('', '-s2e')[args['mode'] == 'sym'])
+    )
+
+    # Base command:
     qemu_cmd_line.append(qemu_path);
-    qemu_cmd_line.append(('%s/%s/disk.s2e' % (DATA_VM_DIR, args.vm),
-                          '%s/%s/disk.raw' % (DATA_VM_DIR, args.vm))[args.mode == "kvm"])
 
-    # General: CPU and command monitor
-    qemu_cmd_line.extend(["-cpu", "pentium",  # Non-Pentium instructions cause spurious concretizations
-                          "-monitor", "tcp::%d,server,nowait" % (args.monitor_port)
-                         ])
+    # General: VM image, CPU, qemu monitor, VNC:
+    qemu_cmd_line.extend([
+        # Non-Pentium instructions cause spurious concretizations
+        '-cpu', 'pentium',
+        '-monitor', 'tcp::%d,server,nowait' % args['monitor_port'],
+        '-vnc', ':%d' % (args['vnc_display'])
+    ])
 
-    # Specific: Network, VNC, keyboard, KVM
-    if args.net_none:
-        qemu_cmd_line.extend(["-net", "none"])  # No networking
+    # Network:
+    if args['network'] == 'none':
+        qemu_cmd_line.extend(['-net', 'none'])
     else:
-        qemu_cmd_line.extend(["-net", "nic,model=pcnet"])  # The only network device supported by S2E, IIRC
-        if args.net_tap:
-            qemu_cmd_line.extend(["-net", "tap,ifname=%s" % DEFAULT_TAP_INTERFACE])
+        # The only network device supported by S2E, IIRC
+        qemu_cmd_line.extend(['-net', 'nic,model=pcnet'])
+        if args['network'] == 'tap':
+            qemu_cmd_line.extend(['-net', 'tap,ifname=%s' % TAP_INTERFACE])
         else:
-            qemu_cmd_line.extend(["-net", "user",
-                                  "-redir", "tcp:%d::4321" % args.command_port  # Command port forwarding
-                                 ])
+            qemu_cmd_line.extend(['-net', 'user'])
+            if args['mode'] == 'sym':
+                qemu_cmd_line.extend([
+                    '-redir', 'tcp:%d::4321' % args['command_port']
+                ])
 
-    qemu_cmd_line.extend(["-vnc", ":%d" % (args.vnc_display)])
+    # Mode-specific: KVM:
+    if args['mode'] == 'kvm':
+        qemu_cmd_line.extend(['-enable-kvm', '-smp', str(args['cores'])])
 
-    if args.x_forward:
-        qemu_cmd_line.extend(["-k", "en-us"]) # Without it, the default key mapping is messed up
+    # Mode-specific: non-KVM:
+    elif args['snapshot']:
+        if args['snapshot'] not in vm.snapshots:
+            utils.fail("%s: no such snapshot" % args['snapshot'])
+        qemu_cmd_line.extend(['-loadvm', args['snapshot']])
 
-    if args.mode == "kvm":
-        qemu_cmd_line.extend(["-enable-kvm",
-                              "-smp", str(args.cores)  # KVM mode is the only multi-core one
-                             ])
+    # Mode-specific: Symbolic:
+    if args['mode'] == 'sym':
+        qemu_cmd_line.extend([
+            '-s2e-config-file', (
+                args['config_file'],
+                os.path.join(DOCKER_CONFIGROOT, args['config_filename'])
+            )[args['dockerized']],
+            '-s2e-verbose'
+        ])
+        if args['expdata_root']:
+            qemu_cmd_line.extend([
+                '-s2e-output-dir', (
+                    args['expdata_root'],
+                    DOCKER_DATAROOT_EXPDATA
+                )[args['dockerized']]
+            ])
 
-    # Snapshots (assuming they are stored in slot 1 with "savevm 1")
-    if (args.mode == "prep" and args.load) or args.mode == "sym":
-        qemu_cmd_line.extend(["-loadvm", "1"])
-    if args.mode == "sym":
-        qemu_cmd_line.extend(["-s2e-config-file", args.config, "-s2e-verbose"])
-        if args.out_dir:
-            qemu_cmd_line.extend(["-s2e-output-dir", args.out_dir])
+    # VM path:
+    if args['dockerized']:
+        utils.DATAROOT_VMROOT = DOCKER_DATAROOT_VMROOT
+        vm = VM(args['vm_name']) # create VM with dockerized VMROOT
+    qemu_cmd_line.append((vm.path_s2e, vm.path_raw)[args['mode'] == 'kvm'])
 
     return qemu_cmd_line
 
 
-def build_parallel_cmd_line():
-    return ['parallel', '--delay', '1']
+def build_parallel_cmd_line(args: dict):
+    return ['parallel', '--delay', args['batch_delay']]
 
 
 def build_cmd_line(args):
     cmd_line = build_qemu_cmd_line(args)
-    if args.dockerized:
+    if args['dockerized']:
         cmd_line = build_docker_cmd_line(args, cmd_line)
     return cmd_line
 
 
 # MAIN =========================================================================
 
+def batch_execute():
+    # get list of commands from batch file:
+    bare_cmd_lines = []
+    from libccli.batch import Batch
+    batch = Batch(args['batch_file'])
+    batch_commands = batch.get_commands()
+    for command in batch_commands:
+        bare_cmd_lines.extend(command.get_cmd_lines())
+
+    # assemble command lines and experiment data output directories:
+    cmd_lines = []
+    expdata_paths = []
+    batch_offset = 1
+    for bare_cmd_line in bare_cmd_lines:
+        # experiment data path:
+        expdata_dir = '%04d-%s' % (batch_offset, os.path.basename(c[0]))
+        expdata_path = os.path.join(args['expdata_root'], expdata_dir)
+        expdata_paths.append(expdata_path)
+
+        # command:
+        cmd_line = sys.argv[0] # recursively call ourselves:
+        cmd_line.extend(['--background'])
+        cmd_line.extend(['--command-port', '%d'
+                        % (args['command_port'] + batch_offset)])
+        cmd_line.extend(['--monitor-port', '%d'
+                        % (args['monitor_port'] + batch_offset)])
+        cmd_line.extend(['--vnc-display', '%d'
+                        % (args['vnc_display'] + batch_offset)])
+        cmd_line.extend(['sym'])
+        cmd_line.extend(['--config-file', command.config])
+        cmd_line.extend(['--expdata-root', expdata_path])
+        cmd_line.extend(['--vm-root', args['vm_root']])
+        if args['dockerized']:
+            cmd_line.append('--dockerized')
+        if args['timeout']:
+            cmd_line.extend(['--timeout', '%d' % args['timeout']])
+        if args['env_var']:
+            cmd_line.extend(['--env-var', args['env_var']])
+        if args['dry_run']:
+            cmd_line.extend(['--dry-run'])
+        cmd_line.extend(bare_cmd_line)
+        cmd_lines.append(' '.join(cmd_line))
+
+        # counter:
+        batch_offset += 1
+
+    p2 = subprocess.Popen(build_parallel_cmd_line(args), stdin=subprocess.PIPE)
+    p2.communicate(bytes('\n'.join(cmd_lines), 'utf-8'))
+
+
 def main():
     args = parse_cmd_line()
 
-    # batch-execute multiple commands:
-    if args.mode == 'sym' and args.batch_file:
-        from libccli.batch import Batch
-        batch = Batch(args.batch_file)
-        batch_commands = batch.get_commands()
-
-        printable_cmd_lines = ''
-        out_dirs = []
-
-        batch_offset = 1
-        for command in batch_commands:
-            cmd_lines = command.get_cmd_lines()
-            for c in cmd_lines:
-                c_out_dir = os.path.join('%04d-%s' % (batch_offset, os.path.basename(c[0])))
-                c_out_path = os.path.join(DATA_ROOT, args.out_dir, c_out_dir)
-                out_dirs.append(c_out_path)
-                run_cmd = ['%s' % sys.argv[0], '--batch']
-                if args.dry_run:
-                    run_cmd.extend(['--dry-run'])
-                if args.debug:
-                    run_cmd.extend(['--debug'])
-                run_cmd.extend(['--data-root', args.data_root])
-                run_cmd.extend(['--command-port', str(args.command_port + batch_offset)])
-                run_cmd.extend(['--monitor-port', str(args.monitor_port + batch_offset)])
-                run_cmd.extend(['--vnc-display', str(args.vnc_display + batch_offset)])
-                run_cmd.extend(['sym'])
-                run_cmd.extend(['--config', os.path.join(DATA_ROOT, command.config)])
-                run_cmd.extend(['--out-dir', c_out_path])
-                if args.time_out:
-                    run_cmd.extend(['--time-out', str(args.time_out)])
-                if args.env_var:
-                    run_cmd.extend(['--env-var', args.env_var])
-                run_cmd.extend(c)
-                printable_cmd_lines += ' '.join(run_cmd) + '\n'
-                batch_offset += 1
-
-        p2 = subprocess.Popen(build_parallel_cmd_line(), shell=False,
-                              stdin=subprocess.PIPE)
-        p2.communicate(bytes(printable_cmd_lines, 'utf-8'))
+    if args['mode'] == 'sym' and args['batch_file']:
+        # FIXME
+        utils.warn("this feature has not been thoroughly tested yet!")
+        batch_execute(args)
     else:
         execute(args, build_cmd_line(args))
 

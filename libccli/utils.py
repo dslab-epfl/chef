@@ -11,22 +11,19 @@ import stat
 
 # EXECUTION ====================================================================
 
-class ExecError(Exception):
-    def __init__(self, msg):
-        self.message = msg
-    def __str__(self):
-        return self.message
-
-
 def execute(cmd:[str], stdin:str=None, stdout:bool=False, stderr:bool=False,
-            msg:str=None, iowrap:bool=False, outfile:str=None):
+            msg:str=None, iowrap:bool=False, outfile:str=None, env:dict=None):
     interrupted = False
+    environ = dict(os.environ)
+    if env:
+        environ.update(env)
     _indata = bytes(stdin, 'utf-8') if stdin else None
     _in = subprocess.PIPE if stdin else None
     _out = open(outfile, 'wb') if outfile else None if stdout else subprocess.PIPE
     _err = None if stdout else subprocess.PIPE
     try:
-        sp = subprocess.Popen(cmd, stdin=_in, stdout=_out, stderr=_err, bufsize=0)
+        sp = subprocess.Popen(cmd, stdin=_in, stdout=_out, stderr=_err,
+                              bufsize=0, env=environ)
         out, err = sp.communicate(input=_indata)
         if outfile:
             _out.close()
@@ -85,6 +82,27 @@ def set_permissions(path: str, docker_uid: int = 431):
         fail("Cannot modify permissions for %s: Permission denied" % path)
         exit(1)
     set_msg_prefix(None)
+
+
+DATAROOT = os.environ.get('CHEF_DATAROOT', '/var/local/chef')
+DATAROOT_VMROOT = os.environ.get('CHEF_DATAROOT_VMROOT', '%s/vm' % DATAROOT)
+DATAROOT_EXPDATA = os.environ.get('CHEF_DATAROOT_VMROOT', '%s/expdata' % DATAROOT)
+ARCH     = os.environ.get('CHEF_ARCH',     'i386')
+TARGET   = os.environ.get('CHEF_TARGET',   'release')
+MODE     = os.environ.get('CHEF_MODE',     'normal')
+RELEASE  = os.environ.get('CHEF_RELEASE',  '%s:%s:%s' % (ARCH, TARGET, MODE))
+
+def split_release(release: str=None):
+    global ARCH, TARGET, MODE, RELEASE
+    RELEASE = release or RELEASE
+    release_tuple = RELEASE.split(':')
+    arch, target, mode = release_tuple + [''] * (3 - len(release_tuple))
+    if len(release_tuple) > 3:
+        utils.warn("trailing tokens in tuple: %s" % ':'.join(release_tuple[3:]))
+    ARCH = arch or ARCH
+    TARGET = target or TARGET
+    MODE = mode or MODE
+    return ARCH, TARGET, MODE
 
 # USER INTERACTION =============================================================
 

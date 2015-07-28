@@ -22,11 +22,7 @@ import shutil
 import json
 import re
 
-
-DATAROOT = os.environ.get('CHEF_DATAROOT', '/var/local/chef')
 INVOKENAME = os.environ.get('INVOKENAME', sys.argv[0])
-SRC_ROOT = os.path.dirname(os.path.dirname(__file__))
-VMROOT = '%s/vm' % DATAROOT
 FETCH_URL_BASE = 'http://localhost/~ayekat' # TODO real host
 REMOTES = {
     'Debian': {
@@ -49,7 +45,7 @@ class VM:
 
     def __init__(self, name: str):
         self.name = name
-        self.path = '%s/%s' % (VMROOT, name)
+        self.path = '%s/%s' % (utils.DATAROOT_VMROOT, name)
         self.path_qcow = '%s/disk.qcow2' % self.path
         self.path_raw = '%s/disk.raw' % self.path
         self.path_s2e = '%s/disk.s2e' % self.path
@@ -95,8 +91,9 @@ class VM:
         if not os.path.isdir(self.path):
             return
         for name in os.listdir(self.path):
-            if re.match('^disk\.s2e\..+', name):
-                self.snapshots.append(name)
+            snapshot = re.search('(?<=disk.s2e.).+', name)
+            if snapshot:
+                self.snapshots.append(snapshot.group(0))
 
 
     def __str__(self):
@@ -111,7 +108,7 @@ class VM:
         if self.snapshots:
             string += "\n  Snapshots:"
             for snapshot in self.snapshots:
-                string += "\n    %s/%s" % (self.path, snapshot)
+                string += "\n    %s" % snapshot
         return string
 
 
@@ -216,7 +213,8 @@ class VM:
             exit(1)
 
         # Copy ISO:
-        self.path_iso = '%s/%s' % (VMROOT, os.path.basename(iso_path))
+        self.path_iso = '%s/%s' % (utils.DATAROOT_VMROOT,
+                                   os.path.basename(iso_path))
         utils.set_msg_prefix("register ISO")
         utils.pend("%s => %s" % (iso_path, self.path_iso))
         if not os.path.exists(self.path_iso):
@@ -256,7 +254,7 @@ class VM:
         self.os_name = os_name
         self.description = REMOTES[os_name]['description']
         remote_iso = REMOTES[os_name]['iso']
-        self.path_iso = '%s/%s' % (VMROOT, remote_iso)
+        self.path_iso = '%s/%s' % (utils.DATAROOT_VMROOT, remote_iso)
         remote_qcow = os.path.basename(self.path_qcow)
         remote_tar_gz = '%s.tar.gz' % os_name
         self.path_tar_gz = '%s/%s' % (self.path, remote_tar_gz)
@@ -333,14 +331,14 @@ class VM:
                 print("  %s" % REMOTES[name]['description'])
                 print("  Based on: %s" % REMOTES[name]['iso'])
         else:
-            for name in os.listdir(VMROOT):
+            for name in os.listdir(utils.DATAROOT_VMROOT):
                 if iso:
                     _, ext = os.path.splitext(name)
                     if ext != '.iso':
                         continue
                     print(name)
                 else:
-                    if not os.path.isdir('%s/%s' % (VMROOT, name)):
+                    if not os.path.isdir('%s/%s' % (utils.DATAROOT_VMROOT, name)):
                         continue
                     print(VM(name))
 
@@ -409,9 +407,9 @@ class VM:
     @staticmethod
     def main(argv: [str]):
         # Check environment:
-        if not os.path.isdir(VMROOT):
+        if not os.path.isdir(utils.DATAROOT_VMROOT):
             utils.fail("%s: Directory not found (please initialise Chef first)"
-                       % VMROOT)
+                       % utils.DATAROOT_VMROOT)
             exit(1)
 
         # Parse command line arguments:
