@@ -15,9 +15,3 @@ autom4te.cache
 
 # IDEA files
 .idea/
-
-# Files that are supposed to be elsewhere, but are here during development:
-/build
-/data
-/third
-tags
