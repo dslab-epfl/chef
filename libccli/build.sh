@@ -470,8 +470,8 @@ help()
 
 list()
 {
-	for build in "$BUILDPATH_ROOT"/*; do
-		echo "$(basename "$build")" | sed 's/-/:/g'
+	for build in $(find "$BUILDPATH_ROOT" -maxdepth 1 -mindepth 1 -type d); do
+		basename "$build" | sed 's/-/:/g'
 	done
 }
 
