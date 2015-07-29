@@ -168,10 +168,10 @@ void BaseInstructions::isSymbolic(S2EExecutionState *state)
         }
     }
 
-    s2e()->getMessagesStream(state)
-            << "Testing whether data at " << hexval(address)
-            << " and size " << size << " is symbolic: "
-            << (result ? " true" : " false") << '\n';
+    //s2e()->getMessagesStream(state)
+    //        << "Testing whether data at " << hexval(address)
+    //        << " and size " << size << " is symbolic: "
+    //        << (result ? " true" : " false") << '\n';
 
     state->writeCpuRegisterConcrete(PARAM0, &result, sizeof(result));
 }
