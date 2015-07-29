@@ -11,18 +11,20 @@
 #define KLEE_SOLVER_H
 
 #include "klee/Expr.h"
+#include "klee/Constraints.h"
 
 #include <vector>
 
 namespace klee {
-  class ConstraintManager;
   class Expr;
   class SolverImpl;
 
   struct Query {
   public:
-    const ConstraintManager &constraints;
+    ConstraintManager constraints;
     ref<Expr> expr;
+
+    Query() { }
 
     Query(const ConstraintManager& _constraints, ref<Expr> _expr)
       : constraints(_constraints), expr(_expr) {
