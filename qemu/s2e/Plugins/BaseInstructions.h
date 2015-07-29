@@ -92,8 +92,15 @@ private:
 class BaseInstructionsPluginInvokerInterface {
 public:
     virtual void handleOpcodeInvocation(S2EExecutionState *state,
-                                        uint64_t guestDataPtr,
-                                        uint64_t guestDataSize) = 0;
+                       	   	            uint64_t guestDataPtr,
+                                        uint64_t guestDataSize);
+
+    virtual bool handleSystemCall(S2EExecutionState *state,
+                                  uint32_t id,
+                                  void *data,
+                                  uint64_t dataSize) {
+        return false;
+    }
 };
 
 } // namespace plugins

@@ -680,5 +680,57 @@ void BaseInstructions::onCustomInstruction(S2EExecutionState* state,
     }
 }
 
+
+////////////////////////////////////////////////////////////////////////////////
+
+
+void BaseInstructionsPluginInvokerInterface::handleOpcodeInvocation(
+        S2EExecutionState *state, uint64_t guestDataPtr, uint64_t guestDataSize) {
+
+    struct {
+        uint32_t id;
+        uint32_t data;
+        uint32_t dataSize;
+    } __attribute__((packed)) syscall;
+
+    if (guestDataSize < sizeof(syscall)) {
+        g_s2e->getWarningsStream(state) << "Cannot read S2E syscall (buffer too small)" << '\n';
+        return;
+    }
+
+    if (!state->readMemoryConcrete(guestDataPtr, &syscall,
+            sizeof(syscall), S2EExecutionState::VirtualAddress)) {
+        g_s2e->getWarningsStream(state) << "Cannot read S2E syscall" << '\n';
+        return;
+    }
+
+    char *host_data = 0;
+    if (syscall.data) {
+        host_data = new char[syscall.dataSize];
+        if (!host_data) {
+            g_s2e->getWarningsStream(state) << "Cannot read S2E syscall (out of memory)" << '\n';
+            return;
+        }
+        if (!state->readMemoryConcrete(syscall.data, host_data,
+                syscall.dataSize, S2EExecutionState::VirtualAddress)) {
+            g_s2e->getWarningsStream(state) << "Cannot read S2E syscall data" << '\n';
+            return;
+        }
+    }
+
+    if (handleSystemCall(state, syscall.id, host_data, syscall.dataSize)
+            && host_data) {
+        if (!state->writeMemoryConcrete(syscall.data, host_data,
+                syscall.dataSize, S2EExecutionState::VirtualAddress)) {
+            g_s2e->getWarningsStream(state) << "Cannot write S2E syscall response" << '\n';
+            return;
+        }
+    }
+
+    if (host_data) {
+        delete [] host_data;
+    }
+}
+
 }
 }
