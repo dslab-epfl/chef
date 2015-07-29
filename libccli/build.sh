@@ -612,10 +612,13 @@ docker_build()
 				-q "$QEMU_FLAGS" \
 				$(test $SILENT -eq 0 && printf '%s' '-s') \
 				-z \
-				"$ARCH" "$TARGET" "$MODE" \
-			&& ask 31 'no' "Restart?"
+				"$ARCH" "$TARGET" "$MODE"
 		then
-			docker_build_repeat=0
+			if ask 31 'no' "Restart?"; then
+				docker_build_repeat=0
+			else
+				die 2 'Aborting'
+			fi
 		fi
 	done
 }
