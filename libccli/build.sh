@@ -9,7 +9,7 @@
 
 export C_INCLUDE_PATH='/usr/include:/usr/include/x86_64-linux-gnu'
 export CPLUS_INCLUDE_PATH="$C_INCLUDE_PATH:/usr/include/x86_64-linux-gnu/c++/4.8"
-COMPONENTS='lua stp klee libmemtracer libvmi qemu tools guest gmock tests'
+COMPS='lua stp klee qemu tools guest gmock tests'
 DOCKER_HOSTPATH_IN='/host-in'
 DOCKER_HOSTPATH_OUT='/host-out'
 
@@ -98,49 +98,13 @@ klee_compile()
 	make -j$JOBS $klee_buildopts || return $FAILURE
 }
 
-# LIBMEMTRACER =================================================================
-
-libmemtracer_configure()
-{
-	"$SRCPATH"/configure \
-		--enable-debug \
-		CC="$LLVM_NATIVE_CC" \
-		CXX="$LLVM_NATIVE_CXX" \
-	|| return $FAILURE
-}
-
-libmemtracer_compile()
-{
-	libmemtracer_buildopts="CLANG_CC=$LLVM_NATIVE_CC CLANG_CXX=$LLVM_NATIVE_CXX"
-	make -j$JOBS $libmemtracer_buildopts || return $FAILURE
-}
-
-# LIBVMI =======================================================================
-
-libvmi_configure()
-{
-	"$SRCPATH"/configure \
-		--with-llvm="$LLVM_BUILD/$ASSERTS" \
-		--with-libmemtracer-src="$SRCPATH_ROOT/libmemtracer" \
-		$(test "$TARGET" = 'debug' && echo '--enable-debug') \
-		CC=$LLVM_NATIVE_CC \
-		CXX=$LLVM_NATIVE_CXX \
-	|| return $FAILURE
-}
-
 # QEMU =========================================================================
 
 qemu_configure()
 {
-	case "$MODE" in
-		asan) qemu_confopt='--enable-address-sanitizer' ;;
-		libmemtracer) qemu_confopt='--enable-memory-tracer' ;;
-		*) ;;
-	esac
 	"$SRCPATH"/configure \
 		--with-klee="$BUILDPATH_ROOT/klee/$ASSERTS" \
 		--with-llvm="$LLVM_BUILD/$ASSERTS" \
-		--with-libvmi-libdir="$BUILDPATH_ROOT/libvmi" \
 		$(test "$TARGET" = 'debug' && echo '--enable-debug') \
 		--prefix="$BUILDPATH_ROOT/opt" \
 		--cc="$LLVM_NATIVE_CC" \
@@ -149,15 +113,13 @@ qemu_configure()
 		--enable-llvm \
 		--enable-s2e \
 		--with-pkgversion=S2E \
-		--enable-boost \
 		--with-liblua="$BUILDPATH_ROOT/lua/src" \
-		--extra-cxxflags=-Wno-deprecated \
-		--with-libvmi-incdir="$SRCPATH_ROOT/libvmi/include" \
+		--extra-cflags=-mno-sse3 \
+		--extra-cxxflags=-mno-sse3 \
 		--disable-virtfs \
+		--disable-fdt \
 		--with-stp="$BUILDPATH_ROOT/stp" \
-		$qemu_confopt \
-		--extra-ldflags="$(test "$MODE" = 'libmemtracer' && \
-		  echo "-L$BUILDPATH_ROOT/libmemtracer -lmemtracer")"\
+		$(test "$MODE" = 'asan' && printf '%s' '--enable-address-sanitizer') \
 		$QEMU_FLAGS \
 	|| return $FAILURE
 }
@@ -205,81 +167,6 @@ guest_compile()
 	make -j$JOBS CFLAGS="$guest_cflags" || return $FAILURE
 }
 
-# GMOCK ========================================================================
-
-gmock_prepare()
-{
-	gmock_name='gmock'
-	gmock_version='1.6.0'
-	gmock_vname="$gmock_name-$gmock_version"
-	gmock_baseurl='http://googlemock.googlecode.com/files'
-	gmock_zip="${gmock_vname}.zip"
-	gmock_dir="$(basename "$gmock_zip" .zip)"
-
-	if [ ! -e "$gmock_zip" ]; then
-		wget "$gmock_baseurl/$gmock_zip" || return $FAILURE
-	fi
-	unzip -q "$gmock_zip"
-	mv "$gmock_dir" "$BUILDPATH"
-}
-
-gmock_configure()
-{
-	./configure \
-		CC="$LLVM_NATIVE_CC" \
-		CXX="$LLVM_NATIVE_CXX" \
-	|| return $FAILURE
-}
-
-gmock_compile()
-{
-	gtest_path="$LLVM_SRC/utils/unittest/googletest"
-
-	make -j$JOBS || return $FAILURE
-	cd lib
-	"$LLVM_NATIVE_CC" \
-		-D__STDC_LIMIT_MACROS \
-		-D__STDC_CONSTANT_MACROS \
-		-I"$LLVM_SRC/include" \
-		-I"$LLVM_NATIVE/include" \
-		-I"$gtest_path/include" \
-		-I"$gtest_path" \
-		-I"$BUILDPATH/include" \
-		-I"$BUILDPATH" \
-		-c "$BUILDPATH/src/gmock-all.cc" \
-	|| return $FAILURE
-	ar -rv libgmock.a gmock-all.o || return $FAILURE
-}
-
-# TEST SUITE ===================================================================
-
-test_configure()
-{
-	"$SRCPATH"/configure \
-		--with-llvmsrc="$LLVM_SRC" \
-		--with-llvmobj="$LLVM_BUILD" \
-		--with-s2e-src="$SRCPATH_ROOT/qemu" \
-		--with-s2eobj-release="$BUILDPATH_ROOT/qemu" \
-		--with-s2eobj-debug="$BUILDPATH_ROOT/qemu" \
-		--with-klee-src="$SRCPATH_ROOT/klee" \
-		--with-klee-obj="$BUILDPATH_ROOT/klee" \
-		--with-gmock="$BUILDPATH_ROOT/gmock" \
-		--with-stp="$BUILDPATH_ROOT/stp" \
-		--with-clang-profile-lib="$LLVM_NATIVE_LIB" \
-		--target=x86_64 \
-		CC="$LLVM_NATIVE_CC" \
-		CXX="$LLVM_NATIVE_CXX" \
-		REQUIRES_EH=1 \
-	|| return $FAILURE
-}
-
-tests_compile()
-{
-	tests_isopt=$(test "$TARGET" = 'debug' && echo 0 || echo 1)
-	tests_buildopts="REQUIRES_RTTI=1 REQUIRE_EH=1 ENABLE_OPTIMIZED=$tests_isopt"
-	make -j$JOBS $tests_buildopts || return $FAILURE
-}
-
 # ALL ==========================================================================
 
 generic_prepare()
@@ -294,22 +181,20 @@ generic_compile()
 
 all_build()
 {
-	for component in $COMPONENTS
+	for component in $COMPS
 	do
 		BUILDPATH="$BUILDPATH_ROOT/$component"
 		SRCPATH="$SRCPATH_ROOT/$component"
-		FORCE=$FALSE
 		LOGFILE="${BUILDPATH}.log"
 		rm -f "$LOGFILE"
 
 		# Exclude/force-build component?
-		if list_contains "$EXCLUDED" "$component"; then
+		if list_contains "$COMPS_FORCE" "$component"; then
+			info 'force-building %s' "$component"
+			rm -rf "$BUILDPATH"
+		elif list_contains "$COMPS_EXCLUDE" "$component"; then
 			skip '%s: excluded' "$component"
 			continue
-		fi
-		if list_contains "$FORCE_COMPS" "$component"; then
-			info 'force-building %s' "$component"
-			rm -r "$BUILDPATH"
 		fi
 
 		# Build:
@@ -318,10 +203,11 @@ all_build()
 			# action-specific:
 			case $action in
 				prepare)
+					configure=$FALSE
 					test ! -d "$BUILDPATH" || continue
-					FORCE=$TRUE ;;
+					configure=$TRUE ;;
 				configure)
-					test $FORCE -eq $TRUE || continue ;;
+					test $configure -eq $TRUE || continue ;;
 			esac
 			if [ $action = prepare ]; then
 				cd "$BUILDPATH_ROOT"
@@ -360,22 +246,19 @@ docker_build()
 		die '%s: image not found' "$DOCKER_IMAGE"
 	fi
 
-	exec docker run \
-		--rm \
-		-t \
-		-i \
+	exec docker run --rm -it \
 		-v "$SRCPATH_ROOT":"$DOCKER_HOSTPATH_IN" \
 		-v "$BUILDPATH_ROOT":"$DOCKER_HOSTPATH_OUT" \
 		"$DOCKER_IMAGE" \
 		"$DOCKER_HOSTPATH_IN/$RUNDIR/$RUNNAME" \
-			-f "$FORCE_COMPS" \
 			-i "$DOCKER_HOSTPATH_IN" \
+			-o "$DOCKER_HOSTPATH_OUT" \
+			-f "$COMPS_FORCE" \
+			-x "$COMPS_EXCLUDE" \
 			-j $JOBS \
 			-L "$LLVM_BASE" \
-			-o "$DOCKER_HOSTPATH_OUT" \
 			-q "$QEMU_FLAGS" \
 			$(test $VERBOSE -eq $FALSE && printf '%s' '-s') \
-			-x "$EXCLUDED" \
 			"$RELEASE"
 }
 
@@ -414,9 +297,9 @@ help()
 	  -o PATH    Path to the build output directory
 	             [default=$BUILDPATH_ROOT]
 	  -f COMPS   Force-rebuild components COMPS from scratch
-	             [default='$FORCE_COMPS']
-	  -x COMPS   Exclude components COMPS (has higher priority than -f)
-	             [default='$EXCLUDED']
+	             [default='$COMPS_FORCE']
+	  -x COMPS   Exclude components COMPS (-f overrides this)
+	             [default='$COMPS_EXCLUDE']
 	  -j N       Compile with N jobs [default=$JOBS]
 	  -L PATH    Path to where the LLVM-3.2 files are installed
 	             [default=$LLVM_BASE]
@@ -428,7 +311,8 @@ help()
 	  -h         Display this help and exit
 
 	Components:
-	  $COMPONENTS
+	  $COMPS
+	  You may specify 'all'
 
 	Architectures:
 	$(help_list_with_default "$DEFAULT_ARCH" $ARCHS)
@@ -452,10 +336,10 @@ dry_run()
 {
 	util_dryrun
 	cat <<- EOF
-	COMPONENTS='$COMPONENTS'
 	BUILDPATH_ROOT=$BUILDPATH_ROOT
-	FORCE_COMPS='$FORCE_COMPS'
-	EXCLUDED='$EXCLUDED'
+	COMPS='$COMPS'
+	COMPS_FORCE='$COMPS_FORCE'
+	COMPS_EXCLUDE='$COMPS_EXCLUDE'
 	JOBS=$JOBS
 	LLVM_BASE=$LLVM_BASE
 	QEMU_FLAGS='$QEMU_FLAGS'
@@ -475,8 +359,8 @@ get_options()
 	#SRCPATH_ROOT set in utils.sh
 	DOCKERIZED=$DEFAULT_DOCKERIZED
 	DRYRUN=$FALSE
-	FORCE_COMPS=''
-	EXCLUDED='gmock tests'
+	COMPS_FORCE=''
+	COMPS_EXCLUDE=''
 	JOBS=$CPU_CORES
 	LIST=$FALSE
 	LLVM_BASE='/opt/s2e/llvm'
@@ -488,29 +372,35 @@ get_options()
 	while getopts :df:hi:j:lL:o:q:sx:y opt; do
 		case "$opt" in
 			d) DOCKERIZED=$TRUE ;;
-			f) FORCE_COMPS="$OPTARG" ;;
-			h) help; exit 1 ;;
 			i) SRCPATH_ROOT="$OPTARG" ;;
+			o) BUILDPATH_ROOT="$(readlink -f "$OPTARG")" ;;
+			f)
+				COMPS_FORCE="$OPTARG"
+				test "$COMPS_FORCE" != 'all' || COMPS_FORCE="$COMPS"
+				;;
+			x)
+				COMPS_EXCLUDE="$OPTARG"
+				test "$COMPS_EXCLUDE" != 'all' || COMPS_EXCLUDE="$COMPS"
+				;;
 			j) JOBS="$OPTARG" ;;
 			l) LIST=$TRUE ;;
-			L) LLVM_BASE="$OPTARG" ;;
-			o) BUILDPATH_ROOT="$OPTARG" ;;
+			L)
+				LLVM_BASE="$OPTARG"
+				LLVM_SRC="$LLVM_BASE/llvm-3.2.src"
+				LLVM_BUILD="$LLVM_BASE/llvm-3.2.build"
+				LLVM_NATIVE="$LLVM_BASE/llvm-3.2-native"
+				LLVM_NATIVE_CC="$LLVM_NATIVE/bin/clang"
+				LLVM_NATIVE_CXX="$LLVM_NATIVE/bin/clang++"
+				LLVM_NATIVE_LIB="$LLVM_NATIVE/lib"
+				;;
 			q) QEMU_FLAGS="$OPTARG" ;;
 			s) VERBOSE=$FALSE ;;
-			x) EXCLUDED="$OPTARG" ;;
 			y) DRYRUN=$TRUE ;;
+			h) help; exit 1 ;;
 			'?') die_help 'Invalid option: -%s' "$OPTARG";;
 		esac
 	done
 	ARGSHIFT=$(($OPTIND - 1))
-
-	BUILDPATH_ROOT="$(readlink -f "$BUILDPATH_ROOT")"
-	LLVM_SRC="$LLVM_BASE/llvm-3.2.src"
-	LLVM_BUILD="$LLVM_BASE/llvm-3.2.build"
-	LLVM_NATIVE="$LLVM_BASE/llvm-3.2-native"
-	LLVM_NATIVE_CC="$LLVM_NATIVE/bin/clang"
-	LLVM_NATIVE_CXX="$LLVM_NATIVE/bin/clang++"
-	LLVM_NATIVE_LIB="$LLVM_NATIVE/lib"
 }
 
 get_release()
