@@ -246,13 +246,16 @@ klee_build()
 	# Configure:
 	if [ $STAMPED -ne 0 ]; then
 		klee_cxxflags=''
+		klee_cflags=''
 		klee_ldflags=''
 		if [ "$TARGET" = 'debug' ]; then
 			klee_cxxflags="$klee_cxxflags -g -O0"
+			klee_cflags="$klee_cflags -g -O0"
 			klee_ldflags="$klee_ldflags -g"
 		fi
 		if [ "$MODE" = 'asan' ]; then
 			klee_cxxflags="$klee_cxxflags -fsanitize=address"
+			klee_cflags="$klee_cflags -fsanitize=address"
 			klee_ldflags="$klee_ldflags -fsanizite=address"
 		fi
 		track 'Configuring KLEE' "$klee_srcpath"/configure \
@@ -261,9 +264,11 @@ klee_build()
 			--with-llvmobj="$LLVM_BUILD" \
 			--target=x86_64 \
 			--enable-exceptions \
+			--with-runtime="$ASSERTS" \
 			--with-stp="$BUILDPATH_BASE/stp" \
 			CC="$LLVM_NATIVE_CC" \
 			CXX="$LLVM_NATIVE_CXX" \
+			CFLAGS="$klee_cflags" \
 			CXXFLAGS="$klee_cxxflags" \
 			LDFLAGS="$klee_ldflags"
 	fi
@@ -614,7 +619,7 @@ docker_build()
 				-z \
 				"$ARCH" "$TARGET" "$MODE"
 		then
-			if ask 31 'no' "Restart?"; then
+			if ask 31 'yes' "Restart?"; then
 				docker_build_repeat=0
 			else
 				die 2 'Aborting'

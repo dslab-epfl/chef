@@ -87,10 +87,11 @@ if __name__ == '__main__':
 
     handlers = {'init'      : {'type':'MODULE',  'function':command_init},
                 'vm'        : {'type':'MODULE',  'function':command_vm  },
-                'run'       : {'type':'PYTHON',                         },
-                'build'     : {'type':'SHELL',                          },
-                'smtlibdump': {'type':'SHELL',                          },
-                'docker'    : {'type':'SHELL',                          },
+                'run'       : {'type':'PYTHON'                          },
+                'build'     : {'type':'SHELL'                           },
+                'smtlibdump': {'type':'SHELL'                           },
+                'docker'    : {'type':'SHELL'                           },
+                'compare'   : {'type':'SHELL'                           },
                 'help'      : {'type':'BUILTIN', 'function':help        }}
     handler = handlers.get(command, {'type':'INVALID'})
 
