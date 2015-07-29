@@ -39,6 +39,7 @@ dump()
 		$(test $MONOLITHIC -eq 1 && echo '-smtlib-monolithic') \
 		$(test $HUMAN -eq 1 && echo '-smtlib-human-readable') \
 		$(test $LIMIT -gt 0 && echo "-smtlib-dump-limit $LIMIT") \
+		$(test $COMPACT -eq 1 && echo '-smtlib-compact') \
 		"$DB_FILE"
 }
 
@@ -68,13 +69,14 @@ docker_dump()
 		"$DOCKER_HOSTPATH"/"$RUNDIR"/"$RUNNAME" \
 			-a "$ARCH" \
 			-b "$DOCKER_HOSTPATH_BUILD" \
+			$(test $COMPACT -eq 1 && printf "%s" '-c') \
 			-l $LIMIT \
 			-m "$MODE" \
-			$(test $MONOLITHIC -eq 1 && printf "%s\n" '-M') \
+			$(test $MONOLITHIC -eq 1 && printf "%s" '-M') \
 			-o "$DOCKER_HOSTPATH_OUT" \
 			-r "$RELEASE" \
 			-s "$SOLVER" \
-			$(test $HUMAN -eq 1 && printf "%s\n" '-w') \
+			$(test $HUMAN -eq 1 && printf "%s" '-w') \
 			-z \
 			"$DOCKER_HOSTPATH_IN/$DB_NAME"
 }
@@ -164,6 +166,7 @@ help()
 	  -a ARCH        Chef build architecture [default=$ARCH]
 	  -b BUILD_PATH  Path to the Chef build directory
 	                 [default=$BUILD_PATH]
+	  -c             Print compact SMTLIB (experimental!)
 	  -h             Display this help
 	  -l LIMIT       Limit number of produced queries to LIMIT (0 = no limit) [default=0]
 	  -m MODE        Build mode ('normal', 'asan', 'libmemtracer') [default=$MODE]
@@ -197,6 +200,7 @@ get_options()
 	# Default values:
 	ARCH='i386'
 	BUILD_PATH="$SRCPATH_ROOT/build"
+	COMPACT=0
 	DUMP_PATH="$PWD"
 	LIMIT=0
 	MODE='normal'
@@ -207,10 +211,11 @@ get_options()
 	DIRECT=0
 	DRYRUN=0
 
-	while getopts a:b:hl:m:Mo:r:s:wyz opt; do
+	while getopts a:b:chl:m:Mo:r:s:wyz opt; do
 		case "$opt" in
 			a) ARCH="$OPTARG" ;;
 			b) BUILD_PATH="$OPTARG" ;;
+			c) COMPACT=1 ;;
 			h) help; exit 1 ;;
 			l) LIMIT="$OPTARG" ;;
 			m) MODE="$OPTARG" ;;

@@ -245,7 +245,7 @@ klee_build()
 
 	# Configure:
 	if [ $STAMPED -ne 0 ]; then
-		klee_cxxflags='-DSMTLIB_PRINTER_COMPACT'
+		klee_cxxflags=''
 		klee_ldflags=''
 		if [ "$TARGET" = 'debug' ]; then
 			klee_cxxflags="$klee_cxxflags -g -O0"
