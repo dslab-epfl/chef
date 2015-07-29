@@ -65,6 +65,9 @@ class Batch:
             cmd_lines.extend(c.get_cmd_lines())
         return cmd_lines
 
+    def get_commands(self):
+        return self.commands
+
 
 if __name__ == '__main__':
     if len(sys.argv) < 2:

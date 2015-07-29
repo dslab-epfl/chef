@@ -113,7 +113,7 @@ class CommandError(Exception):
 
 
 def get_default_ip():
-    return 'dslab-worf.epfl.ch' #FIXME
+    return 'dslab-worf.epfl.ch' #FIXME #TODO #XXX
 
     iface = "localhost"
 
@@ -397,10 +397,29 @@ def main():
     # batch-execute multiple commands:
     if args.mode == 'sym' and args.batch_file is not None:
         batch = Batch(args.batch_file)
-        cdb = ChefDockerBatch(batch)
-        qemu_cmd_line = cdb.get_cmd_lines()
-        for c in qemu_cmd_line:
-            execute(args, c)
+        batch_commands = batch.get_commands()
+
+        batch_offset = 0
+        for command in batch_commands:
+            cmd_lines = command.get_cmd_lines()
+            for c in cmd_lines:
+                run_cmd = ['%s' % sys.argv[0], '--batch']
+                if args.dry_run:
+                    run_cmd.extend(['--dry-run'])
+                run_cmd.extend(['--data-root', args.data_root])
+                run_cmd.extend(['--command-port', str(args.command_port + batch_offset)])
+                run_cmd.extend(['--monitor-port', str(args.monitor_port + batch_offset)])
+                run_cmd.extend(['--vnc-display', str(args.vnc_display + batch_offset)])
+                run_cmd.extend(['sym'])
+                run_cmd.extend(['--config', command.config])
+                run_cmd.extend(['--out-dir', args.out_dir])
+                if args.time_out:
+                    run_cmd.extend(['--time-out', str(args.time_out)])
+                if args.env_var:
+                    run_cmd.extend(['--env-var', args.env_var])
+                run_cmd.extend(c)
+                print(' '.join(run_cmd))
+                batch_offset += 1
     else:
         #qemu_cmd_line = build_qemu_cmd_line(args)
         qemu_cmd_line = build_docker_cmd_line(args) # wrap qemu inside docker
