@@ -144,9 +144,11 @@ ask()
 	while true; do
 		important $ask_colour "$ask_format $ask_sel " "$@"
 		read a
+		test -n "$a" || a="$ask_default"
 		case "$a" in
-			[Yy]*|'') return 0;;
+			[Yy]*) return 0;;
 			[Nn]*) return 1;;
+			*) ;;
 		esac
 	done
 }

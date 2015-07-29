@@ -38,6 +38,7 @@ dump()
 		-generate-smtlib -smtlib-out-path="$DUMP_PATH" \
 		$(test $MONOLITHIC -eq 1 && echo '-smtlib-monolithic') \
 		$(test $HUMAN -eq 1 && echo '-smtlib-human-readable') \
+		$(test $LIMIT -gt 0 && echo '-smtlib-dump-limit 10') \
 		"$DB_FILE"
 }
 
@@ -67,6 +68,7 @@ docker_dump()
 		"$DOCKER_HOSTPATH"/"$RUNDIR"/"$RUNNAME" \
 			-a "$ARCH" \
 			-b "$DOCKER_HOSTPATH_BUILD" \
+			-l $LIMIT \
 			-m "$MODE" \
 			$(test $MONOLITHIC -eq 1 && printf "%s\n" '-M') \
 			-o "$DOCKER_HOSTPATH_OUT" \
@@ -90,6 +92,7 @@ dryrun()
 	DB_FILE=$DB_FILE
 	MONOLITHIC=$(boolean $MONOLITHIC)
 	HUMAN=$(boolean $HUMAN)
+	LIMIT=$LIMIT
 	EOF
 
 	if [ $DIRECT -eq 0 ]; then
@@ -162,6 +165,7 @@ help()
 	  -b BUILD_PATH  Path to the Chef build directory
 	                 [default=$BUILD_PATH]
 	  -h             Display this help
+	  -l LIMIT       Limit number of produced queries to LIMIT (0 = no limit) [default=0]
 	  -m MODE        Build mode ('normal', 'asan', 'libmemtracer') [default=$MODE]
 	  -M             Monolithic dump (no separate files)
 	  -o DUMP_PATH   Dump queries from the DB file to DUMP_PATH
@@ -178,6 +182,14 @@ help()
 	#EOF
 }
 
+isnumeric()
+{
+	case "$1" in
+		''|*[!0-9]*) return 1 ;;
+		*) return 0 ;;
+	esac
+}
+
 # MAIN =========================================================================
 
 get_options()
@@ -186,6 +198,7 @@ get_options()
 	ARCH='i386'
 	BUILD_PATH="$SRCPATH_ROOT/build"
 	DUMP_PATH="$PWD"
+	LIMIT=0
 	MODE='normal'
 	MONOLITHIC=0
 	RELEASE='release'
@@ -194,11 +207,12 @@ get_options()
 	DIRECT=0
 	DRYRUN=0
 
-	while getopts a:b:hm:Mo:r:s:wyz opt; do
+	while getopts a:b:hl:m:Mo:r:s:wyz opt; do
 		case "$opt" in
 			a) ARCH="$OPTARG" ;;
 			b) BUILD_PATH="$OPTARG" ;;
 			h) help; exit 1 ;;
+			l) LIMIT="$OPTARG" ;;
 			m) MODE="$OPTARG" ;;
 			M) MONOLITHIC=1 ;;
 			o) DUMP_PATH="$OPTARG" ;;
@@ -223,6 +237,9 @@ get_options()
 		release|debug) ;;
 		*) die_help 'Illegal release mode: %s' "$MODE" ;;
 	esac
+	if ! isnumeric "$LIMIT"; then
+		die_help 'Non-numeric value passed for -l'
+	fi
 	DUMP_PATH="$(readlink -f "$DUMP_PATH")"
 	BUILD_PATH="$(readlink -f "$BUILD_PATH")"
 	BUILD="$ARCH-$RELEASE-$MODE"
