@@ -60,7 +60,8 @@ protected:
     ExprBitsInfo doSimplifyBits(ref<Expr> e, uint64_t ignoredBits);
 
 public:
-    ref<Expr> simplify(ref<Expr> e, uint64_t *knownZeroBits = NULL);
+    ref<Expr> simplify(ref<Expr> e, uint64_t *knownZeroBits = NULL,
+            uint64_t *knownOneBits = NULL);
 };
 
 } // namespace klee
