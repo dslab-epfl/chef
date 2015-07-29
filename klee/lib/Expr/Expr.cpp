@@ -972,6 +972,37 @@ static ref<Expr> OrExpr_create(Expr *l, Expr *r) {
     if (ae->right->isNegationOf(l))
       return OrExpr::create(l, ae->left);
   }
+  if (isa<EqExpr>(l) && isa<EqExpr>(r)) {
+      // !a || !b == !(a && b)
+      EqExpr *le = dyn_cast<EqExpr>(l);
+      EqExpr *re = dyn_cast<EqExpr>(r);
+      if (le->left->isZero() && re->left->isZero()) {
+          if (le->right->getWidth() == Expr::Bool
+                  && re->right->getWidth() == Expr::Bool)
+              return Expr::createIsZero(AndExpr::create(le->right, re->right));
+      }
+  }
+  if (isa<OrExpr>(l) && isa<AndExpr>(r)) {
+      // (a || b) || (!a && !b) == True
+      OrExpr *oe = dyn_cast<OrExpr>(l);
+      AndExpr *ae = dyn_cast<AndExpr>(r);
+      if (ae->left->isNegationOf(oe->left)
+              && ae->right->isNegationOf(oe->right))
+          return ConstantExpr::create(1, Expr::Bool);
+      if (ae->left->isNegationOf(oe->right)
+              && ae->right->isNegationOf(oe->left))
+          return ConstantExpr::create(1, Expr::Bool);
+  }
+  if (isa<OrExpr>(r) && isa<AndExpr>(l)) {
+    OrExpr *oe = dyn_cast<OrExpr>(r);
+    AndExpr *ae = dyn_cast<AndExpr>(l);
+    if (ae->left->isNegationOf(oe->left)
+            && ae->right->isNegationOf(oe->right))
+        return ConstantExpr::create(1, Expr::Bool);
+    if (ae->left->isNegationOf(oe->right)
+            && ae->right->isNegationOf(oe->left))
+        return ConstantExpr::create(1, Expr::Bool);
+  }
   return OrExpr::alloc(l, r);
 }
 
