@@ -28,25 +28,32 @@ compare()
 	compare_wrong=0
 	compare_array=''
 
-	printf "%4s | %5s | %5s\n" 'q' 'orig' 'comp'
-	echo '-----+-------+------'
+	printf "query| orig  | comp\n"
+	echo   '-----+-------+------'
 	for i in $(seq $RANGE_OFFSET $(($RANGE_OFFSET + $RANGE_LENGTH - 1))); do
-		smtd="$("$SOLVER_BIN" \
-		        $SOLVER_ARGS \
-		        "$SRCPATH_ROOT/data/smtlibdump/$( printf "%04d" $i).smt")" \
-		        || smtd='error'
-		cmpd="$("$SOLVER_BIN" \
-		        $SOLVER_ARGS \
-		        "$SRCPATH_ROOT/data/compactdump/$(printf "%04d" $i).smt")" \
-		        || cmpd='wrong'
-		if [ "$smtd" != "$cmpd" ]; then
+		# original
+		original_colour=''
+		original="$("$SOLVER_BIN" \
+		            $SOLVER_ARGS \
+		            "$SRCPATH_ROOT/data/smtlibdump/$( printf "%04d" $i).smt")" \
+		            || { original='error'; original_colour="\033[31m"; }
+
+		# compact
+		compact_colour="\033[32m"
+		compact="$("$SOLVER_BIN" \
+		           $SOLVER_ARGS \
+		           "$SRCPATH_ROOT/data/compactdump/$(printf "%04d" $i).smt")" \
+		           || { compact='invld'; compact_colour="\033[31m"; }
+
+		if [ "$original" != "$compact" ]; then
 			compare_wrong=$(($compare_wrong + 1))
 			compare_array="$compare_array $i"
-			printf "\033[31m"
 		fi
-		printf "%4d | %5s | %5s\033[0m\n" $i "$smtd" "$cmpd"
+		printf "%4d | $original_colour%5s | $compact_colour%5s\033[0m\n" \
+			$i "$original" "$compact"
 	done 2>/dev/null
 	echo '-----+-------+------'
+
 	if [ $compare_wrong -eq 0 ]; then
 		success "queries passed (%d)\n" $RANGE_LENGTH
 	else
