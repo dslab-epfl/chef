@@ -1,0 +1,91 @@
+/*
+ * S2E Selective Symbolic Execution Framework
+ *
+ * Copyright (c) 2014, Dependable Systems Laboratory, EPFL
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *     * Redistributions of source code must retain the above copyright
+ *       notice, this list of conditions and the following disclaimer.
+ *     * Redistributions in binary form must reproduce the above copyright
+ *       notice, this list of conditions and the following disclaimer in the
+ *       documentation and/or other materials provided with the distribution.
+ *     * Neither the name of the Dependable Systems Laboratory, EPFL nor the
+ *       names of its contributors may be used to endorse or promote products
+ *       derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE DEPENDABLE SYSTEMS LABORATORY, EPFL BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * Currently maintained by:
+ *    Stefan Bucur <stefan.bucur@epfl.ch>
+ *
+ * All contributors are listed in the S2E-AUTHORS file.
+ */
+ 
+package klee.data;
+
+import "Expr.proto";
+
+enum QueryType {
+  TRUTH = 0;
+  VALIDITY = 1;
+  VALUE = 2;
+  INITIAL_VALUES = 3;
+}
+
+enum QueryValidity {
+  FALSE = 0;
+  TRUE = 1;
+  UNKNOWN = 2;
+}
+
+enum SolverID {
+  STP = 0;
+  Z3 = 1;
+  BOOLECTOR = 2;
+  MATHSAT = 3;
+}
+
+message SolverResult {
+  required SolverID solver_id = 1;
+  required uint64 time_usec = 2;
+  optional QueryValidity validity = 3;
+  optional bool truth = 4;
+}
+
+message Assertion {
+  required uint64 id = 1;
+  required uint64 parent_id = 2;
+  required uint64 expr_id = 3;
+}
+
+message Query {
+  required uint64 expr_id = 1;
+  required uint64 pc_head_id = 2;
+  repeated Assertion assertion = 3;
+  
+  required QueryType type = 4;
+  
+  optional SolverResult default_result = 5;
+}
+
+// Used as SQLite blob field
+message QueryData {
+  required uint64 id = 1;
+  optional uint64 parent_id = 2;
+  
+  required uint64 expr_id = 3;
+  repeated uint64 assert_expr_id = 4;
+  
+  required ExpressionData expr_data = 5;
+}
