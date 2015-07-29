@@ -2278,6 +2278,32 @@ EOF
 fi
 
 ##########################################
+# s2e probe: protobuf
+
+if test "$s2e" != "no" ; then
+  cat > $TMPCXX <<EOF
+#include <google/protobuf/stubs/common.h>
+int main(int argc, char **argv) {
+  GOOGLE_PROTOBUF_VERIFY_VERSION;
+}
+EOF
+  if [ "$mingw32" = "yes" ]; then
+    protobuf_libs="-lprotobuf"
+  else
+    protobuf_pkg="protobuf"
+    protobuf_cxxflags=`pkg-config $protobuf_pkg --cflags 2> /dev/null`
+    protobuf_libs=`pkg-config $protobuf_pkg --libs 2> /dev/null`
+  fi
+
+  if compile_prog_cxx "$protobuf_cxxflags" "$protobuf_libs" ; then
+    : Protobuf found
+  else
+    feature_not_found "protobuf (required for s2e)"
+    exit 1
+  fi
+fi
+
+##########################################
 # s2e probe: Z3
 
 if test "$s2e" != "no" ; then
@@ -4123,7 +4149,7 @@ if test "$target_s2e" = "yes" ; then
   echo "CONFIG_LLVM=y" >> $config_target_mak
   echo "LLVM_CXXFLAGS:=\$(filter-out $FILTERFLAGS,$llvm_cxxflags)" >> $config_target_mak
   echo "S2E_CXXFLAGS:=\$(filter-out $llvm_cxxflags $FILTERFLAGS, $klee_cxxflags)" >> $config_target_mak
-  echo "S2E_CXXFLAGS+=$lua_cxxflags $sigcxx2_cxxflags $sqlite_cxxflags $z3_cxxflags" >> $config_target_mak
+  echo "S2E_CXXFLAGS+=$lua_cxxflags $sigcxx2_cxxflags $sqlite_cxxflags $z3_cxxflags $protobuf_cxxflags" >> $config_target_mak
   echo "S2E_CXXFLAGS+=-DKLEE_LIBRARY_DIR='\"$klee_libdir\"'" >> $config_target_mak
   echo "LLVMAR:=$llvmar" >> $config_target_mak
   echo "S2E_PLUGIN_DIR=$s2e_plugin_dir" >> $config_target_mak
@@ -4290,7 +4316,7 @@ fi
 if test "$target_s2e" = "yes" ; then
   echo "LINKER=$cxx" >> $config_target_mak
   echo "LIBS:=$klee_libs $llvm_libs \$(LIBS)" >> $config_target_mak
-  echo "LIBS+=$lua_libs $sigcxx2_libs $sqlite_libs $z3_libs" >> $config_target_mak
+  echo "LIBS+=$lua_libs $sigcxx2_libs $sqlite_libs $z3_libs $protobuf_libs" >> $config_target_mak
   echo "LIBS+=\$(filter-out $llvm_ldflags, $klee_ldflags) $llvm_ldflags" >> $config_target_mak
   echo "KLEE_LIBFILES=$klee_libfiles" >> $config_target_mak
 fi

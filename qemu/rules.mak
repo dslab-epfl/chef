@@ -9,6 +9,7 @@ MAKEFLAGS += -rR
 %.h:
 %.c:
 %.cpp:
+%.cc:
 %.m:
 %.mak:
 
@@ -20,6 +21,9 @@ QEMU_DGFLAGS += -MMD -MP -MT $@ -MF $(*D)/$(*F).d
 	$(call quiet-command,$(CC) $(QEMU_INCLUDES) $(QEMU_CFLAGS) $(QEMU_DGFLAGS) $(CFLAGS) -c -o $@ $<,"  CC    $(TARGET_DIR)$@")
 
 %.o: %.cpp
+	$(call quiet-command,$(CXX) $(QEMU_INCLUDES) $(QEMU_CFLAGS) $(QEMU_CXXFLAGS) $(QEMU_DGFLAGS) $(CXXFLAGS) -c -o $@ $<,"  CXX   $(TARGET_DIR)$@")
+
+%.o: %.cc
 	$(call quiet-command,$(CXX) $(QEMU_INCLUDES) $(QEMU_CFLAGS) $(QEMU_CXXFLAGS) $(QEMU_DGFLAGS) $(CXXFLAGS) -c -o $@ $<,"  CXX   $(TARGET_DIR)$@")
 
 %.o: %.m
@@ -63,7 +67,7 @@ quiet-command = $(if $(V),$1,$(if $(2),@echo $2 && $1, @$1))
 cc-option = $(if $(shell $(CC) $1 $2 -S -o /dev/null -xc /dev/null \
               >/dev/null 2>&1 && echo OK), $2, $3)
 
-VPATH_SUFFIXES = %.c %.cpp %.h %.asm %.S %.m %.mak %.texi %.sh
+VPATH_SUFFIXES = %.c %.cpp %.cc %.h %.asm %.S %.m %.mak %.texi %.sh
 
 set-vpath = $(if $1,$(foreach PATTERN,$(VPATH_SUFFIXES),$(eval vpath $(PATTERN) $1)))
 

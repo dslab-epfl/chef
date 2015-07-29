@@ -39,3 +39,5 @@ CXX.Flags += -D__STDC_FORMAT_MACROS
 
 # For STP.
 CXX.Flags += -DEXT_HASH_MAP
+
+LD.Flags += -lprotobuf
