@@ -20,3 +20,6 @@ autom4te.cache
 /build
 /vm
 /expdata
+
+# Ctag files:
+tags
