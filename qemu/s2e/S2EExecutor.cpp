@@ -2205,6 +2205,8 @@ bool S2EExecutor::merge(klee::ExecutionState &_base, klee::ExecutionState &_othe
         doStateSwitch(&other, NULL);
     }
 
+    assert(!s1 || !s2);
+
     bool result;
     if(base.merge(other)) {
         m_s2e->getMessagesStream(&base)
