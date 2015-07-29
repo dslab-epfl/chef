@@ -520,6 +520,7 @@ s2eobj-y += s2e/SelectRemovalPass.o
 s2eobj-y += s2e/S2EExecutor.o
 s2eobj-y += s2e/S2ESolverFactory.o
 s2eobj-y += s2e/S2EEventLogger.o
+s2eobj-y += s2e/DataCollectorSolver.o
 s2eobj-y += s2e/MMUFunctionHandlers.o
 s2eobj-y += s2e/Synchronization.o
 s2eobj-y += s2e/S2EExecutionState.o
