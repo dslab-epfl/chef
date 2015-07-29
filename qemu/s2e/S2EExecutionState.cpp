@@ -72,6 +72,7 @@ extern CPUArchState *env;
 
 #include <iomanip>
 #include <sstream>
+#include <list>
 
 //XXX: The idea is to avoid function calls
 //#define small_memcpy(dest, source, count) asm volatile ("cld; rep movsb"::"S"(source), "D"(dest), "c" (count):"flags", "memory")
@@ -1710,34 +1711,48 @@ bool S2EExecutionState::merge(const ExecutionState &_b)
         }
     }
 
-    std::set< ref<Expr> > aConstraints(constraints.begin(), constraints.end());
-    std::set< ref<Expr> > bConstraints(b.constraints.begin(),
-                                       b.constraints.end());
-    std::set< ref<Expr> > commonConstraints, aSuffix, bSuffix;
-    std::set_intersection(aConstraints.begin(), aConstraints.end(),
-                          bConstraints.begin(), bConstraints.end(),
-                          std::inserter(commonConstraints, commonConstraints.begin()));
-    std::set_difference(aConstraints.begin(), aConstraints.end(),
-                        commonConstraints.begin(), commonConstraints.end(),
-                        std::inserter(aSuffix, aSuffix.end()));
-    std::set_difference(bConstraints.begin(), bConstraints.end(),
-                        commonConstraints.begin(), commonConstraints.end(),
-                        std::inserter(bSuffix, bSuffix.end()));
+    typedef std::list<ConditionNodeRef> CondNodeList;
+
+    CondNodeList aConstraints, bConstraints;
+
+    for (ConditionNodeRef node = constraints.head(), root = constraints.root();
+            node != root; node = node->parent()) {
+        aConstraints.push_front(node);
+    }
+    for (ConditionNodeRef node = b.constraints.head(), root = b.constraints.root();
+            node != root; node = node->parent()) {
+        bConstraints.push_front(node);
+    }
+
+    CondNodeList::iterator aDivergeIt, bDivergeIt, sharedIt;
+    aDivergeIt = aConstraints.begin();
+    bDivergeIt = bConstraints.begin();
+    sharedIt = aConstraints.end();
+
+    while (aDivergeIt != aConstraints.end() && bDivergeIt != bConstraints.end()
+            && *aDivergeIt == *bDivergeIt) {
+        sharedIt = aDivergeIt++;
+        bDivergeIt++;
+    }
+
+
     if(DebugLogStateMerge) {
         s << "\tconstraint prefix: [";
-        for(std::set< ref<Expr> >::iterator it = commonConstraints.begin(),
-                        ie = commonConstraints.end(); it != ie; ++it)
-            s << *it << ", ";
+        for(CondNodeList::iterator it = aConstraints.begin(); it != aDivergeIt; ++it) {
+            s << (*it)->expr() << ", ";
+        }
         s << "]\n";
         s << "\tA suffix: [";
-        for(std::set< ref<Expr> >::iterator it = aSuffix.begin(),
-                        ie = aSuffix.end(); it != ie; ++it)
-            s << *it << ", ";
+        for(CondNodeList::iterator it = aDivergeIt, ie = aConstraints.end();
+                it != ie; ++it) {
+            s << (*it)->expr() << ", ";
+        }
         s << "]\n";
         s << "\tB suffix: [";
-        for(std::set< ref<Expr> >::iterator it = bSuffix.begin(),
-                        ie = bSuffix.end(); it != ie; ++it)
-        s << *it << ", ";
+        for(CondNodeList::iterator it = bDivergeIt, ie = bConstraints.end();
+                it != ie; ++it) {
+            s << (*it)->expr() << ", ";
+        }
         s << "]" << '\n';
     }
 
@@ -1809,12 +1824,16 @@ bool S2EExecutionState::merge(const ExecutionState &_b)
     // Create state predicates
     ref<Expr> inA = ConstantExpr::alloc(1, Expr::Bool);
     ref<Expr> inB = ConstantExpr::alloc(1, Expr::Bool);
-    for(std::set< ref<Expr> >::iterator it = aSuffix.begin(),
-                 ie = aSuffix.end(); it != ie; ++it)
-        inA = AndExpr::create(inA, *it);
-    for(std::set< ref<Expr> >::iterator it = bSuffix.begin(),
-                 ie = bSuffix.end(); it != ie; ++it)
-        inB = AndExpr::create(inB, *it);
+
+    for(CondNodeList::iterator it = aDivergeIt, ie = aConstraints.end();
+            it != ie; ++it) {
+        inA = AndExpr::create(inA, (*it)->expr());
+    }
+
+    for(CondNodeList::iterator it = bDivergeIt, ie = bConstraints.end();
+            it != ie; ++it) {
+        inB = AndExpr::create(inB, (*it)->expr());
+    }
 
     // XXX should we have a preference as to which predicate to use?
     // it seems like it can make a difference, even though logically
@@ -1870,12 +1889,19 @@ bool S2EExecutionState::merge(const ExecutionState &_b)
     if(DebugLogStateMerge)
         s << "\t\tcreated " << selectCountMem << " select expressions in memory\n";
 
-    constraints = ConstraintManager();
-    for(std::set< ref<Expr> >::iterator it = commonConstraints.begin(),
-                ie = commonConstraints.end(); it != ie; ++it)
-        constraints.addConstraint(*it);
+    ConditionInspector inspector;
+    if (DebugLogStateMerge) {
+        inspector.Print(g_s2e->getMessagesStream(this) << "A: ", constraints) << '\n';
+        inspector.Print(g_s2e->getMessagesStream(this) << "B: ", b.constraints) << '\n';
+    }
 
+    constraints = ConstraintManager(constraints.root(),
+            (sharedIt != aConstraints.end()) ? *sharedIt : constraints.root());
     constraints.addConstraint(OrExpr::create(inA, inB));
+
+    if (DebugLogStateMerge) {
+        inspector.Print(g_s2e->getMessagesStream(this) << "A+B: ", constraints) << '\n';
+    }
 
     // Merge dirty mask by clearing bits that differ. Clearning bits in
     // dirty mask can only affect performance but not correcntess.
