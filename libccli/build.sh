@@ -207,8 +207,8 @@ lua_build()
 }
 
 # STP ==========================================================================
-# STP does not seem to allow building outside the source directory, so in order
-# not pollute stuff, we need to copy the entire thing.
+# STP does not seem to allow building outside the source directory, so as not to
+# pollute stuff, we need to copy the entire thing.
 # Yay!
 
 stp_build()
@@ -245,7 +245,7 @@ klee_build()
 
 	# Configure:
 	if [ $STAMPED -ne 0 ]; then
-		klee_cxxflags=''
+		klee_cxxflags='-DSMTLIB_PRINTER_COMPACT'
 		klee_ldflags=''
 		if [ "$TARGET" = 'debug' ]; then
 			klee_cxxflags="$klee_cxxflags -g -O0"
