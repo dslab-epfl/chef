@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 
-from chef import Chef
-from batch import Batch
-from chefdocker import ChefDocker
+from .chef import Chef
+from .batch import Batch
+from .chefdocker import ChefDocker
 import sys
 import subprocess
 
@@ -68,7 +68,6 @@ if __name__ == '__main__':
     path_yaml = sys.argv[1]
     path_results = 'chefdockerbatch_results' if len(sys.argv) < 3 else sys.argv[2]
 
-    chef = Chef()
     batch = Batch(path_yaml, path_results)
     chefdockerbatch = ChefDockerBatch(batch)
     cmds = chefdockerbatch.get_cmd_lines()

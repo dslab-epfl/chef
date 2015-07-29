@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
-from chef import Chef
-from docker import Docker
+from .chef import Chef
+from .docker import Docker
 
 class ChefDocker:
     DEFAULT_IMAGE = Docker.DEFAULT_IMAGE

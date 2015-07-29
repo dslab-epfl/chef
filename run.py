@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 #
 # Copyright (C) 2015 EPFL.
 #
@@ -26,7 +26,7 @@ __author__ = "stefan.bucur@epfl.ch (Stefan Bucur)"
 
 
 import argparse
-import httplib
+import http.client
 import json
 import multiprocessing
 import os
@@ -40,6 +40,8 @@ import pipes
 import time
 
 from datetime import datetime, timedelta
+from batch.chefdockerbatch import ChefDockerBatch
+from batch.batch import Batch
 
 THIS_DIR = os.path.dirname(__file__)
 
@@ -111,11 +113,13 @@ class CommandError(Exception):
 
 
 def get_default_ip():
+    return 'dslab-worf.epfl.ch' #FIXME
+
     iface = "localhost"
 
     f = open('/proc/net/route')
     for i in csv.DictReader(f, delimiter="\t"):
-        if long(i['Destination'], 16) == 0:
+        if i['Destination'] == 0:
             iface = i['Iface']
             break
 
@@ -132,12 +136,12 @@ def get_default_ip():
 def send_command(command, host, port):
     conn = None
     try:
-        conn = httplib.HTTPConnection(host, port=port, timeout=COMMAND_SEND_TIMEOUT)
+        conn = http.client.HTTPConnection(host, port=port, timeout=COMMAND_SEND_TIMEOUT)
         conn.request("POST", command.url_path, command.to_json())
         response = conn.getresponse()
-        if response.status != httplib.OK:
+        if response.status != http.client.OK:
             raise CommandError("Invalid HTTP response received: %d" % response.status)
-    except (socket.error, httplib.HTTPException) as e:
+    except (socket.error, http.client.HTTPException) as e:
         raise CommandError(e)
     finally:
         if conn:
@@ -256,6 +260,8 @@ def parse_cmd_line():
                                # XXX path is for docker container
     symbolic_mode.add_argument("-t", "--time-out", type=int,
                                help="Timeout (in seconds)")
+    symbolic_mode.add_argument("--batch-file", type=str, default=None,
+                               help="YAML file that contains the commands to be executed")
     symbolic_mode.add_argument("-e", "--env-var", action="append",
                                help="Environment variable for the command (can be used multiple times)")
     symbolic_mode.add_argument("--script", nargs=2,
@@ -348,11 +354,7 @@ def build_qemu_cmd_line(args):
     return qemu_cmd_line
 
 
-def main():
-    args = parse_cmd_line()
-    #qemu_cmd_line = build_qemu_cmd_line(args)
-    qemu_cmd_line = build_docker_cmd_line(args) # wrap qemu inside docker
-
+def execute(args, qemu_cmd_line):
     print("Service      | Port  | How to connect")
     print("-------------+-------+---------------------------------------------")
     print("Watchdog     | %5d |" % args.command_port)
@@ -363,18 +365,17 @@ def main():
     print
 
     if args.dry_run:
-        print " ".join(pipes.quote(arg) for arg in qemu_cmd_line)
+        print(' '.join(qemu_cmd_line))
         return
 
-    print >>sys.stderr, "** Executing", " ".join(pipes.quote(arg) for arg in qemu_cmd_line)
-    print >>sys.stderr
+    print ("** Executing %s\n" % ' '.join(qemu_cmd_line), file=sys.stderr)
 
     environ = dict(os.environ)
 
     if args.mode == "sym":
         environ["LUA_PATH"] = ";".join([os.path.join(os.path.dirname(args.config), "?.lua"),
                                         environ.get("LUA_PATH", "")])
-        print >>sys.stderr, "** Setting LUA_PATH=%s" % environ["LUA_PATH"]
+        print("** Setting LUA_PATH=%s" % environ["LUA_PATH"], file=sys.stderr)
 
         if args.time_out:
             kill_me_later(args.time_out)
@@ -388,6 +389,22 @@ def main():
                                "localhost", args.command_port)
 
     os.execvpe(qemu_cmd_line[0], qemu_cmd_line, environ)
+
+
+def main():
+    args = parse_cmd_line()
+
+    # batch-execute multiple commands:
+    if args.mode == 'sym' and args.batch_file is not None:
+        batch = Batch(args.batch_file)
+        cdb = ChefDockerBatch(batch)
+        qemu_cmd_line = cdb.get_cmd_lines()
+        for c in qemu_cmd_line:
+            execute(args, c)
+    else:
+        #qemu_cmd_line = build_qemu_cmd_line(args)
+        qemu_cmd_line = build_docker_cmd_line(args) # wrap qemu inside docker
+        execute(args, qemu_cmd_line)
 
 
 if __name__ == "__main__":

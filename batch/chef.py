@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import os
-from qemu import Qemu
+from .qemu import Qemu
 
 RUNPATH = os.path.dirname(__file__)
 

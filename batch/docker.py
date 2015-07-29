@@ -5,12 +5,12 @@ import sys
 import subprocess
 
 class Docker:
-    DEFAULT_IMAGE = 'dslab/s2e-chef'
     DEFAULT_VERSION = 'v0.6'
+    DEFAULT_IMAGE = 'dslab/s2e-chef:%s' % DEFAULT_VERSION
     DEFAULT_COMMAND = ['/bin/sh']
 
     def __init__(self,
-                 image: str = '%s:%s' % (DEFAULT_IMAGE, DEFAULT_VERSION),
+                 image: str = DEFAULT_IMAGE,
                  command: [str] = DEFAULT_COMMAND,
                  privileged: bool = False,
                  batch: bool = False,

@@ -20,11 +20,10 @@ class Batch:
 
 
     class Command:
-        def __init__(self, token: dict, results_path: str, variables: dict):
+        def __init__(self, token: dict, variables: dict):
             self.line = token['line'].split()
             self.variables = self.filter(variables)
             self.config = token['config']
-            self.results_path = results_path
 
         def filter(self, variables: {str: str}):
             used_variables = {}
@@ -50,16 +49,14 @@ class Batch:
             return cmd_lines
 
 
-    def __init__(self, path_yaml: str, path_results: str):
+    def __init__(self, path_yaml: str):
         if not os.path.isfile(path_yaml):
             raise Exception("%s: File not found" % path_yaml)
         yaml = Batch.YAML(path_yaml)
         self.variables = yaml.tree['variables']
-        self.path_results = path_results
         self.commands = []
         for ctoken, i in zip(yaml.tree['commands'], range(len(yaml.tree['commands']))):
-            c = Batch.Command(ctoken, '%s/exp%04d' % (self.path_results, i),
-                              self.variables)
+            c = Batch.Command(ctoken, self.variables)
             self.commands.append(c)
 
     def get_cmd_lines(self):
