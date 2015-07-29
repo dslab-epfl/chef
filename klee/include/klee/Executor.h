@@ -70,6 +70,7 @@ namespace klee {
   class BitfieldSimplifier;
   class SolverFactory;
   class EventLogger;
+  class MemoryOpsLogger;
   template<class T> class ref;
 
   /// \todo Add a context object to keep track of data only live
@@ -111,6 +112,7 @@ protected:
   std::set<ExecutionState*> states;
   StatsTracker *statsTracker;
   EventLogger *eventLogger;
+  MemoryOpsLogger *memopsLogger;
   TreeStreamWriter *pathWriter, *symPathWriter;
   SpecialFunctionHandler *specialFunctionHandler;
   std::vector<TimerInfo*> timers;

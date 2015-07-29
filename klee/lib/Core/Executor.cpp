@@ -21,6 +21,7 @@
 #include "klee/Searcher.h"
 #include "SeedInfo.h"
 #include "SpecialFunctionHandler.h"
+#include "MemoryOpsLogger.h"
 #include "klee/StatsTracker.h"
 #include "klee/SolverFactory.h"
 #include "klee/data/EventLogger.h"
@@ -62,6 +63,8 @@
 #include "llvm/Support/GetElementPtrTypeIterator.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/Process.h"
+#include "llvm/Support/TimeValue.h"
+#include "llvm/Support/Format.h"
 #include "llvm/DataLayout.h"
 
 #include <cassert>
@@ -84,6 +87,7 @@
 
 using namespace llvm;
 using namespace klee;
+using llvm::sys::TimeValue;
 
 namespace {
   cl::opt<bool>
@@ -232,6 +236,21 @@ namespace {
   EnableSpeculativeForking("enable-speculative-forking",
             cl::desc("Enable speculative forking for concolic execution"),
             cl::init(true));
+
+  enum MemopsLoggerSetting {
+      CollectMemopsNone,
+      CollectMemopsSymbolic,
+      CollectMemopsAll
+  };
+  cl::opt<MemopsLoggerSetting>
+  CollectMemoryOperations("collect-memory-ops",
+          cl::desc("Collect memory operations"),
+          cl::values(
+                  clEnumValN(CollectMemopsNone, "none", "No logging"),
+                  clEnumValN(CollectMemopsSymbolic, "symbolic", "Only symbolic accesses"),
+                  clEnumValN(CollectMemopsAll, "all", "All memory accesses"),
+                  clEnumValEnd),
+          cl::init(CollectMemopsSymbolic));
 }
 
 //S2E: we want these to be accessible in S2E executor
@@ -300,6 +319,7 @@ Executor::Executor(const InterpreterOptions &opts, InterpreterHandler *ih,
 
   this->solver = NULL;
   initializeSolver();
+  memopsLogger = new MemoryOpsLogger(*eventLogger, *this->solver);
 
   memory = new MemoryManager();
 
@@ -347,6 +367,7 @@ Executor::~Executor() {
   if (statsTracker)
     delete statsTracker;
   delete solverFactory;
+  delete memopsLogger;
   delete eventLogger;
   delete solver;
   delete kmodule;
@@ -3274,10 +3295,25 @@ void Executor::executeMemoryOperation(ExecutionState &state,
       value = state.constraints.simplifyExpr(value);
   }
 
+  if (ConstantExpr *ce = dyn_cast<ConstantExpr>(address)) {
+      if (CollectMemoryOperations == CollectMemopsAll) {
+          memopsLogger->logConcreteMemoryOperation(state, isWrite,
+                  ce->getZExtValue(), type, value);
+      }
+  } else {
+      if (CollectMemoryOperations != CollectMemopsNone) {
+          memopsLogger->beginSymbolicMemoryOperation(state, isWrite, address,
+                  type, value);
+      }
+  }
+
   // fast path: single in-bounds resolution
   ObjectPair op;
   bool success;
   bool fastInBounds = false;
+  ResolutionList rl;
+  bool incomplete;
+  ExecutionState *unbound;
 
   //Fast pattern-matching of addresses
   //Avoids calling the constraint solver for simple cases
@@ -3348,7 +3384,7 @@ void Executor::executeMemoryOperation(ExecutionState &state,
       ss << "Query timed out on symbolic address " << std::hex << address <<
               " - offset " << offset;
       terminateStateEarly(state, ss.str());
-      return;
+      goto finalize;
     }
 
     if (inBounds) {
@@ -3398,21 +3434,20 @@ void Executor::executeMemoryOperation(ExecutionState &state,
         
         bindLocal(target, state, result);
       }
-      return;
+      goto finalize;
     }
   } 
 
   // we are on an error path (no resolution, multiple resolution, one
   // resolution with out of bounds)
   
-  ResolutionList rl;  
   solver->setTimeout(stpTimeout);
-  bool incomplete = state.addressSpace.resolve(state, solver, address, rl,
+  incomplete = state.addressSpace.resolve(state, solver, address, rl,
                                                0, stpTimeout);
   solver->setTimeout(0);
   
   // XXX there is some query wasteage here. who cares?
-  ExecutionState *unbound = &state;
+  unbound = &state;
   
   for (ResolutionList::iterator i = rl.begin(), ie = rl.end(); i != ie; ++i) {
     const MemoryObject *mo = i->first;
@@ -3474,6 +3509,10 @@ void Executor::executeMemoryOperation(ExecutionState &state,
                             "ptr.err",
                             getAddressInfo(*unbound, address));
     }
+  }
+finalize:
+  if (!isa<ConstantExpr>(address) && CollectMemoryOperations != CollectMemopsNone) {
+    memopsLogger->endSymbolicMemoryOperation(state);
   }
 }
 
