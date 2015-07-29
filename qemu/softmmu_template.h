@@ -97,8 +97,10 @@
 #endif // S2E_LLVM_LIB
 
 
-#define S2E_FORK_AND_CONCRETIZE_ADDR(val, max) \
-    (g_s2e_fork_on_symbolic_address ? S2E_FORK_AND_CONCRETIZE(val, max) : val)
+#define S2E_FORK_AND_CONCRETIZE_READ(val, max) \
+    (g_s2e_fork_on_symbolic_read ? S2E_FORK_AND_CONCRETIZE(val, max) : val)
+#define S2E_FORK_AND_CONCRETIZE_WRITE(val, max) \
+    (g_s2e_fork_on_symbolic_write ? S2E_FORK_AND_CONCRETIZE(val, max) : val)
 
 #define S2E_RAM_OBJECT_DIFF (TARGET_PAGE_BITS - S2E_RAM_OBJECT_BITS)
 
@@ -106,7 +108,8 @@
 
 #define S2E_TRACE_MEMORY(...)
 #define S2E_FORK_AND_CONCRETIZE(val, max) (val)
-#define S2E_FORK_AND_CONCRETIZE_ADDR(val, max) (val)
+#define S2E_FORK_AND_CONCRETIZE_READ(val, max) (val)
+#define S2E_FORK_AND_CONCRETIZE_WRITE(val, max) (val)
 
 #define S2E_RAM_OBJECT_BITS TARGET_PAGE_BITS
 #define S2E_RAM_OBJECT_SIZE TARGET_PAGE_SIZE
@@ -289,7 +292,7 @@ glue(glue(glue(HELPER_PREFIX, ld), SUFFIX), MMUSUFFIX)(ENV_PARAM
 
     /* test if there is match for unaligned or IO access */
     /* XXX: could done more in memory macro in a non portable way */
-    addr = S2E_FORK_AND_CONCRETIZE_ADDR(addr, ADDR_MAX);
+    addr = S2E_FORK_AND_CONCRETIZE_READ(addr, ADDR_MAX);
     object_index = S2E_FORK_AND_CONCRETIZE(addr >> S2E_RAM_OBJECT_BITS,
                                            ADDR_MAX >> S2E_RAM_OBJECT_BITS);
     index = (object_index >> S2E_RAM_OBJECT_DIFF) & (CPU_TLB_SIZE - 1);
@@ -370,7 +373,7 @@ glue(glue(slow_ld, SUFFIX), MMUSUFFIX)(ENV_PARAM
     target_phys_addr_t addend, ioaddr;
     target_ulong tlb_addr, addr1, addr2;
 
-    addr = S2E_FORK_AND_CONCRETIZE_ADDR(addr, ADDR_MAX);
+    addr = S2E_FORK_AND_CONCRETIZE_READ(addr, ADDR_MAX);
     object_index = S2E_FORK_AND_CONCRETIZE(addr >> S2E_RAM_OBJECT_BITS,
                                            ADDR_MAX >> S2E_RAM_OBJECT_BITS);
     index = (object_index >> S2E_RAM_OBJECT_DIFF) & (CPU_TLB_SIZE - 1);
@@ -566,7 +569,7 @@ void glue(glue(glue(HELPER_PREFIX, st), SUFFIX), MMUSUFFIX)(ENV_PARAM
     void *retaddr = NULL;
     target_ulong object_index, index;
 
-    addr = S2E_FORK_AND_CONCRETIZE_ADDR(addr, ADDR_MAX);
+    addr = S2E_FORK_AND_CONCRETIZE_WRITE(addr, ADDR_MAX);
     object_index = S2E_FORK_AND_CONCRETIZE(addr >> S2E_RAM_OBJECT_BITS,
                                            ADDR_MAX >> S2E_RAM_OBJECT_BITS);
     index = (object_index >> S2E_RAM_OBJECT_DIFF) & (CPU_TLB_SIZE - 1);
@@ -643,7 +646,7 @@ static void glue(glue(slow_st, SUFFIX), MMUSUFFIX)(ENV_PARAM
     target_ulong object_index, index;
     int i;
 
-    addr = S2E_FORK_AND_CONCRETIZE_ADDR(addr, ADDR_MAX);
+    addr = S2E_FORK_AND_CONCRETIZE_WRITE(addr, ADDR_MAX);
     object_index = S2E_FORK_AND_CONCRETIZE(addr >> S2E_RAM_OBJECT_BITS,
                                            ADDR_MAX >> S2E_RAM_OBJECT_BITS);
     index = (object_index >> S2E_RAM_OBJECT_DIFF) & (CPU_TLB_SIZE - 1);
@@ -704,7 +707,8 @@ static void glue(glue(slow_st, SUFFIX), MMUSUFFIX)(ENV_PARAM
 #undef S2E_RAM_OBJECT_SIZE
 #undef S2E_RAM_OBJECT_MASK
 #endif
-#undef S2E_FORK_AND_CONCRETIZE_ADDR
+#undef S2E_FORK_AND_CONCRETIZE_READ
+#undef S2E_FORK_AND_CONCRETIZE_WRITE
 #undef S2E_FORK_AND_CONCRETIZE
 #undef S2E_TRACE_MEMORY
 #undef ADDR_MAX

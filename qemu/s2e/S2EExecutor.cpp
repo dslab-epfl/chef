@@ -168,8 +168,13 @@ namespace {
     //Overall, we have more path explosion, but at least execution
     //does not get stuck in various places.
     cl::opt<bool>
-    ForkOnSymbolicAddress("fork-on-symbolic-address",
-            cl::desc("Fork on each memory access with symbolic address"),
+    ForkOnSymbolicRead("fork-on-symbolic-read",
+            cl::desc("Fork on each memory read with symbolic address"),
+            cl::init(true));
+
+    cl::opt<bool>
+    ForkOnSymbolicWrite("fork-on-symbolic-write",
+            cl::desc("Fork on each memory write with symbolic address"),
             cl::init(true));
 
     cl::opt<bool>
@@ -243,7 +248,8 @@ DebugConstraints("debug-constraints",
 extern cl::opt<bool> UseExprSimplifier;
 
 extern "C" {
-    int g_s2e_fork_on_symbolic_address = 0;
+    int g_s2e_fork_on_symbolic_read = 0;
+    int g_s2e_fork_on_symbolic_write = 0;
     int g_s2e_concretize_io_addresses = 1;
     int g_s2e_concretize_io_writes = 1;
 
@@ -639,7 +645,8 @@ S2EExecutor::S2EExecutor(S2E* s2e, TCGLLVMContext *tcgLLVMContext,
 
     __DEFINE_EXT_VARIABLE(g_s2e_concretize_io_addresses)
     __DEFINE_EXT_VARIABLE(g_s2e_concretize_io_writes)
-    __DEFINE_EXT_VARIABLE(g_s2e_fork_on_symbolic_address)
+    __DEFINE_EXT_VARIABLE(g_s2e_fork_on_symbolic_read)
+    __DEFINE_EXT_VARIABLE(g_s2e_fork_on_symbolic_write)
 
     __DEFINE_EXT_VARIABLE(g_s2e_enable_mmio_checks)
 
@@ -875,17 +882,19 @@ S2EExecutor::S2EExecutor(S2E* s2e, TCGLLVMContext *tcgLLVMContext,
 
     m_forceConcretizations = false;
 
-    g_s2e_fork_on_symbolic_address = ForkOnSymbolicAddress;
+    g_s2e_fork_on_symbolic_read = ForkOnSymbolicRead;
+    g_s2e_fork_on_symbolic_write = ForkOnSymbolicWrite;
     g_s2e_concretize_io_addresses = ConcretizeIoAddress;
     g_s2e_concretize_io_writes = ConcretizeIoWrites;
 
     concolicMode = ConcolicMode;
 
     if (UseFastHelpers) {
-        if (!ForkOnSymbolicAddress) {
+        if (!(ForkOnSymbolicRead && ForkOnSymbolicWrite)) {
             s2e->getWarningsStream()
                     << UseFastHelpers.ArgStr << " can only be used if "
-                    << ForkOnSymbolicAddress.ArgStr << " is enabled\n";
+                    << ForkOnSymbolicRead.ArgStr << " and "
+                    << ForkOnSymbolicWrite.ArgStr << " are enabled\n";
             exit(-1);
         }
     }

@@ -111,8 +111,10 @@
 #define S2E_FORK_AND_CONCRETIZE(val, max) (val)
 #endif // S2E_LLVM_LIB
 
-#define S2E_FORK_AND_CONCRETIZE_ADDR(val, max) \
-    (g_s2e_fork_on_symbolic_address ? S2E_FORK_AND_CONCRETIZE(val, max) : val)
+#define S2E_FORK_AND_CONCRETIZE_READ(val, max) \
+    (g_s2e_fork_on_symbolic_read ? S2E_FORK_AND_CONCRETIZE(val, max) : val)
+#define S2E_FORK_AND_CONCRETIZE_WRITE(val, max) \
+    (g_s2e_fork_on_symbolic_write ? S2E_FORK_AND_CONCRETIZE(val, max) : val)
 
 #define S2E_RAM_OBJECT_DIFF (TARGET_PAGE_BITS - S2E_RAM_OBJECT_BITS)
 
@@ -120,7 +122,8 @@
 #define S2EINLINE inline
 #define S2E_TRACE_MEMORY(...)
 #define S2E_FORK_AND_CONCRETIZE(val, max) (val)
-#define S2E_FORK_AND_CONCRETIZE_ADDR(val, max) (val)
+#define S2E_FORK_AND_CONCRETIZE_READ(val, max) (val)
+#define S2E_FORK_AND_CONCRETIZE_WRITE(val, max) (val)
 
 #define S2E_RAM_OBJECT_BITS TARGET_PAGE_BITS
 #define S2E_RAM_OBJECT_DIFF 0
@@ -169,7 +172,7 @@ glue(glue(glue(CPU_PREFIX, ld), USUFFIX), MEMSUFFIX)(ENV_PARAM
     uintptr_t physaddr;
     int mmu_idx;
 
-    addr = S2E_FORK_AND_CONCRETIZE_ADDR(ptr, ADDR_MAX);
+    addr = S2E_FORK_AND_CONCRETIZE_READ(ptr, ADDR_MAX);
     object_index = S2E_FORK_AND_CONCRETIZE(addr >> S2E_RAM_OBJECT_BITS,
                                            ADDR_MAX >> S2E_RAM_OBJECT_BITS);
     page_index = (object_index >> S2E_RAM_OBJECT_DIFF) & (CPU_TLB_SIZE - 1);
@@ -211,7 +214,7 @@ glue(glue(glue(CPU_PREFIX, lds), SUFFIX), MEMSUFFIX)(ENV_PARAM
     uintptr_t physaddr;
     int mmu_idx;
 
-    addr = S2E_FORK_AND_CONCRETIZE_ADDR(ptr, ADDR_MAX);
+    addr = S2E_FORK_AND_CONCRETIZE_READ(ptr, ADDR_MAX);
     object_index = S2E_FORK_AND_CONCRETIZE(addr >> S2E_RAM_OBJECT_BITS,
                                            ADDR_MAX >> S2E_RAM_OBJECT_BITS);
     page_index = (object_index >> S2E_RAM_OBJECT_DIFF) & (CPU_TLB_SIZE - 1);
@@ -251,7 +254,7 @@ glue(glue(glue(CPU_PREFIX, st), SUFFIX), MEMSUFFIX)(ENV_PARAM target_ulong ptr,
     uintptr_t physaddr;
     int mmu_idx;
 
-    addr = S2E_FORK_AND_CONCRETIZE_ADDR(ptr, ADDR_MAX);
+    addr = S2E_FORK_AND_CONCRETIZE_WRITE(ptr, ADDR_MAX);
     object_index = S2E_FORK_AND_CONCRETIZE(addr >> S2E_RAM_OBJECT_BITS,
                                            ADDR_MAX >> S2E_RAM_OBJECT_BITS);
     page_index = (object_index >> S2E_RAM_OBJECT_DIFF) & (CPU_TLB_SIZE - 1);
