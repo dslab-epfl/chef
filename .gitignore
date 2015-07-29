@@ -16,10 +16,15 @@ autom4te.cache
 # IDEA files
 .idea/
 
-# Local chef/data/output directories:
+# Files that are supposed to be elsewhere, but are here during development:
+
+# Build/Run "results":
 /build
 /vm
 /expdata
 
-# Ctag files:
+# Ctag:
 tags
+
+# SMT-Lib dumps:
+*.smt

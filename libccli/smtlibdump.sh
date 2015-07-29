@@ -33,6 +33,8 @@ dump()
 	"$TOOL_BIN" \
 		-end-solver="$SOLVER" \
 		-generate-smtlib -smtlib-out-path="$DUMP_PATH" \
+		$(test $MONOLITHIC -eq 1 && echo '-smtlib-monolithic') \
+		$(test $HUMAN -eq 1 && echo '-smtlib-human-readable') \
 		"$DB_FILE"
 }
 
@@ -63,9 +65,11 @@ docker_dump()
 			-a "$ARCH" \
 			-b "$DOCKER_HOSTPATH_BUILD" \
 			-m "$MODE" \
+			$(test $MONOLITHIC -eq 1 && printf "%s\n" '-M') \
 			-o "$DOCKER_HOSTPATH_OUT" \
 			-r "$RELEASE" \
 			-s "$SOLVER" \
+			$(test $HUMAN -eq 1 && printf "%s\n" '-w') \
 			-z \
 			"$DOCKER_HOSTPATH_IN/$DB_NAME"
 }
@@ -81,6 +85,8 @@ dryrun()
 	SOLVER=$SOLVER
 	DUMP_PATH=$DUMP_PATH
 	DB_FILE=$DB_FILE
+	MONOLITHIC=$(boolean $MONOLITHIC)
+	HUMAN=$(boolean $HUMAN)
 	EOF
 
 	if [ $DIRECT -eq 0 ]; then
@@ -94,6 +100,14 @@ dryrun()
 }
 
 # UTILITIES ====================================================================
+
+boolean()
+{
+	case "$1" in
+		0) echo 'false' ;;
+		*) echo 'true' ;;
+	esac
+}
 
 # ACL + docker + mkdir -p = issues
 mkdirp()
@@ -136,14 +150,18 @@ help()
 
 	Options:
 	  -a ARCH        Chef build architecture [default=$ARCH]
-	  -b BUILD_PATH  Path to the Chef build directory [default=$BUILD_PATH]
+	  -b BUILD_PATH  Path to the Chef build directory
+	                 [default=$BUILD_PATH]
 	  -h             Display this help
 	  -m MODE        Build mode ('normal', 'asan', 'libmemtracer') [default=$MODE]
-	  -o DUMP_PATH   Dump queries from the DB file to DUMP_PATH [default=$DUMP_PATH]
+	  -M             Monolithic dump (no separate files)
+	  -o DUMP_PATH   Dump queries from the DB file to DUMP_PATH
+	                 [default=$DUMP_PATH]
 	  -r RELEASE     Release mode ('release' or 'debug') [default=$RELEASE]
 	  -s SOLVER      Use solver SOLVER [default=$SOLVER]
+	  -w             Use whitespace to make it human-readable
 	  -y             Dry run: print runtime variables and exit
-	  -z             Direct mode (do not use docker).
+	  -z             Direct mode (do not use docker)
 	EOF
 
 	#If DB_PATH denotes a directory, all database files below are searched and dumped.
@@ -160,20 +178,24 @@ get_options()
 	BUILD_PATH="$SRCPATH_ROOT/build"
 	DUMP_PATH="$PWD"
 	MODE='normal'
+	MONOLITHIC=0
 	RELEASE='release'
 	SOLVER='stp'
+	HUMAN=0
 	DIRECT=0
 	DRYRUN=0
 
-	while getopts a:b:hm:o:r:s:yz opt; do
+	while getopts a:b:hm:Mo:r:s:wyz opt; do
 		case "$opt" in
 			a) ARCH="$OPTARG" ;;
 			b) BUILD_PATH="$OPTARG" ;;
 			h) help; exit 1 ;;
 			m) MODE="$OPTARG" ;;
+			M) MONOLITHIC=1 ;;
 			o) DUMP_PATH="$OPTARG" ;;
 			r) RELEASE="$OPTARG" ;;
 			s) SOLVER="$OPTARG" ;;
+			w) HUMAN=1 ;;
 			y) DRYRUN=1 ;;
 			z) DIRECT=1 ;;
 			'?') die_help ;;

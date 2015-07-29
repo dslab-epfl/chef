@@ -10,13 +10,14 @@ import libccli.libccli
 global DATAROOT
 RUNPATH = os.path.dirname(os.path.realpath(__file__))
 RUNNAME = sys.argv[0]
+INVOKENAME = os.path.basename(RUNNAME)
 DATAROOT = '/var/lib/chef'
 
 
 def shell_command(name: str):
     os.execve('%s/libccli/%s.sh' % (RUNPATH, name),
               sys.argv[1:],
-              {'INVOKENAME': '%s %s' % (sys.argv[0], name)})
+              {'INVOKENAME': '%s %s' % (INVOKENAME, name)})
 
 
 def command_init():
