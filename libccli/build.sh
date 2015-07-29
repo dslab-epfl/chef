@@ -245,9 +245,11 @@ klee_build()
 
 	# Configure:
 	if [ $STAMPED -ne 0 ]; then
+		klee_cxxflags=''
+		klee_ldflags=''
 		if [ "$TARGET" = 'debug' ]; then
-			klee_cxxflags='-g -O0'
-			klee_ldflags='-g'
+			klee_cxxflags="$klee_cxxflags -g -O0"
+			klee_ldflags="$klee_ldflags -g"
 		fi
 		if [ "$MODE" = 'asan' ]; then
 			klee_cxxflags="$klee_cxxflags -fsanitize=address"

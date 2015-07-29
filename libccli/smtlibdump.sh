@@ -38,7 +38,7 @@ dump()
 		-generate-smtlib -smtlib-out-path="$DUMP_PATH" \
 		$(test $MONOLITHIC -eq 1 && echo '-smtlib-monolithic') \
 		$(test $HUMAN -eq 1 && echo '-smtlib-human-readable') \
-		$(test $LIMIT -gt 0 && echo '-smtlib-dump-limit 10') \
+		$(test $LIMIT -gt 0 && echo "-smtlib-dump-limit $LIMIT") \
 		"$DB_FILE"
 }
 
