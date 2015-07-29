@@ -313,22 +313,23 @@ strlast()
 
 # LANGUAGE =====================================================================
 
+lang_body()
+{
+	lang_body="$1"
+	test "$(strlast "$1")" != "$2" || lang_body="${1%?}"
+	printf '%s' "$lang_body"
+}
+
 lang_plural()
 {
-	if [ "$(strlast "$1")" = 'y' ]; then
-		return "${1%?}ies"
-	else
-		return "${1}s"
-	fi
+	lang_plural_last='s'
+	test "$(strlast "$1")" != 'y' || lang_plural_last='ies'
+	printf '%s%s' "$(lang_body "$1" 'y')" "$lang_plural_last"
 }
 
 lang_continuous()
 {
-	if [ "$(strlast "$1")" = 'e' ]; then
-		return "${1%?}ing"
-	else
-		return "${1}ing"
-	fi
+	printf '%sing' "$(lang_body "$1" 'e')"
 }
 
 # DEBUG ========================================================================
