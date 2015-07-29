@@ -41,6 +41,7 @@ docker_clean()
 		-v "$SRCPATH_ROOT":"$DOCKER_HOSTPATH" \
 		"$DOCKER_IMAGE" \
 		"$DOCKER_HOSTPATH/$RUNDIR/$RUNNAME" \
+			$(test $VERBOSE -eq $TRUE && printf '%s' '-v') \
 			"$RELEASE"
 }
 
@@ -61,6 +62,7 @@ help()
 	Options:
 	  -d       Dockerized (wrap execution inside docker container)
 	  -h       Display this help
+	  -v       Verbose output
 	EOF
 }
 
@@ -68,14 +70,14 @@ get_options()
 {
 	DOCKERIZED=$DEFAULT_DOCKERIZED
 
-	while getopts :dh opt; do
+	while getopts :dhv opt; do
 		case "$opt" in
 			d) DOCKERIZED=$TRUE ;;
 			h) help; exit 1 ;;
+			v) VERBOSE=$TRUE ;;
 			'?') die_help 'Invalid option: -%s' "$OPTARG" ;;
 		esac
 	done
-
 	ARGSHIFT=$(($OPTIND - 1))
 }
 
