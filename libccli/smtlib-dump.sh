@@ -25,17 +25,17 @@ dump()
 	TOOL_BIN="$BUILD_PATH/$BUILD/klee/$BUILD_NAME/bin/query-tool"
 
 	if [ ! -e "$TOOL_BIN" ]; then
-		die 2 '%s not found' "$TOOL_BIN"
+		die 2 '%s: Executable not found' "$TOOL_BIN"
 	fi
 
 	"$TOOL_BIN" \
 		-end-solver="$SOLVER" \
-		-generate-smtlib -smtlib-out-path="$DUMP_PATH" \
-		$(test $MONOLITHIC -eq $TRUE && echo '-smtlib-monolithic') \
+		-dump-smtlib=$(test $MONOLITHIC -eq $TRUE && echo 'single' || echo 'separate') \
+		-dump-smtlib-path="$DUMP_PATH/" \
 		$(test $HUMAN -eq $TRUE && echo '-smtlib-human-readable') \
-		$(test $LIMIT -gt 0 && echo "-smtlib-dump-limit $LIMIT") \
 		$(test $COMPACT -eq $FALSE && echo '-smtlib-compact') \
-		"$DB_FILE"
+		"$DB_FILE" \
+		$IDS_EXPANDED
 }
 
 # DUMPALL ======================================================================
@@ -62,18 +62,16 @@ docker_dump()
 		-v "$BUILD_PATH":"$DOCKER_HOSTPATH_BUILD" \
 		"$DOCKER_IMAGE" \
 		"$DOCKER_HOSTPATH"/"$RUNDIR"/"$RUNNAME" \
-			-a "$ARCH" \
 			-b "$DOCKER_HOSTPATH_BUILD" \
 			$(test $COMPACT -eq $TRUE && printf "%s" '-c') \
-			-l $LIMIT \
-			-m "$MODE" \
 			$(test $MONOLITHIC -eq $TRUE && printf "%s" '-M') \
 			-o "$DOCKER_HOSTPATH_OUT" \
 			-r "$RELEASE" \
 			-s "$SOLVER" \
 			$(test $HUMAN -eq $TRUE && printf "%s" '-w') \
 			-z \
-			"$DOCKER_HOSTPATH_IN/$DB_NAME"
+			"$DOCKER_HOSTPATH_IN/$DB_NAME" \
+			"$IDS"
 }
 
 # DRY RUN ======================================================================
@@ -89,7 +87,6 @@ dryrun()
 	DB_FILE=$DB_FILE
 	MONOLITHIC=$(as_boolean $MONOLITHIC)
 	HUMAN=$(as_boolean $HUMAN)
-	LIMIT=$LIMIT
 	EOF
 
 	if [ $DIRECT -eq $FALSE ]; then
@@ -106,15 +103,12 @@ dryrun()
 
 usage()
 {
-	cat <<- EOF
-	Usage: $INVOKENAME [OPTIONS] DB_FILE
-	EOF
+	echo "Usage: $INVOKENAME [OPTIONS ...] DB_FILE IDS"
 }
 
 help()
 {
 	usage
-
 	cat <<- EOF
 
 	Options:
@@ -122,7 +116,6 @@ help()
 	                 [default=$BUILD_PATH]
 	  -c             Print compact SMTLIB (experimental!)
 	  -h             Display this help
-	  -l LIMIT       Limit number of produced queries to LIMIT (0 = no limit) [default=0]
 	  -M             Monolithic dump (no separate files)
 	  -o DUMP_PATH   Dump queries from the DB file to DUMP_PATH
 	                 [default=$DUMP_PATH]
@@ -134,14 +127,12 @@ help()
 
 	Solvers:
 	  z3  cvc3
+
+	IDs:
+	  The query IDs can be given as a comma-separated list of numbers or ranges,
+	  where a range is two numbers separated by a dash.
 	EOF
-
-	#If DB_PATH denotes a directory, all database files below are searched and dumped.
-	#In that case, DUMP_PATH is considered a tree that copies DB_PATH's structure.
-	#EOF
 }
-
-# MAIN =========================================================================
 
 get_options()
 {
@@ -149,7 +140,6 @@ get_options()
 	BUILD_PATH="$SRCPATH_ROOT/build"
 	COMPACT=$FALSE
 	DUMP_PATH="$PWD"
-	LIMIT=$FALSE
 	MONOLITHIC=$FALSE
 	RELEASE="$DEFAULT_RELEASE"
 	SOLVER='stp'
@@ -157,12 +147,11 @@ get_options()
 	DIRECT=$FALSE
 	DRYRUN=$FALSE
 
-	while getopts :b:chl:Mo:r:s:wyz opt; do
+	while getopts :b:chMo:r:s:wyz opt; do
 		case "$opt" in
 			b) BUILD_PATH="$OPTARG" ;;
 			c) COMPACT=$TRUE ;;
 			h) help; exit 1 ;;
-			l) LIMIT="$OPTARG" ;;
 			M) MONOLITHIC=$TRUE ;;
 			o) DUMP_PATH="$OPTARG" ;;
 			r) RELEASE="$OPTARG" ;;
@@ -175,8 +164,9 @@ get_options()
 	done
 
 	split_release "$RELEASE"
-	is_numeric "$LIMIT" || die_help 'Non-numeric value passed for -l'
 	DUMP_PATH="$(readlink -f "$DUMP_PATH")"
+	test -d "$DUMP_PATH" || die 2 '%s: Directory does not exist' "$DUMP_PATH"
+	test -w "$DUMP_PATH" || die 3 '%s: Permission denied' "$DUMP_PATH"
 	BUILD_PATH="$(readlink -f "$BUILD_PATH")"
 	BUILD="$ARCH-$TARGET-$MODE"
 	if [ ! -d "$BUILD_PATH/$BUILD" ]; then
@@ -201,11 +191,25 @@ get_db_path()
 	ARGSHIFT=1
 }
 
+get_ids()
+{
+	IDS="$1"
+	test -n "$IDS" || die_help 'Missing ID list'
+	IDS_EXPANDED="$(list_expand "$IDS")"
+	IDS_EXPANDED="$(for id in $IDS_EXPANDED; do range_expand "$id"; done \
+	                | uniq | sort -n)"
+	ID_COUNT=$(printf "$IDS_EXPANDED" | wc -l)
+	test -n "$IDS_EXPANDED" || die_help 'Invalid ID format'
+	ARGSHIFT=1
+}
+
 main()
 {
 	get_options "$@"
 	shift $ARGSHIFT
 	get_db_path "$@"
+	shift $ARGSHIFT
+	get_ids "$@"
 	shift $ARGSHIFT
 	test $# -eq 0 || die_help "Trailing arguments: $@"
 

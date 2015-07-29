@@ -169,15 +169,23 @@ range_expand()
 	test -n "$range" || return
 
 	begin="$(echo "$range" | cut -d '-' -f 1)"
-	if ! is_numeric "$begin"; then
-		warn 'Range begin must be numeric' >&2
+	if [ -z "$begin" ]; then
+		warn 'Missing begin in range'
+		return
+	elif ! is_numeric "$begin"; then
+		warn 'Range begin must be numeric (`%s` found)' "$begin" >&2
 		return
 	fi
+
 	end="$(echo "$range" | cut -d '-' -f 2-)"
-	if ! is_numeric "$end"; then
-		warn 'Range end must be numeric' >&2
+	if [ -z "$end" ]; then
+		warn 'Missing end in range'
+		return
+	elif ! is_numeric "$end"; then
+		warn 'Range end must be numeric (`%s` found)' "$end" >&2
 		return
 	fi
+
 	for i in $(seq $begin $end); do
 		echo $i
 	done

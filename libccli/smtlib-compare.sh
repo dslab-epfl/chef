@@ -40,19 +40,19 @@ compare()
 	# List output comparison
 	printf "query| orig  | comp\n"
 	echo   '-----+-------+------'
-	for i in $IDS; do
+	for i in $IDS_EXPANDED; do
 		# original
 		original_colour=''
 		original="$("$SOLVER_BIN" \
 		            $SOLVER_ARGS \
-		            "$DUMPPATH1/$(printf "%04d" $i).smt")" \
+		            "$DUMPPATH1/$(printf "%06d" $i)")" \
 		            || { original='error'; original_colour="\033[31m"; }
 
 		# compact
 		compact_colour="\033[32m"
 		compact="$("$SOLVER_BIN" \
 		           $SOLVER_ARGS \
-		           "$DUMPPATH2/$(printf "%04d" $i).smt")" \
+		           "$DUMPPATH2/$(printf "%06d" $i)")" \
 		           || { compact='invld'; compact_colour="\033[31m"; }
 
 		# keep track
@@ -62,7 +62,7 @@ compare()
 		fi
 
 		# display
-		printf "%4d | $original_colour%5s | $compact_colour%5s\033[0m\n" \
+		printf "%6d | $original_colour%5s | $compact_colour%5s\033[0m\n" \
 			$i "$original" "$compact"
 	done 2>/dev/null
 	echo '-----+-------+------'
@@ -79,11 +79,11 @@ compare()
 		emphasised $COLOUR_MISC "original:\n"
 		"$SOLVER_BIN" \
 			$SOLVER_ARGS \
-			"$SRCPATH_ROOT/data/smtlibdump/$( printf "%04d" $i).smt"
+			"$SRCPATH_ROOT/data/smtlibdump/$(printf "%06d" $i)"
 		emphasised $COLOUR_MISC "compact:\n"
 		"$SOLVER_BIN" \
 			$SOLVER_ARGS \
-			"$SRCPATH_ROOT/data/compactdump/$( printf "%04d" $i).smt"
+			"$SRCPATH_ROOT/data/compactdump/$(printf "%06d" $i)"
 	fi
 }
 
@@ -178,6 +178,7 @@ get_options()
 get_directories()
 {
 	DIRS="$1"
+	test -n "$DIRS" || die_help 'Missing directories'
 	DUMPPATH1="$(readlink -f "$(echo "$DIRS" | cut -d ':' -f 1)")"
 	DUMPPATH2="$(readlink -f "$(echo "$DIRS" | cut -d ':' -f 2)")"
 	for dir in "$DUMPPATH1" "$DUMPPATH2"; do
@@ -198,9 +199,11 @@ get_ids()
 {
 	IDS="$1"
 	test -n "$IDS" || die_help 'Missing ID list'
-	IDS="$(list_expand "$IDS")"
-	IDS="$(for id in $IDS; do range_expand "$id"; done | uniq | sort -n)"
-	ID_COUNT=$(echo "$IDS" | wc -l)
+	IDS_EXPANDED="$(list_expand "$IDS")"
+	IDS_EXPANDED="$(for id in $IDS_EXPANDED; do range_expand "$id"; done \
+	                | uniq | sort -n)"
+	ID_COUNT=$(echo "$IDS_EXPANDED" | wc -l)
+	test -n "$IDS_EXPANDED" || die_help 'Invalid ID format'
 	ARGSHIFT=1
 }
 
