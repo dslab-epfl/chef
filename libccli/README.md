@@ -21,6 +21,7 @@ The following commands are available:
 * `vm`: Manage VMs
 * `run`: Run chef inside a docker container
 * `help`: Display a help message and exit
+* `smtlibdump`: Dump collected queries in SMT-Lib format
 
 Each command has its own command line interface, whose help can usually be
 displayed by passing the `-h` flag.
