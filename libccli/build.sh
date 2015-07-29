@@ -30,7 +30,7 @@ lua_prepare()
 	mv "$(basename "$lua_tarball" .tar.gz)" "$BUILDPATH"
 }
 
-lua_build()
+lua_compile()
 {
 	make -j$JOBS linux || return $FAILURE
 }
@@ -54,11 +54,6 @@ stp_configure()
 		--with-g++="$LLVM_NATIVE_CXX" \
 		$(test "$MODE" = 'asan' && echo '--with-address-sanitizer') \
 	|| return $FAILURE
-}
-
-stp_build()
-{
-	make -j$JOBS || return $FAILURE
 }
 
 # KLEE =========================================================================
@@ -93,7 +88,7 @@ klee_configure()
 	|| return $FAILURE
 }
 
-klee_build()
+klee_compile()
 {
 	if [ "$TARGET" = 'debug' ]; then
 		klee_buildopts='ENABLE_OPTIMIZED=0'
@@ -114,7 +109,7 @@ libmemtracer_configure()
 	|| return $FAILURE
 }
 
-libmemtracer_build()
+libmemtracer_compile()
 {
 	libmemtracer_buildopts="CLANG_CC=$LLVM_NATIVE_CC CLANG_CXX=$LLVM_NATIVE_CXX"
 	make -j$JOBS $libmemtracer_buildopts || return $FAILURE
@@ -131,11 +126,6 @@ libvmi_configure()
 		CC=$LLVM_NATIVE_CC \
 		CXX=$LLVM_NATIVE_CXX \
 	|| return $FAILURE
-}
-
-libvmi_build()
-{
-	make -j$JOBS || return $FAILURE
 }
 
 # QEMU =========================================================================
@@ -172,11 +162,6 @@ qemu_configure()
 	|| return $FAILURE
 }
 
-qemu_build()
-{
-	make -j$JOBS || return $FAILURE
-}
-
 qemu_install()
 {
 	make install || return $FAILURE
@@ -204,11 +189,6 @@ tools_configure()
 	|| return $FAILURE
 }
 
-tools_build()
-{
-	make -j$JOBS || return $FAILURE
-}
-
 # GUEST TOOLS ==================================================================
 
 guest_configure()
@@ -216,7 +196,7 @@ guest_configure()
 	"$SRCPATH"/configure || return $FAILURE
 }
 
-guest_build()
+guest_compile()
 {
 	case "$ARCH" in
 		i386) guest_cflags='-m32' ;;
@@ -251,7 +231,7 @@ gmock_configure()
 	|| return $FAILURE
 }
 
-gmock_build()
+gmock_compile()
 {
 	gtest_path="$LLVM_SRC/utils/unittest/googletest"
 
@@ -293,7 +273,7 @@ test_configure()
 	|| return $FAILURE
 }
 
-tests_build()
+tests_compile()
 {
 	tests_isopt=$(test "$TARGET" = 'debug' && echo 0 || echo 1)
 	tests_buildopts="REQUIRES_RTTI=1 REQUIRE_EH=1 ENABLE_OPTIMIZED=$tests_isopt"
@@ -302,6 +282,16 @@ tests_build()
 
 # ALL ==========================================================================
 
+generic_prepare()
+{
+	mkdir "$BUILDPATH"
+}
+
+generic_compile()
+{
+	make -j$JOBS || return $FAILURE
+}
+
 all_build()
 {
 	for component in $COMPONENTS
@@ -309,62 +299,43 @@ all_build()
 		BUILDPATH="$BUILDPATH_ROOT/$component"
 		SRCPATH="$SRCPATH_ROOT/$component"
 		FORCE=$FALSE
-
-		# Exclude component?
-		excluded=$FALSE
-		for i in $EXCLUDED; do
-			if [ "$i" = "$component" ]; then
-				skip '%s: excluded' "$component"
-				excluded=$TRUE
-				break
-			fi
-		done
-		test $excluded -eq $FALSE || continue
-
-		# Force-rebuild component?
-		for c in $FORCE_COMPS; do
-			if [ "$c" = "$component" ]; then
-				info 'force-building %s' "$component"
-				rm -r "$BUILDPATH"
-				break
-			fi
-		done
-
-		# Log file:
 		LOGFILE="${BUILDPATH}.log"
 		rm -f "$LOGFILE"
 
-		# Build:
-		for action in prepare configure build install
-		do
-			msg="${action}ing"
+		# Exclude/force-build component?
+		if list_contains "$EXCLUDED" "$component"; then
+			skip '%s: excluded' "$component"
+			continue
+		fi
+		if list_contains "$FORCE_COMPS" "$component"; then
+			info 'force-building %s' "$component"
+			rm -r "$BUILDPATH"
+		fi
 
+		# Build:
+		for action in prepare configure compile install
+		do
 			# action-specific:
-			case "$action" in
+			case $action in
 				prepare)
-					msg='preparing'
 					test ! -d "$BUILDPATH" || continue
 					FORCE=$TRUE ;;
 				configure)
-					msg='configuring'
 					test $FORCE -eq $TRUE || continue ;;
 			esac
-			if [ "$action" = prepare ]; then
+			if [ $action = prepare ]; then
 				cd "$BUILDPATH_ROOT"
 			else
 				cd "$BUILDPATH"
 			fi
 
 			# default action:
-			if ! is_command "${component}_${action}"; then
-				if [ "$action" = prepare ]; then
-					mkdir "$BUILDPATH"
-				fi
-				continue
-			fi
+			handler=${component}_$action
+			is_command $handler || handler=generic_$action
+			is_command $handler || continue   # if default action == nothing
 
 			# action:
-			if ! track "$msg $component" "${component}_${action}"; then
+			if ! track "$(lang_continuous "$action") $component" $handler; then
 				examine_logs
 				if ask "$ESC_ERROR" 'yes' 'Restart?'; then
 					CODE_TERM='restart'
@@ -438,21 +409,23 @@ help()
 
 	Options:
 	  -d         Dockerized (wrap build process inside docker container)
-	  -f COMPS   Force-rebuild (configure+make) components COMPS
-	  -i PATH    Path to the Chef source directory root
+	  -i PATH    Path to the build input directory (Chef source root)
 	             [default=$SRCPATH_ROOT]
-	  -h         Display this help and exit
-	  -j N       Compile with N jobs [default=$JOBS]
-	  -l         List existing builds and exit
-	  -L PATH    Path to where the LLVM-3.2 files are installed
-	             [default=$LLVM_BASE]
 	  -o PATH    Path to the build output directory
 	             [default=$BUILDPATH_ROOT]
-	  -q FLAGS   Additional flags passed to qemu's \`configure\` script
-	  -s         Silent: redirect compilation messages/warnings/errors into log file
+	  -f COMPS   Force-rebuild components COMPS from scratch
+	             [default='$FORCE_COMPS']
 	  -x COMPS   Exclude components COMPS (has higher priority than -f)
 	             [default='$EXCLUDED']
+	  -j N       Compile with N jobs [default=$JOBS]
+	  -L PATH    Path to where the LLVM-3.2 files are installed
+	             [default=$LLVM_BASE]
+	  -q FLAGS   Additional flags passed to qemu's \`configure\` script
+	  -s         Silent: redirect compilation messages/warnings/errors into log file
+
 	  -y         Dry run: print build-related variables and exit
+	  -l         List existing builds and exit
+	  -h         Display this help and exit
 
 	Components:
 	  $COMPONENTS
@@ -504,11 +477,7 @@ get_options()
 	DRYRUN=$FALSE
 	FORCE_COMPS=''
 	EXCLUDED='gmock tests'
-	case "$(uname)" in
-		Darwin) JOBS=$(sysctl hw.ncpu | cut -d ':' -f 2); alias cp=gcp ;;
-		Linux) JOBS=$(grep -c '^processor' /proc/cpuinfo) ;;
-		*) JOBS=1 ;;
-	esac
+	JOBS=$CPU_CORES
 	LIST=$FALSE
 	LLVM_BASE='/opt/s2e/llvm'
 	QEMU_FLAGS=''

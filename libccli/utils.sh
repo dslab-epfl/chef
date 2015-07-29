@@ -29,6 +29,12 @@ KIBI=1024
 MEBI=$(($KIBI * $KIBI))
 GIBI=$(($MEBI * $KIBI))
 
+case "$(uname)" in
+	Darwin) CPU_CORES=$(sysctl hw.ncpu | cut -d ':' -f 2); alias cp=gcp ;;
+	Linux) CPU_CORES=$(grep -c '^processor' /proc/cpuinfo) ;;
+	*) CPU_CORES=1 ;;
+esac
+
 # MESSAGES =====================================================================
 
 if [ -t 1 ] && [ -t 2 ]; then
@@ -277,6 +283,51 @@ as_boolean()
 		echo 'true'
 	else
 		echo 'false'
+	fi
+}
+
+# Check if a space-separated list contains a string:
+list_contains()
+{
+	local haystack="$1"
+	local needle="$2"
+	for list_element in $haystack; do
+		if [ "$needle" = "$list_element" ]; then
+			return $SUCCESS
+		fi
+	done
+	return $FAILURE
+}
+
+# Length of a string:
+strlen()
+{
+	printf '%s' "$1" | wc -m
+}
+
+# Last character of a string:
+strlast()
+{
+	printf '%s' "$1" | cut -c "$(strlen "$1")-"
+}
+
+# LANGUAGE =====================================================================
+
+lang_plural()
+{
+	if [ "$(strlast "$1")" = 'y' ]; then
+		return "${1%?}ies"
+	else
+		return "${1}s"
+	fi
+}
+
+lang_continuous()
+{
+	if [ "$(strlast "$1")" = 'e' ]; then
+		return "${1%?}ing"
+	else
+		return "${1}ing"
 	fi
 }
 
