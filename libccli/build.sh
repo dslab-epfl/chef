@@ -9,7 +9,7 @@
 
 export C_INCLUDE_PATH='/usr/include:/usr/include/x86_64-linux-gnu'
 export CPLUS_INCLUDE_PATH="$C_INCLUDE_PATH:/usr/include/x86_64-linux-gnu/c++/4.8"
-COMPS='lua stp klee qemu tools guest gmock tests'
+COMPS='lua stp klee qemu tools guest'
 DOCKER_HOSTPATH_IN='/host-in'
 DOCKER_HOSTPATH_OUT='/host-out'
 
@@ -113,7 +113,6 @@ qemu_configure()
 		--enable-llvm \
 		--enable-s2e \
 		--with-pkgversion=S2E \
-		--with-liblua="$BUILDPATH_ROOT/lua/src" \
 		--extra-cflags=-mno-sse3 \
 		--extra-cxxflags=-mno-sse3 \
 		--disable-virtfs \
@@ -227,6 +226,11 @@ all_build()
 					CODE_TERM='restart'
 				else
 					CODE_TERM='abort'
+				fi
+				if ! case $action in (prepare|configure) false ;; esac; then
+					if ! track 'cleaning up' rm -rf "$BUILDPATH"; then
+						echo "Oh dear... you've got some issues"
+					fi
 				fi
 				return
 			fi
