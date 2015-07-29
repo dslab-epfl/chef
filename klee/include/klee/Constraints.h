@@ -53,6 +53,10 @@
 #include <boost/make_shared.hpp>
 
 
+namespace llvm {
+class raw_ostream;
+}
+
 
 namespace klee {
 
@@ -227,6 +231,20 @@ private:
     ConditionNodeRef head_;
 };
 
+
+class ConditionInspector {
+public:
+    ConditionInspector() : counter_(0) {
+
+    }
+
+    llvm::raw_ostream &Print(llvm::raw_ostream &out, const ConstraintManager &cm);
+private:
+    mutable ExprHashMap<std::string> terms_;
+    mutable int counter_;
+
+    llvm::raw_ostream &PrintOpaque(llvm::raw_ostream &out, const ref<Expr> expr);
+    llvm::raw_ostream &Print(llvm::raw_ostream &out, const ref<Expr> expr);
 };
 
 
