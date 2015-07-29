@@ -37,6 +37,8 @@
 
 #include "klee/Expr.h"
 #include <llvm/Support/raw_ostream.h>
+#include "klee/Internal/ADT/ImmutableMap.h"
+#include "klee/util/ExprHashMap.h"
 #include <llvm/ADT/SmallVector.h>
 #include <vector>
 #include <map>
@@ -48,6 +50,8 @@
 #include <boost/weak_ptr.hpp>
 #include <boost/bind.hpp>
 #include <boost/enable_shared_from_this.hpp>
+#include <boost/make_shared.hpp>
+
 
 
 namespace klee {
@@ -55,6 +59,7 @@ namespace klee {
 using boost::shared_ptr;
 using boost::weak_ptr;
 using boost::enable_shared_from_this;
+using boost::make_shared;
 
 
 class ConditionNode;
@@ -62,6 +67,13 @@ typedef shared_ptr<ConditionNode> ConditionNodeRef;
 
 class ConditionNode: public enable_shared_from_this<ConditionNode> {
 public:
+    ConditionNode() : depth_(0) {
+    }
+
+    ConditionNode(const ConditionNodeRef parent, const ref<Expr> expr) :
+            parent_(parent), expr_(expr), depth_(parent->depth_ + 1) {
+    }
+
     const ConditionNodeRef parent() const {
         return parent_;
     }
@@ -72,22 +84,10 @@ public:
         return depth_;
     }
 
-protected:
-    // Use weak_ptr here to enable automatic deallocation of nodes when they're
-    // no longer referenced from a ConstraintManager.
-    typedef std::map<ref<Expr>, weak_ptr<ConditionNode> > AdjancencyMap;
-
-    ConditionNode() :
-            depth_(0) {
-    }
-    ConditionNode(const ConditionNodeRef parent, const ref<Expr> expr) :
-            parent_(parent), expr_(expr), depth_(parent->depth_ + 1) {
-    }
-
     ConditionNodeRef getOrCreate(const ref<Expr> expr) {
         if (children_[expr].expired()) {
-            ConditionNodeRef new_node = ConditionNodeRef(
-                    new ConditionNode(shared_from_this(), expr));
+            ConditionNodeRef new_node = make_shared<ConditionNode>(
+                    shared_from_this(), expr);
             children_[expr] = weak_ptr<ConditionNode>(new_node);
             return new_node;
         } else {
@@ -96,6 +96,10 @@ protected:
     }
 
 private:
+    // Use weak_ptr here to enable automatic deallocation of nodes when they're
+    // no longer referenced from a ConstraintManager.
+    typedef std::map<ref<Expr>, weak_ptr<ConditionNode> > AdjancencyMap;
+
     AdjancencyMap children_;
     const ConditionNodeRef parent_;
     const ref<Expr> expr_;
@@ -139,13 +143,19 @@ public:
     typedef ConditionIterator const_iterator;
 
     ConstraintManager() {
-        root_ = ConditionNodeRef(new ConditionNode());
+        root_ = make_shared<ConditionNode>();
         head_ = root_;
     }
 
     ConstraintManager(const ConstraintManager &other) {
         root_ = other.root_;
         head_ = other.head_;
+    }
+
+    ConstraintManager(ConditionNodeRef root, ConditionNodeRef head)
+        : root_(root),
+          head_(head) {
+
     }
 
     ConstraintManager& operator=(const ConstraintManager &other) {
@@ -155,7 +165,7 @@ public:
     }
 
     bool operator==(const ConstraintManager &other) const {
-        return head_ == other.head_;
+        return (root_ == other.root_) && (head_ == other.head_);
     }
 
     void addConstraint(const ref<Expr> e);
@@ -179,7 +189,7 @@ public:
     // BACKWARDS COMPATIBILITY - Must remove at some point
 
     ConstraintManager(const std::vector<ref<Expr> > &cs) {
-        root_ = ConditionNodeRef(new ConditionNode());
+        root_ = make_shared<ConditionNode>();
         head_ = root_;
 
         std::for_each(cs.begin(), cs.end(),
@@ -213,8 +223,10 @@ public:
     }
 
 private:
-    ConditionNodeRef head_;
     ConditionNodeRef root_;
+    ConditionNodeRef head_;
+};
+
 };
 
 
