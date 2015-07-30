@@ -1,0 +1,11 @@
+---
+variables:
+    v1: [hello,bye]
+    v2: [world]
+
+commands:
+    - line: echo {v1} {v2}
+      config: config/default-config.lua
+    - line: /home/s2e/sym
+      config: config/default-config.lua
+...

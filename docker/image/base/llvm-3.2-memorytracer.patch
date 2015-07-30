@@ -1,0 +1,473 @@
+Index: lib/Transforms/Instrumentation/Instrumentation.cpp
+===================================================================
+--- lib/Transforms/Instrumentation/Instrumentation.cpp	(revision 175159)
++++ lib/Transforms/Instrumentation/Instrumentation.cpp	(working copy)
+@@ -27,6 +27,7 @@
+   initializeOptimalEdgeProfilerPass(Registry);
+   initializePathProfilerPass(Registry);
+   initializeThreadSanitizerPass(Registry);
++  initializeMemoryTracerPass(Registry);
+ }
+ 
+ /// LLVMInitializeInstrumentation - C binding for
+Index: lib/Transforms/Instrumentation/MemoryTracer.cpp
+===================================================================
+--- lib/Transforms/Instrumentation/MemoryTracer.cpp	(revision 0)
++++ lib/Transforms/Instrumentation/MemoryTracer.cpp	(revision 0)
+@@ -0,0 +1,431 @@
++//===-- MemoryTracer.cpp - memory tracing------------------------*- C++ -*-===//
++//
++//                     The LLVM Compiler Infrastructure
++//
++// This file is distributed under the University of Illinois Open Source
++// License. See LICENSE.TXT for details.
++//
++//===----------------------------------------------------------------------===//
++
++#define DEBUG_TYPE "memtracer"
++
++#include "llvm/Function.h"
++#include "llvm/IntrinsicInst.h"
++#include "llvm/LLVMContext.h"
++#include "llvm/Module.h"
++#include "llvm/Type.h"
++#include "llvm/ADT/ArrayRef.h"
++#include "llvm/ADT/SmallVector.h"
++#include "llvm/Support/CommandLine.h"
++#include "llvm/Support/DataTypes.h"
++#include "llvm/Support/Debug.h"
++#include "llvm/Support/raw_ostream.h"
++#include "llvm/DataLayout.h"
++#include "llvm/Target/TargetMachine.h"
++#include "llvm/Transforms/Instrumentation.h"
++
++using namespace llvm;
++
++static const char *kMemTracerReportRead = "__memtrace_report_read";
++static const char *kMemTracerReportWrite = "__memtrace_report_write";
++static const char *kMemTracerReportTransfer = "__memtrace_report_transfer";
++static const char *kMemTracerReportMemset = "__memtrace_report_memset";
++
++static const char *kMemTracerReportMalloc = "__memtrace_report_malloc";
++static const char *kMemTracerReportFree = "__memtrace_report_free";
++
++//operator new(unsigned long)
++//declare noalias i8* @_Znwm(i64)
++static const char *kMemTracerOperatorNew = "_Znwm";
++
++//operator new[](unsigned long)
++//declare noalias i8* @_Znam(i64)
++static const char *kMemTracerOperatorNewArray = "_Znam";
++
++//operator delete(void*)
++//declare void @_ZdlPv(i8*) nounwind
++static const char *kMemTracerOperatorDelete = "_ZdlPv";
++
++//operator delete[](void*)
++//declare void @_ZdaPv(i8*) nounwind
++static const char *kMemTracerOperatorDeleteArray = "_ZdaPv";
++
++
++static const unsigned kFuncCount = 4;
++
++static const char *kMemTracerReportReadWrites[2][kFuncCount] = {
++    {
++        "__memtrace_report_read8",
++        "__memtrace_report_read16",
++        "__memtrace_report_read32",
++        "__memtrace_report_read64"
++    },
++    {
++        "__memtrace_report_write8",
++        "__memtrace_report_write16",
++        "__memtrace_report_write32",
++        "__memtrace_report_write64"
++    }
++};
++
++namespace {
++
++struct MemoryTracer:public FunctionPass {
++    MemoryTracer();
++    virtual const char *getPassName() const;
++    virtual bool doInitialization(Module &M);
++    virtual bool doFinalization(Module &M);
++
++    bool runOnFunction(Function &F);
++
++    static char ID;  // Pass identification, replacement for typeid
++
++private:
++    Function *MemTracerReportReadFunction;
++    Function *MemTracerReportWriteFunction;
++    Function *MemTracerReportTransferFunction;
++    Function *MemTracerReportMemsetFunction;
++
++    Function *MemTracerReportReadWriteFunctions[2][kFuncCount];
++
++    Function *MallocFunction, *NewFunction, *NewArrayFunction;
++    Function *MallocReportFunction;
++
++    Function *FreeFunction, *DeleteFunction, *DeleteArrayFunction;
++    Function *FreeReportFunction;
++
++    DataLayout *Layout;
++
++    Type *voidTy;
++    Type *intTy;
++    Type *int8Ty;
++    Type *int64Ty;
++    Type *voidPtrTy;
++
++    void instrumentAccess(Instruction *I, bool IsWrite, Value *Address);
++    bool instrumentAccess2(Instruction *I, bool IsWrite, Value *Address, unsigned size);
++    void instrumentIntrinsic(Instruction *I);
++    void instrumentAllocators(CallInst *I);
++    bool isaTraceFunction(Function *F);
++    bool isAnAllocationInstruction(Instruction *I);
++};
++
++}
++
++char MemoryTracer::ID = 0;
++INITIALIZE_PASS(MemoryTracer, "memtracer",
++                "Memory tracer: records all reads and writes in a program",
++    false, false)
++
++MemoryTracer::MemoryTracer() : FunctionPass(ID) { }
++
++FunctionPass *llvm::createMemoryTracerPass() {
++  return new MemoryTracer();
++}
++
++const char *MemoryTracer::getPassName() const {
++  return "MemoryTracer";
++}
++
++bool MemoryTracer::doInitialization(Module &M)
++{
++    LLVMContext &C = M.getContext();
++    voidTy = Type::getVoidTy(C);
++    intTy = Type::getInt32Ty(C);
++    int8Ty = Type::getInt8Ty(C);
++    int64Ty = Type::getInt64Ty(C);
++    voidPtrTy = voidTy->getPointerTo();
++
++    AttrBuilder AB;
++    AB.addAttribute(Attributes::ReadOnly);
++
++    Attributes Attr = Attributes::get(C, AB);
++    AttrListPtr AttributesList;
++
++    //Standard read/write functions
++    for (unsigned i = 0; i < 2; ++i) {
++        for (unsigned j = 0; j < kFuncCount; ++j) {
++            Function *F = dyn_cast<Function>(M.getOrInsertFunction(
++                    kMemTracerReportReadWrites[i][j], voidTy, voidPtrTy, NULL));
++
++            AttributesList = F->getAttributes();
++            AttributesList.addAttr(C, 0, Attr);
++
++            MemTracerReportReadWriteFunctions[i][j] = F;
++        }
++    }
++
++    //malloc/free functions
++    //That won't catch indirect function calls
++    MallocFunction = M.getFunction("malloc");
++    NewFunction = M.getFunction(kMemTracerOperatorNew);
++    NewArrayFunction = M.getFunction(kMemTracerOperatorNewArray);
++    if (MallocFunction || NewFunction || NewArrayFunction) {
++        MallocReportFunction = dyn_cast<Function>(M.getOrInsertFunction(
++                kMemTracerReportMalloc, voidTy, int8Ty->getPointerTo(), int64Ty, NULL));
++    }
++
++    FreeFunction = M.getFunction("free");
++    DeleteFunction = M.getFunction(kMemTracerOperatorDelete);
++    DeleteArrayFunction = M.getFunction(kMemTracerOperatorDeleteArray);
++    if (FreeFunction || DeleteFunction || DeleteArrayFunction) {
++        FreeReportFunction = dyn_cast<Function>(M.getOrInsertFunction(
++                kMemTracerReportFree, voidTy, int8Ty->getPointerTo(), NULL));
++    }
++
++    // address, size
++    MemTracerReportReadFunction = dyn_cast<Function>(M.getOrInsertFunction(
++            kMemTracerReportRead, voidTy, voidPtrTy, intTy, NULL));
++
++    AttributesList = MemTracerReportReadFunction->getAttributes();
++    AttributesList.addAttr(C, 0, Attr);
++
++    // address, size
++    MemTracerReportWriteFunction = dyn_cast<Function>(M.getOrInsertFunction(
++            kMemTracerReportWrite, voidTy, voidPtrTy, intTy, NULL));
++
++    AttributesList = MemTracerReportWriteFunction->getAttributes();
++    AttributesList.addAttr(C, 0, Attr);
++
++    // dest, source, size
++    MemTracerReportTransferFunction = dyn_cast<Function>(M.getOrInsertFunction(
++            kMemTracerReportTransfer, voidTy, voidPtrTy, voidPtrTy, int64Ty, NULL));
++
++    AttributesList = MemTracerReportTransferFunction->getAttributes();
++    AttributesList.addAttr(C, 0, Attr);
++
++    // dest, value, count
++    MemTracerReportMemsetFunction = dyn_cast<Function>(M.getOrInsertFunction(
++            kMemTracerReportMemset, voidTy, voidPtrTy, int8Ty, int64Ty, NULL));
++
++    AttributesList = MemTracerReportMemsetFunction->getAttributes();
++    AttributesList.addAttr(C, 0, Attr);
++
++
++    Layout = new DataLayout(&M);
++
++    DEBUG(dbgs() << "Instrumenting:\n" << M << "\n");
++
++    return true;
++}
++
++bool MemoryTracer::doFinalization(Module &M)
++{
++    delete Layout;
++    return true;
++}
++
++
++static bool isPointerOnTheStack(Value *v)
++{
++    return isa<AllocaInst>(v);
++}
++
++// If I is an interesting memory access, return the PointerOperand
++// and set IsWrite. Otherwise return NULL.
++static Value *isInterestingMemoryAccess(Instruction *I, bool *IsWrite)
++{
++    Value *ret = NULL;
++    if (LoadInst *LI = dyn_cast<LoadInst>(I)) {
++        *IsWrite = false;
++        ret = LI->getPointerOperand();
++    }
++    if (StoreInst *SI = dyn_cast<StoreInst>(I)) {
++        *IsWrite = true;
++        ret = SI->getPointerOperand();
++    }
++    if (AtomicRMWInst *RMW = dyn_cast<AtomicRMWInst>(I)) {
++        *IsWrite = true;
++        ret = RMW->getPointerOperand();
++    }
++    if (AtomicCmpXchgInst *XCHG = dyn_cast<AtomicCmpXchgInst>(I)) {
++        *IsWrite = true;
++        ret = XCHG->getPointerOperand();
++    }
++
++    if (ret && isPointerOnTheStack(ret)) {
++        return NULL;
++    }
++
++    return ret;
++}
++
++bool MemoryTracer::instrumentAccess2(Instruction *I, bool IsWrite, Value *Address, unsigned size)
++{
++    int index = 0;
++    switch (size) {
++        case 1: index = 0; break;
++        case 2: index = 1; break;
++        case 4: index = 2; break;
++        case 8: index = 3; break;
++        default: return false; break;
++    }
++
++    Function *F = MemTracerReportReadWriteFunctions[IsWrite][index];
++
++    SmallVector<Value *, 1> Args;
++    CastInst *cast = CastInst::CreatePointerCast(Address, voidPtrTy, "", I);
++
++    Args.push_back(cast);
++    CallInst *ci = CallInst::Create(F, ArrayRef<Value*>(Args));
++
++    if (IsWrite) {
++        ci->insertAfter(I);
++    } else {
++        ci->insertBefore(I);
++    }
++
++    return true;
++}
++
++void MemoryTracer::instrumentAccess(Instruction *I, bool IsWrite, Value *Address)
++{
++    Value *F = IsWrite ? MemTracerReportWriteFunction : MemTracerReportReadFunction;
++    SmallVector<Value *, 2> Args;
++
++    PointerType *AddressPtr = dyn_cast<PointerType>(Address->getType());
++    assert(AddressPtr);
++
++    uint64_t size = Layout->getTypeStoreSize(AddressPtr->getElementType());
++
++    if (instrumentAccess2(I, IsWrite, Address, size)) {
++        return;
++    }
++
++    CastInst *cast = CastInst::CreatePointerCast(Address, voidPtrTy, "", I);
++
++    Args.push_back(cast);
++    Args.push_back(ConstantInt::get(intTy, APInt(32, size)));
++
++    CallInst *ci = CallInst::Create(F, ArrayRef<Value*>(Args));
++
++    //Make sure the actual value is written before the tracer reads it back
++    if (IsWrite) {
++        ci->insertAfter(I);
++    } else {
++        ci->insertBefore(I);
++    }
++}
++
++void MemoryTracer::instrumentIntrinsic(Instruction *I)
++{
++    MemIntrinsic *MI = dyn_cast<MemIntrinsic>(I);
++
++    Value *Dest = MI->getDest();
++
++    SmallVector<Value *, 3> Args;
++
++    CastInst *DestC = CastInst::CreatePointerCast(Dest, voidPtrTy, "", I);
++    Args.push_back(DestC);
++
++    Function *F = NULL;
++
++    if (isa<MemSetInst>(I)) {
++        MemSetInst *MS = dyn_cast<MemSetInst>(I);
++        Args.push_back(MS->getValue());
++        Args.push_back(MS->getLength());
++        F = MemTracerReportMemsetFunction;
++    } else if (isa<MemTransferInst>(I)) {
++        MemTransferInst *MS = dyn_cast<MemTransferInst>(I);
++        CastInst *Source = CastInst::CreatePointerCast(MS->getSource(), voidPtrTy, "", I);
++        Args.push_back(Source);
++        Args.push_back(MS->getLength());
++        F = MemTracerReportTransferFunction;
++    } else if (isa<MemMoveInst>(I)) {
++        MemMoveInst *MS = dyn_cast<MemMoveInst>(I);
++        CastInst *Source = CastInst::CreatePointerCast(MS->getSource(), voidPtrTy, "", I);
++        Args.push_back(Source);
++        Args.push_back(MS->getLength());
++        F = MemTracerReportTransferFunction;
++    }
++
++    CallInst *ci = CallInst::Create(F, ArrayRef<Value*>(Args));
++    ci->insertAfter(I);
++}
++
++void MemoryTracer::instrumentAllocators(CallInst *I)
++{
++    Function *CF = I->getCalledFunction();
++    CallInst *CI = NULL;
++    Function *F = NULL;
++    SmallVector<Value *, 2> Args;
++
++    if (CF == MallocFunction || CF == NewFunction || CF == NewArrayFunction) {
++        //Trace the address and the size
++        Args.push_back(I);
++        Args.push_back(I->getArgOperand(0));
++        F = MallocReportFunction;
++    } else if (CF == FreeFunction || CF == DeleteFunction || CF == DeleteArrayFunction) {
++        Args.push_back(I->getArgOperand(0));
++        F = FreeReportFunction;
++    } else {
++        return;
++    }
++
++    CI = CallInst::Create(F, ArrayRef<Value*>(Args));
++    CI->insertAfter(I);
++}
++
++bool MemoryTracer::isAnAllocationInstruction(Instruction *I)
++{
++    CallInst *CI = dyn_cast<CallInst>(I);
++    if (!CI) {
++        return false;
++    }
++
++    Function *CF = CI->getCalledFunction();
++    if (!CF) {
++        return false;
++    }
++
++    return CF == MallocFunction || CF == FreeFunction ||
++           CF == NewFunction || CF == DeleteFunction ||
++           CF == NewArrayFunction || CF == DeleteArrayFunction;
++}
++
++bool MemoryTracer::isaTraceFunction(Function *F)
++{
++    return F == MemTracerReportReadFunction ||
++           F == MemTracerReportWriteFunction ||
++           F == MemTracerReportTransferFunction ||
++           F == MemTracerReportMemsetFunction;
++}
++
++bool MemoryTracer::runOnFunction(Function &F)
++{
++    if (isaTraceFunction(&F)) {
++        return false;
++    }
++
++    SmallVector<Instruction*, 64> ToInstrument;
++
++    for (Function::iterator fit = F.begin(); fit != F.end(); ++fit) {
++        for (BasicBlock::iterator iit = fit->begin(); iit != fit->end(); ++iit) {
++            bool IsWrite;
++
++            if (isa<MemIntrinsic>(iit)) {
++                ToInstrument.push_back(iit);
++            } else if (isAnAllocationInstruction(iit)) {
++                ToInstrument.push_back(iit);
++            } else if (isInterestingMemoryAccess(iit, &IsWrite)) {
++                ToInstrument.push_back(iit);
++            }
++        }
++    }
++
++    for (unsigned i = 0; i < ToInstrument.size(); ++i) {
++        Instruction *I = ToInstrument[i];
++        Value *Address;
++        bool IsWrite;
++
++        if (isa<MemIntrinsic>(I)) {
++            instrumentIntrinsic(I);
++        } else if (isAnAllocationInstruction(I)){
++            instrumentAllocators(dyn_cast<CallInst>(I));
++        } else if ((Address = isInterestingMemoryAccess(I, &IsWrite))) {
++            instrumentAccess(I, IsWrite, Address);
++        }
++    }
++
++    return false;
++}
+Index: include/llvm/Transforms/Instrumentation.h
+===================================================================
+--- include/llvm/Transforms/Instrumentation.h	(revision 175159)
++++ include/llvm/Transforms/Instrumentation.h	(working copy)
+@@ -45,6 +45,8 @@
+ //
+ FunctionPass *createBoundsCheckingPass(unsigned Penalty = 5);
+ 
++FunctionPass *createMemoryTracerPass();
++
+ } // End llvm namespace
+ 
+ #endif
+Index: include/llvm/InitializePasses.h
+===================================================================
+--- include/llvm/InitializePasses.h	(revision 175159)
++++ include/llvm/InitializePasses.h	(working copy)
+@@ -110,6 +110,7 @@
+ void initializePathProfilerPass(PassRegistry&);
+ void initializeGCOVProfilerPass(PassRegistry&);
+ void initializeAddressSanitizerPass(PassRegistry&);
++void initializeMemoryTracerPass(PassRegistry&);
+ void initializeThreadSanitizerPass(PassRegistry&);
+ void initializeEarlyCSEPass(PassRegistry&);
+ void initializeExpandISelPseudosPass(PassRegistry&);
