@@ -46,6 +46,37 @@ z3_compile()
 	make -j$JOBS -C build || return $FAILURE
 }
 
+# PROTOBUF =====================================================================
+
+protobuf_fetch()
+{
+	protobuf_version='2.6.0'
+	protobuf_dirname="protobuf-$protobuf_version"
+	protobuf_tarball="${protobuf_dirname}.tar.gz"
+	protobuf_urlbase="https://protobuf.googlecode.com"
+	protobuf_urlpath="/svn/rc/$protobuf_tarball"
+	protobuf_url="${protobuf_urlbase}$protobuf_urlpath"
+
+	if [ -e "$protobuf_tarball" ]; then
+		return $SKIPPED
+	fi
+	if ! wget -O "$protobuf_tarball" "$protobuf_url"; then
+		rm -f "$protobuf_tarball"
+		return $FAILURE
+	fi
+}
+
+protobuf_extract()
+{
+	tar xvzf "$protobuf_tarball" || return $FAILURE
+	mv "$protobuf_dirname" "$BUILDPATH" || return $FAILURE
+}
+
+protobuf_configure()
+{
+	./configure || return $FAILURE
+}
+
 # LLVM (GENERIC: CLANG, COMPILER-RT, LLVM) =====================================
 
 llvm_generic_fetch()
@@ -223,7 +254,7 @@ lua_fetch()
 
 lua_extract()
 {
-	tar xzf "$lua_tarball" || return $FAILURE
+	tar xvzf "$lua_tarball" || return $FAILURE
 	mv "$lua_dir" "$BUILDPATH" || return $FAILURE
 }
 
@@ -405,11 +436,9 @@ all_build()
 		LOGFILE="${BUILDPATH}.log"
 		rm -f "$LOGFILE"
 		cd "$BUILDPATH_BASE"
-		requires_configure=$FALSE
 
-		# XXX LLVM Hack (is run twice, is reconfigured everytime):
+		# XXX LLVM Hack (is run twice):
 		if [ "$component" = 'llvm' ]; then
-			requires_configure=$TRUE
 			if [ $llvm_seen -eq $FALSE ]; then
 				# first encounter with LLVM:
 				llvm_seen=$TRUE
@@ -418,6 +447,8 @@ all_build()
 				# second encounter with LLVM:
 				TARGET=debug
 			fi
+			set_asserts
+			set_llvm_build
 		fi
 
 		# Prepare:
@@ -432,14 +463,14 @@ all_build()
 		# Exclude/force-build component?
 		if list_contains "$COMPS_FORCE" "$component"; then
 			info 'force-building %s' "$component"
-			# XXX LLVM Hack (second run on llvm should not delete build dir):
-			test $llvm_seen -eq $TRUE || rm -rf "$BUILDPATH"
+			rm -rf "$BUILDPATH"
 		elif list_contains "$COMPS_EXCLUDE" "$component"; then
 			skip '%s: excluded' "$component"
 			continue
 		fi
 
 		# Build:
+		requires_configure=$FALSE
 		for action in fetch extract configure compile install
 		do
 			# if at *any* point there's no build path, we'll need to configure:
@@ -621,12 +652,9 @@ get_release()
 	else
 		ARGSHIFT=1
 	fi
-	split_release "$1"  # sets RELEASE, ARCH, TARGET and MODE
-	case "$TARGET" in
-		release) ASSERTS='Release+Asserts' ;;
-		debug) ASSERTS='Debug+Asserts' ;;
-		*) die_internal 'get_release(): Unknown target %s' "$TARGET" ;;
-	esac
+	split_release "$1" # sets RELEASE, ARCH, TARGET and MODE
+	set_asserts       # sets ASSERTS to 'Release+Asserts' or 'Debug+Asserts'
+	set_llvm_build   # sets LLVM_BUILD to LLVM_BUILD_RELEASE or LLVM_BUILD_DEBUG
 }
 
 main()
@@ -646,7 +674,7 @@ main()
 			BUILDPATH_BASE="$DATAROOT_BUILD/$ARCH-$TARGET-$MODE"
 			;;
 		llvm)
-			COMPS='z3 clang compiler-rt llvm-native llvm llvm' # XXX LLVM twice!
+			COMPS='z3 protobuf clang compiler-rt llvm-native llvm llvm'
 			BUILDPATH_BASE="$LLVM_BASE"
 			;;
 		*)

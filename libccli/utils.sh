@@ -119,7 +119,8 @@ DATAROOT_VM="$DATAROOT/vm"
 LLVM_VERSION='3.2'
 LLVM_BASE="$DATAROOT_BUILD/llvm"
 LLVM_SRC="$LLVM_BASE/llvm-${LLVM_VERSION}.src"
-LLVM_BUILD="$LLVM_BASE/llvm-${LLVM_VERSION}.build"
+LLVM_BUILD_RELEASE="$LLVM_BASE/llvm-${LLVM_VERSION}.build-release"
+LLVM_BUILD_DEBUG="$LLVM_BASE/llvm-${LLVM_VERSION}.build-debug"
 LLVM_NATIVE="$LLVM_BASE/llvm-${LLVM_VERSION}-native"
 LLVM_NATIVE_CC="$LLVM_NATIVE/bin/clang"
 LLVM_NATIVE_CXX="$LLVM_NATIVE/bin/clang++"
@@ -469,4 +470,22 @@ split_release()
 		die_help 'Unknown mode: %s' "$MODE"
 	fi
 	RELEASE="$ARCH:$TARGET:$MODE"
+}
+
+set_asserts()
+{
+	case "$TARGET" in
+		release) ASSERTS='Release+Asserts' ;;
+		debug)   ASSERTS='Debug+Asserts' ;;
+		*) die_internal 'set_asserts(): unknown target %s' "$TARGET" ;;
+	esac
+}
+
+set_llvm_build()
+{
+	case "$TARGET" in
+		release) LLVM_BUILD="$LLVM_BUILD_RELEASE" ;;
+		debug)   LLVM_BUILD="$LLVM_BUILD_DEBUG" ;;
+		*) die_internal 'set_llvm_build(): unknown target %s' "$TARGET" ;;
+	esac
 }
