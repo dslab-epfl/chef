@@ -103,7 +103,9 @@ if [ -z "$INVOKENAME" ]; then
 fi
 
 # Chef source:
-SRCROOT="$(dirname "$RUNPATH")"
+if [ -z "$SRCROOT" ]; then
+	SRCROOT="$(dirname "$RUNPATH")"
+fi
 SRCDIR="$(basename "$SRCROOT")"
 
 # Workspace + data:
@@ -248,6 +250,7 @@ warn()  { _print "$WARN " $TRUE "$@" >&2; }
 skip()  { _print "$SKIP " $TRUE "$@"; }
 fail()  { _print "$FAIL " $TRUE "$@" >&2; }
 pend()  { _print "$PEND " $TRUE "$@"; }
+pend_() { _print "$PEND " $FALSE "$@"; }
 alert() { _print "$ALRT " $TRUE "$@"; }
 ok()    { _print "$_OK_ " $TRUE "$@"; }
 debug() { _print "$DEBUG " $TRUE "$@"; }
@@ -302,13 +305,14 @@ ask()
 	ask_format="$3"
 	shift 3
 	case "$ask_default" in
-		[Yy]*) ask_sel='[Y/n]';;
-		[Nn]*) ask_sel='[y/N]';;
+		[Yy]*) ask_sel='[Y/n]' ;;
+		[Nn]*) ask_sel='[y/N]' ;;
+		'') ask_sel='[y/n]' ;;
 		*) die_internal "ask(): invalid default '%s'" "$ask_default" ;;
 	esac
 	while true; do
 		_print_emphasised "$ask_colour" "$ask_format $ask_sel " "$@"
-		read a
+		read a || exit 255
 		test -n "$a" || a="$ask_default"
 		case "$a" in
 			[Yy]*) return 0;;
