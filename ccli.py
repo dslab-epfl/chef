@@ -69,24 +69,13 @@ def usage(file=sys.stdout):
     print("Usage: %s COMMAND [ARGUMENTS ...]" % INVOKENAME, file=file)
 
 
-def help_group(group: str, used: [str]):
-    print('  %s:' % group)
-    for name in COMMANDS:
-        if name in used:
-            continue
-        if name not in COMMAND_GROUPS[group] and group != 'Miscellaneous':
-            continue
-        print('    {:<15} %s'.format(name) % COMMANDS[name]['description'])
-        used.append(name)
-
-
 def help():
-    print("%s: Command line interface to chef\n" % INVOKENAME)
     usage()
-    print("\nCommands:")
-    used = []
-    for group in COMMAND_GROUPS:
-        help_group(group, used)
+    print("\n%s: Chef Command Line Interface\n" % INVOKENAME)
+    print("Commands:")
+    for c in ['build', 'run', 'clean', 'vm',
+              'smtlib-dump', 'smtlib-compare', 'smtlib-sort', 'docker', 'env']:
+        print("  {:<15}: {}".format(c, COMMANDS[c]['description']))
     print("\nEach command can be run with `-h` for more information")
     exit(1)
 

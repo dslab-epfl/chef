@@ -43,26 +43,18 @@ from vm import VM
 
 from datetime import datetime, timedelta
 
-RUNPATH = os.path.abspath(os.path.dirname(__file__))
-SRCROOT = os.path.dirname(RUNPATH)
-
 # Default values:
-BUILDROOT = '%s/build' % SRCROOT
 COMMAND_PORT = 1234
 MONITOR_PORT = 12345
 VNC_DISPLAY = 0
 VNC_PORT_BASE = 5900
 TIMEOUT = 60
-CONFIGFILE = '%s/config/default-config.lua' % SRCROOT
+CONFIGFILE = '%s/config/default-config.lua' % utils.SRCROOT
 NETWORK_MODE = 'user'
 TAP_INTERFACE = 'tap0'
 
 # Docker:
-DOCKER_IMAGE = 'dslab/s2e-chef:v0.6'
-DOCKER_BUILDROOT = '/chef/build'
-DOCKER_CONFIGROOT = '/chef/config'
-DOCKER_DATAROOT_VMROOT = '/data/vm'
-DOCKER_DATAROOT_EXPDATA = '/data/expdata'
+DOCKER_DATAROOT_CONFIG = '%s/config' % utils.DOCKER_DATAROOT
 
 
 # COMMUNICATION WITH CHEF ======================================================
@@ -233,16 +225,9 @@ def parse_cmd_line():
     exe_env.add_argument('--strace', action='store_true', default=False,
                          help="Run under strace")
 
-    # Paths:
-    parser.add_argument('--data-root', default=utils.DATAROOT,
-                        help="Location of Chef data [default=%s]" % utils.DATAROOT)
-    parser.add_argument('--vm-root', default=None,
-                        help="Location of VM images")
-    parser.add_argument('--build-root', default=BUILDROOT,
-                        help="Location of Chef builds [default=%s]" % BUILDROOT)
-
     # Communication:
-    parser.add_argument('-d','--dockerized', action='store_true', default=False,
+    parser.add_argument('-d','--dockerized', action='store_true',
+                        default=utils.DOCKERIZED,
                         help="Wrap execution in a docker container")
     parser.add_argument('-b','--background', action='store_true', default=False,
                         help="Fork execution to background") # XXX internal option for batch execution
@@ -282,8 +267,6 @@ def parse_cmd_line():
     #             Run mode: Symbolic:
     symbolic_mode = modes.add_parser('sym', help="Symbolic mode")
     symbolic_mode.set_defaults(mode='sym')
-    symbolic_mode.add_argument('--expdata-root', default=None,
-                               help="Destination of experiment data output")
     symbolic_mode.add_argument('-f','--config-file', default=CONFIGFILE,
                                help="The Chef configuration file")
     symbolic_mode.add_argument('-t','--timeout', type=int, default=TIMEOUT,
@@ -309,9 +292,7 @@ def parse_cmd_line():
 
     # Adapt a few options:
     kwargs['vnc_port'] = VNC_PORT_BASE + kwargs['vnc_display']
-    kwargs['vm_root'] = kwargs['vm_root'] or '%s/vm' % utils.DATAROOT
     if kwargs['mode'] == 'sym':
-        kwargs['expdata_root'] = kwargs['expdata_root'] or '%s/expdata' % utils.DATAROOT
         kwargs['config_root'], kwargs['config_filename'] = os.path.split(kwargs['config_file'])
 
     return kwargs
@@ -324,8 +305,7 @@ def build_docker_cmd_line(args, command: [str]):
     if not args['background']:
         docker_cmd_line.extend(['-t', '-i'])
     docker_cmd_line.extend([
-        '-v', '%s:%s' % (BUILDROOT, DOCKER_BUILDROOT),
-        '-v', '%s:%s' % (args['vm_root'], DOCKER_DATAROOT_VMROOT),
+        '-v', '%s:%s' % (utils.WSROOT, utils.DOCKER_WSROOT),
         '-p', '%d:%d' % (args['monitor_port'], args['monitor_port']),
         '-p', '%d:%d' % (args['vnc_port'], args['vnc_port']),
     ])
@@ -338,16 +318,16 @@ def build_docker_cmd_line(args, command: [str]):
     if args['mode'] == 'sym':
         docker_cmd_line.extend([
             '-p', '%d:%d' % (args['command_port'], args['command_port']),
-            '-v', '%s:%s' % (args['expdata_root'], DOCKER_DATAROOT_EXPDATA),
-            '-v', '%s:%s' % (args['config_root'], DOCKER_CONFIGROOT),
         ])
         lua_path = os.environ.get('LUA_PATH', '')
-        lua_path_additional = '%s/?.lua' % os.path.dirname(args['config_file'])
+        lua_path_additional = '%s/?.lua' \
+                              % (args['config_root'],
+                                 DOCKER_DATAROOT_CONFIG)[args['dockerized']]
         docker_cmd_line.extend([
             '-e', 'LUA_PATH=%s;%s' % (lua_path_additional, lua_path)
         ])
 
-    docker_cmd_line.append(DOCKER_IMAGE)
+    docker_cmd_line.append(utils.DOCKER_IMAGE)
 
     # In KVM, adapt ACL for KVM device:
     if args['mode'] == 'kvm':
@@ -379,7 +359,7 @@ def build_qemu_cmd_line(args):
     # Qemu path:
     arch, target, mode = utils.split_release(args['release'])
     qemu_path = os.path.join(
-        (args['build_root'], DOCKER_BUILDROOT)[args['dockerized']],
+        (utils.DATAROOT_BUILD, utils.DOCKER_DATAROOT_BUILD)[args['dockerized']],
         '%s-%s-%s' % (arch, target, mode),
         'opt',
         'bin',
@@ -435,14 +415,14 @@ def build_qemu_cmd_line(args):
             qemu_cmd_line.extend([
                 '-s2e-output-dir', (
                     args['expdata_root'],
-                    DOCKER_DATAROOT_EXPDATA
+                    utils.DOCKER_DATAROOT_EXPDATA
                 )[args['dockerized']]
             ])
 
     # VM path:
     if args['dockerized']:
-        utils.DATAROOT_VMROOT = DOCKER_DATAROOT_VMROOT
-        vm = VM(args['vm_name']) # create VM with dockerized VMROOT
+        utils.DATAROOT_VM = utils.DOCKER_DATAROOT_VM
+        vm = VM(args['vm_name']) # create VM with dockerized data root path
     qemu_cmd_line.append((vm.path_s2e, vm.path_raw)[args['mode'] == 'kvm'])
 
     return qemu_cmd_line
@@ -491,8 +471,6 @@ def batch_execute():
                         % (args['vnc_display'] + batch_offset)])
         cmd_line.extend(['sym'])
         cmd_line.extend(['--config-file', command.config])
-        cmd_line.extend(['--expdata-root', expdata_path])
-        cmd_line.extend(['--vm-root', args['vm_root']])
         if args['dockerized']:
             cmd_line.append('--dockerized')
         if args['timeout']:

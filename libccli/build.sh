@@ -1,33 +1,261 @@
 #!/usr/bin/env sh
+
+# This script builds S²E-Chef.
 #
-# This script builds a user-defined configuration of S²E-chef inside a prepared
-# docker container.
-#
-# Maintainer: Tinu Weber <martin.weber@epfl.ch>
+# Maintainers:
+#   ayekat (Tinu Weber <martin.weber@epfl.ch>)
 
 . "$(readlink -f "$(dirname "$0")")/utils.sh"
 
 export C_INCLUDE_PATH='/usr/include:/usr/include/x86_64-linux-gnu'
 export CPLUS_INCLUDE_PATH="$C_INCLUDE_PATH:/usr/include/x86_64-linux-gnu/c++/4.8"
 COMPS='lua stp klee qemu tools guest'
-DOCKER_HOSTPATH_IN='/host-in'
-DOCKER_HOSTPATH_OUT='/host-out'
+
+# Z3 ===========================================================================
+
+z3_urlbase='http://download-codeplex.sec.s-msft.com'
+z3_urlpath='Download/SourceControlFileDownload.ashx'
+z3_id='dd62ca5eb36c2a62ee44fc5a79fc27c883de21ae'
+z3_urlparam="ProjectName=z3&changeSetId=$z3_id"
+z3_url="$z3_urlbase/$z3_urlpath?$z3_urlparam"
+z3_tarball='z3.zip'
+
+z3_fetch()
+{
+	if [ -e "$z3_tarball" ]; then
+		return $SKIPPED
+	fi
+	if ! wget -O "$z3_tarball" "$z3_url"; then
+		rm -f "$z3_tarball"
+		return $FAILURE
+	fi
+}
+
+z3_extract()
+{
+	unzip -d "$BUILDPATH" "$z3_tarball" || return $FAILURE
+}
+
+z3_configure()
+{
+	python2 scripts/mk_make.py || return $FAILURE
+}
+
+z3_compile()
+{
+	make -j$JOBS -C build || return $FAILURE
+}
+
+# PROTOBUF =====================================================================
+
+protobuf_fetch()
+{
+	protobuf_version='2.6.0'
+	protobuf_dirname="protobuf-$protobuf_version"
+	protobuf_tarball="${protobuf_dirname}.tar.gz"
+	protobuf_urlbase="https://protobuf.googlecode.com"
+	protobuf_urlpath="/svn/rc/$protobuf_tarball"
+	protobuf_url="${protobuf_urlbase}$protobuf_urlpath"
+
+	if [ -e "$protobuf_tarball" ]; then
+		return $SKIPPED
+	fi
+	if ! wget -O "$protobuf_tarball" "$protobuf_url"; then
+		rm -f "$protobuf_tarball"
+		return $FAILURE
+	fi
+}
+
+protobuf_extract()
+{
+	tar xvzf "$protobuf_tarball" || return $FAILURE
+	mv "$protobuf_dirname" "$BUILDPATH" || return $FAILURE
+}
+
+protobuf_configure()
+{
+	./configure || return $FAILURE
+}
+
+# LLVM (GENERIC: CLANG, COMPILER-RT, LLVM) =====================================
+
+llvm_generic_fetch()
+{
+	llvm_generic_prog="$1"
+	llvm_generic_vprog="$llvm_generic_prog-$LLVM_VERSION"
+	llvm_generic_srcdir="${llvm_generic_vprog}.src"
+	llvm_generic_tarball="${llvm_generic_srcdir}.tar.gz"
+	llvm_generic_urlbase="http://llvm.org/releases/$LLVM_VERSION"
+	llvm_generic_url="$llvm_generic_urlbase/$llvm_generic_tarball"
+
+	if [ -e "$llvm_generic_tarball" ]; then
+		return $SKIPPED
+	fi
+	if ! wget -O "$llvm_generic_tarball" "$llvm_generic_url"; then
+		rm -f "$llvm_generic_tarball"
+		return $FAILURE
+	fi
+}
+
+llvm_generic_extract()
+{
+	tar -xzf "$llvm_generic_tarball" || return $FAILURE
+	if [ "$(readlink -f "$llvm_generic_srcdir")" != "$SRCPATH" ]; then
+		mv "$llvm_generic_srcdir" "$SRCPATH" || return $FAILURE
+	fi
+}
+
+llvm_generic_patch()
+{
+	case "$llvm_generic_prog" in
+		llvm|clang) llvm_generic_patchname=memorytracer ;;
+		compiler-rt) llvm_generic_patchname=asan4s2e ;;
+		*) die_internal 'llvm_generic_patch(): invalid program: %s' \
+		   "$llvm_generic_prog" ;;
+	esac
+	llvm_generic_patch="$llvm_generic_vprog-${llvm_generic_patchname}.patch"
+	patch -d "$SRCPATH" -p0 -i "$SRCROOT/llvm/$llvm_generic_patch" \
+	|| return $FAILURE
+}
+
+# CLANG ========================================================================
+
+clang_prepare()   { SRCPATH="$BUILDPATH"; }
+clang_fetch()     { llvm_generic_fetch   clang || return $?; }
+clang_extract()   { llvm_generic_extract clang || return $?; }
+clang_configure() { llvm_generic_patch   clang || return $?; }
+clang_compile()   { :; } # override generic_compile
+
+# COMPILER-RT ==================================================================
+
+compiler_rt_prepare()   { SRCPATH="$BUILDPATH"; }
+compiler_rt_fetch()     { llvm_generic_fetch   compiler-rt || return $?; }
+compiler_rt_extract()   { llvm_generic_extract compiler-rt || return $?; }
+compiler_rt_configure() { llvm_generic_patch   compiler-rt || return $?; }
+compiler_rt_compile()   { :; } # override generic_compile
+
+# LLVM NATIVE ==================================================================
+
+llvm_native_prepare()
+{
+	# This is a little tricky:
+	# - Source in llvm-native.src
+	# - Build in llvm-native.build
+	# - Install in llvm-native
+	SRCPATH="${LLVM_NATIVE}.src"
+	BUILDPATH="${LLVM_NATIVE}.build"
+	INSTALLPATH="$LLVM_NATIVE"
+	echo
+	echo "LLVM native:"
+	echo "  SRCPATH=$SRCPATH"
+	echo "  BUILDPATH=$BUILDPATH"
+	echo "  INSTALLPATH=$INSTALLPATH"
+	echo
+}
+
+llvm_native_fetch()   { llvm_generic_fetch   llvm || return $?; }
+
+llvm_native_extract()
+{
+	llvm_generic_extract llvm || return $FAILURE
+	mkdir "$BUILDPATH" || return $FAILURE
+}
+
+llvm_native_configure()
+{
+	llvm_generic_patch || return $FAILURE
+	cp -r "$BUILDPATH_BASE/clang" "$SRCPATH/tools/clang"
+	cp -r "$BUILDPATH_BASE/compiler-rt" "$SRCPATH/projects/compiler-rt"
+	"$SRCPATH"/configure \
+		--prefix="$INSTALLPATH" \
+		--enable-jit \
+		--enable-optimized \
+		--disable-assertions \
+	|| return $FAILURE
+}
+
+llvm_native_compile() {
+	make ENABLE_OPTIMIZED=1 -j$JOBS || return $FAILURE
+}
+
+llvm_native_install() {
+	make install || return $FAILURE
+}
+
+# LLVM =========================================================================
+
+llvm_prepare()
+{
+	# This is a little less tricky than llvm-native:
+	# - Source in llvm-3.2.src
+	# - Build in llvm-3.2.build
+	SRCPATH="$LLVM_SRC"
+	BUILDPATH="$LLVM_BUILD"
+	echo
+	echo "LLVM:"
+	echo "  SRCPATH=$SRCPATH"
+	echo "  BUILDPATH=$BUILDPATH"
+	echo "  INSTALLPATH=$INSTALLPATH"
+	echo
+}
+
+llvm_fetch()   { llvm_generic_fetch   llvm || return $?; }
+llvm_extract()
+{
+	llvm_generic_extract llvm || return $FAILURE
+	mkdir -p "$BUILDPATH" || return $FAILURE
+}
+
+llvm_configure()
+{
+	case "$TARGET" in
+		release) llvm_configure_options='--enable-optimized' ;;
+		debug) llvm_configure_options='--disable-optimized' ;;
+		*) die_internal 'llvm_configure(): invalid target: %s' "$TARGET"
+	esac
+	"$SRCPATH"/configure \
+		--enable-jit \
+		--target=x86_64 \
+		--enable-targets=x86 \
+		$llvm_configure_options \
+		CC="$LLVM_NATIVE_CC" \
+		CXX="$LLVM_NATIVE_CXX" \
+	|| return $FAILURE
+}
+
+llvm_compile()
+{
+	case "$TARGET" in
+		release) llvm_make_options='ENABLE_OPTIMIZED=1' ;;
+		debug) llvm_make_options='ENABLE_OPTIMIZED=0' ;;
+		*) die_internal 'llvm_compile(): invalid target: %s' "$TARGET"
+	esac
+	make $llvm_make_options REQUIRES_RTTI=1 -j$JOBS || return $FAILURE
+}
 
 # LUA ==========================================================================
 
-lua_prepare()
-{
-	lua_name='lua'
-	lua_version='5.1'
-	lua_vname="$lua_name-$lua_version"
-	lua_baseurl='http://www.lua.org/ftp'
-	lua_tarball="${lua_vname}.tar.gz"
+lua_dir="lua-5.1"
+lua_tarball="${lua_dir}.tar.gz"
+lua_urlbase='http://www.lua.org'
+lua_urlpath='ftp'
+lua_url="$lua_urlbase/$lua_urlpath/$lua_tarball"
 
-	if [ ! -e "$lua_tarball" ]; then
-		wget "$lua_baseurl/$lua_tarball" || return $FAILURE
+lua_fetch()
+{
+	if [ -e "$lua_tarball" ]; then
+		return $SKIPPED
 	fi
-	tar xzf "$lua_tarball"
-	mv "$(basename "$lua_tarball" .tar.gz)" "$BUILDPATH"
+	if ! wget -O "$lua_tarball" "$lua_url"; then
+		rm -f "$lua_tarball"
+		return $FAILURE
+	fi
+}
+
+lua_extract()
+{
+	tar xvzf "$lua_tarball" || return $FAILURE
+	mv "$lua_dir" "$BUILDPATH" || return $FAILURE
 }
 
 lua_compile()
@@ -36,13 +264,10 @@ lua_compile()
 }
 
 # STP ==========================================================================
-# STP does not seem to allow building outside the source directory, so as not to
-# pollute stuff, we need to copy the entire thing.
-# Yay!
 
-stp_prepare()
+stp_extract()
 {
-	cp -r "$SRCPATH" "$BUILDPATH"
+	cp -r "$SRCPATH" "$BUILDPATH" || return $FAILURE
 }
 
 stp_configure()
@@ -74,12 +299,12 @@ klee_configure()
 		klee_ldflags="$klee_ldflags -fsanizite=address"
 	fi
 	"$SRCPATH"/configure \
-		--prefix="$BUILDPATH_ROOT/opt" \
+		--prefix="$BUILDPATH_BASE/opt" \
 		--with-llvmsrc="$LLVM_SRC" \
 		--with-llvmobj="$LLVM_BUILD" \
 		--target=x86_64 \
 		--enable-exceptions \
-		--with-stp="$BUILDPATH_ROOT/stp" \
+		--with-stp="$BUILDPATH_BASE/stp" \
 		CC="$LLVM_NATIVE_CC" \
 		CXX="$LLVM_NATIVE_CXX" \
 		CFLAGS="$klee_cflags" \
@@ -103,10 +328,10 @@ klee_compile()
 qemu_configure()
 {
 	"$SRCPATH"/configure \
-		--with-klee="$BUILDPATH_ROOT/klee/$ASSERTS" \
+		--with-klee="$BUILDPATH_BASE/klee/$ASSERTS" \
 		--with-llvm="$LLVM_BUILD/$ASSERTS" \
 		$(test "$TARGET" = 'debug' && echo '--enable-debug') \
-		--prefix="$BUILDPATH_ROOT/opt" \
+		--prefix="$BUILDPATH_BASE/opt" \
 		--cc="$LLVM_NATIVE_CC" \
 		--cxx="$LLVM_NATIVE_CXX" \
 		--target-list="$ARCH-s2e-softmmu,$ARCH-softmmu" \
@@ -117,7 +342,7 @@ qemu_configure()
 		--extra-cxxflags=-mno-sse3 \
 		--disable-virtfs \
 		--disable-fdt \
-		--with-stp="$BUILDPATH_ROOT/stp" \
+		--with-stp="$BUILDPATH_BASE/stp" \
 		$(test "$MODE" = 'asan' && printf '%s' '--enable-address-sanitizer') \
 		$QEMU_FLAGS \
 	|| return $FAILURE
@@ -127,11 +352,11 @@ qemu_install()
 {
 	make install || return $FAILURE
 	cp "$ARCH-s2e-softmmu/op_helper.bc" \
-		"$BUILDPATH_ROOT/opt/share/qemu/op_helper.bc.$ARCH"
+		"$BUILDPATH_BASE/opt/share/qemu/op_helper.bc.$ARCH"
 	cp "$ARCH-softmmu/qemu-system-$ARCH" \
-		"$BUILDPATH_ROOT/opt/bin/qemu-system-$ARCH"
+		"$BUILDPATH_BASE/opt/bin/qemu-system-$ARCH"
 	cp "$ARCH-s2e-softmmu/qemu-system-$ARCH" \
-		"$BUILDPATH_ROOT/opt/bin/qemu-system-$ARCH-s2e"
+		"$BUILDPATH_BASE/opt/bin/qemu-system-$ARCH-s2e"
 }
 
 # TOOLS ========================================================================
@@ -141,7 +366,7 @@ tools_configure()
 	"$SRCPATH"/configure \
 		--with-llvmsrc="$LLVM_SRC" \
 		--with-llvmobj="$LLVM_BUILD" \
-		--with-s2esrc="$SRCPATH_ROOT/qemu" \
+		--with-s2esrc="$SRCROOT/qemu" \
 		--target=x86_64 \
 		CC="$LLVM_NATIVE_CC" \
 		CXX="$LLVM_NATIVE_CXX" \
@@ -166,11 +391,16 @@ guest_compile()
 	make -j$JOBS CFLAGS="$guest_cflags" || return $FAILURE
 }
 
-# ALL ==========================================================================
+# ALL/GENERIC ==================================================================
 
-generic_prepare()
+generic_enter()
 {
-	mkdir "$BUILDPATH"
+	cd "$BUILDPATH"
+}
+
+generic_extract()
+{
+	mkdir -p "$BUILDPATH" || return $FAILURE
 }
 
 generic_compile()
@@ -180,12 +410,55 @@ generic_compile()
 
 all_build()
 {
+	# Don't unnecessarily recompile LLVM & Co:
+	if [ "$PROCEDURE" = llvm ] && [ -d "$DOCKER_LLVM_BASE" ]; then
+		info 'Found existing LLVM build in %s' "$DOCKER_LLVM_BASE"
+		if [ ! -d "$LLVM_BASE" ]; then
+			LOGFILE="${LLVM_BASE}.log"
+			if ! track "copying existing LLVM build to $LLVM_BASE" \
+				cp -r "$DOCKER_LLVM_BASE" "$LLVM_BASE"
+			then
+				examine_logs
+			else
+				return $SUCCESS
+			fi
+		else
+			skip '%s: already exists, not copying' "$LLVM_BASE"
+			return $SUCCESS
+		fi
+	fi
+
+	llvm_seen=$FALSE
 	for component in $COMPS
 	do
-		BUILDPATH="$BUILDPATH_ROOT/$component"
-		SRCPATH="$SRCPATH_ROOT/$component"
+		BUILDPATH="$BUILDPATH_BASE/$component"
+		SRCPATH="$SRCROOT/$component"
 		LOGFILE="${BUILDPATH}.log"
 		rm -f "$LOGFILE"
+		cd "$BUILDPATH_BASE"
+
+		# XXX LLVM Hack (is run twice):
+		if [ "$component" = 'llvm' ]; then
+			if [ $llvm_seen -eq $FALSE ]; then
+				# first encounter with LLVM:
+				llvm_seen=$TRUE
+				TARGET=release
+			else
+				# second encounter with LLVM:
+				TARGET=debug
+			fi
+			set_asserts
+			set_llvm_build
+		fi
+
+		# Prepare:
+		prepare_handler="$(funcify "$component")_prepare"
+		if is_command "$prepare_handler"; then
+			if ! track "preparing $component" "$prepare_handler"; then
+				examine_logs
+				return $FAILURE
+			fi
+		fi
 
 		# Exclude/force-build component?
 		if list_contains "$COMPS_FORCE" "$component"; then
@@ -197,49 +470,43 @@ all_build()
 		fi
 
 		# Build:
-		for action in prepare configure compile install
+		requires_configure=$FALSE
+		for action in fetch extract configure compile install
 		do
-			# action-specific:
-			case $action in
-				prepare)
-					configure=$FALSE
-					test ! -d "$BUILDPATH" || continue
-					configure=$TRUE ;;
-				configure)
-					test $configure -eq $TRUE || continue ;;
-			esac
-			if [ $action = prepare ]; then
-				cd "$BUILDPATH_ROOT"
-			else
-				cd "$BUILDPATH"
+			# if at *any* point there's no build path, we'll need to configure:
+			if [ ! -d "$BUILDPATH" ]; then
+				requires_configure=$TRUE
 			fi
 
-			# default action:
-			handler=${component}_$action
-			is_command $handler || handler=generic_$action
-			is_command $handler || continue   # if default action == nothing
+			# determine whether to skip:
+			if [ "$action" = 'extract' ] && [ -d "$BUILDPATH" ] \
+			|| [ "$action" = 'configure' ] && [ $requires_configure -ne $TRUE ]; then
+				skip '%s %s' "$(lang_continuous $action)" "$component"
+				continue
+			fi
 
-			# action:
-			if ! track "$(lang_continuous "$action") $component" $handler; then
+			# CWD:
+			case "$action" in
+				fetch|extract) cd "$BUILDPATH_BASE" ;;
+				configure|compile|install) cd "$BUILDPATH" ;;
+				*) die_internal 'Unknown action: %s' "$action"
+			esac
+
+			handler="$(funcify "$component")_$action"
+			is_command "$handler" || handler="generic_$action"
+			is_command "$handler" || continue   # if default action == nothing
+			if ! track "$(lang_continuous "$action") $component" \
+				"$handler"
+			then
 				examine_logs
-				if ask "$ESC_ERROR" 'yes' 'Restart?'; then
-					CODE_TERM='restart'
-				else
-					CODE_TERM='abort'
-				fi
-				if ! case $action in (prepare|configure) false ;; esac; then
-					if ! track 'cleaning up' rm -rf "$BUILDPATH"; then
-						echo "Oh dear... you've got some issues"
-					fi
-				fi
-				return
+				return $FAILURE
 			fi
 		done
 
 		LOGFILE="$NULL"
 	done
-	success "Successfully built S²E-chef in %s.\n" "$BUILDPATH_ROOT"
-	CODE_TERM='success'
+	success "Build complete in %s.\n" "$BUILDPATH_BASE"
+	return $SUCCESS
 }
 
 # DOCKER =======================================================================
@@ -251,18 +518,16 @@ docker_build()
 	fi
 
 	exec docker run --rm -it \
-		-v "$SRCPATH_ROOT":"$DOCKER_HOSTPATH_IN" \
-		-v "$BUILDPATH_ROOT":"$DOCKER_HOSTPATH_OUT" \
+		-v "$WSROOT":"$DOCKER_WSROOT" \
 		"$DOCKER_IMAGE" \
-		"$DOCKER_HOSTPATH_IN/$RUNDIR/$RUNNAME" \
-			-i "$DOCKER_HOSTPATH_IN" \
-			-o "$DOCKER_HOSTPATH_OUT" \
+		"$DOCKER_SRCROOT/$RUNDIR/$RUNNAME" \
+			-p "$PROCEDURE" \
 			-f "$COMPS_FORCE" \
 			-x "$COMPS_EXCLUDE" \
 			-j $JOBS \
-			-L "$LLVM_BASE" \
 			-q "$QEMU_FLAGS" \
 			$(test $VERBOSE -eq $FALSE && printf '%s' '-s') \
+			$(test $DRYRUN_DOCKERIZED -eq $TRUE && printf '%s' '-y') \
 			"$RELEASE"
 }
 
@@ -272,6 +537,7 @@ usage()
 {
 	cat <<- EOF
 	Usage: $INVOKENAME [OPTIONS ...] [[ARCH]:[TARGET]:[MODE]]
+	       $INVOKENAME [OPTIONS ...] llvm {release|debug}
 	EOF
 }
 
@@ -296,22 +562,17 @@ help()
 
 	Options:
 	  -d         Dockerized (wrap build process inside docker container)
-	  -i PATH    Path to the build input directory (Chef source root)
-	             [default=$SRCPATH_ROOT]
-	  -o PATH    Path to the build output directory
-	             [default=$BUILDPATH_ROOT]
+	  -p PROC    Change procedure (see below for more information)
 	  -f COMPS   Force-rebuild components COMPS from scratch
 	             [default='$COMPS_FORCE']
 	  -x COMPS   Exclude components COMPS (-f overrides this)
 	             [default='$COMPS_EXCLUDE']
 	  -j N       Compile with N jobs [default=$JOBS]
-	  -L PATH    Path to where the LLVM-3.2 files are installed
-	             [default=$LLVM_BASE]
 	  -q FLAGS   Additional flags passed to qemu's \`configure\` script
-	  -s         Silent: redirect compilation messages/warnings/errors into log file
-
-	  -y         Dry run: print build-related variables and exit
+	  -s         Silent: redirect compilation messages/warnings/errors into log files
 	  -l         List existing builds and exit
+	  -y         Dry run: print build-related variables and exit
+	  -Y         Like -y, but wait until inside docker before printing variables
 	  -h         Display this help and exit
 
 	Components:
@@ -326,12 +587,15 @@ help()
 
 	Modes:
 	$(help_list_with_default "$DEFAULT_MODE" $MODES)
+
+	Procedures:
+	  [normal]  llvm
 	EOF
 }
 
 list()
 {
-	for build in $(find "$BUILDPATH_ROOT" -maxdepth 1 -mindepth 1 -type d); do
+	for build in $(find "$DATAROOT_BUILD" -maxdepth 1 -mindepth 1 -type d); do
 		basename "$build" | sed 's/-/:/g'
 	done
 }
@@ -340,66 +604,40 @@ dry_run()
 {
 	util_dryrun
 	cat <<- EOF
-	BUILDPATH_ROOT=$BUILDPATH_ROOT
 	COMPS='$COMPS'
 	COMPS_FORCE='$COMPS_FORCE'
 	COMPS_EXCLUDE='$COMPS_EXCLUDE'
 	JOBS=$JOBS
-	LLVM_BASE=$LLVM_BASE
+	LIST=$LIST
+	PROCEDURE=$PROCEDURE
 	QEMU_FLAGS='$QEMU_FLAGS'
-	LLVM_SRC=$LLVM_SRC
-	LLVM_BUILD=$LLVM_BUILD
-	LLVM_NATIVE=$LLVM_NATIVE
-	LLVM_NATIVE_CC=$LLVM_NATIVE_CC
-	LLVM_NATIVE_CXX=$LLVM_NATIVE_CXX
-	LLVM_NATIVE_LIB=$LLVM_NATIVE_LIB
 	EOF
 }
 
 get_options()
 {
-	# Default values:
-	#BUILDPATH_ROOT set in utils.sh
-	#SRCPATH_ROOT set in utils.sh
-	DOCKERIZED=$DEFAULT_DOCKERIZED
 	DRYRUN=$FALSE
+	DRYRUN_DOCKERIZED=$FALSE
+	LIST=$FALSE
+	VERBOSE=${CHEF_VERBOSE:-$TRUE}  # override utils.sh
+	PROCEDURE=normal
 	COMPS_FORCE=''
 	COMPS_EXCLUDE=''
 	JOBS=$CPU_CORES
-	LIST=$FALSE
-	LLVM_BASE='/opt/s2e/llvm'
 	QEMU_FLAGS=''
-	#VERBOSE=${CHEF_VERBOSE:-$DEFAULT_VERBOSE}
-	VERBOSE=${CHEF_VERBOSE:-$TRUE}
 
-	# Options:
-	while getopts :df:hi:j:lL:o:q:sx:y opt; do
+	while getopts :dp:f:x:j:q:slyYh opt; do
 		case "$opt" in
 			d) DOCKERIZED=$TRUE ;;
-			i) SRCPATH_ROOT="$OPTARG" ;;
-			o) BUILDPATH_ROOT="$(readlink -f "$OPTARG")" ;;
-			f)
-				COMPS_FORCE="$OPTARG"
-				test "$COMPS_FORCE" != 'all' || COMPS_FORCE="$COMPS"
-				;;
-			x)
-				COMPS_EXCLUDE="$OPTARG"
-				test "$COMPS_EXCLUDE" != 'all' || COMPS_EXCLUDE="$COMPS"
-				;;
+			p) PROCEDURE="$OPTARG" ;;
+			f) COMPS_FORCE="$OPTARG" ;;
+			x) COMPS_EXCLUDE="$OPTARG" ;;
 			j) JOBS="$OPTARG" ;;
-			l) LIST=$TRUE ;;
-			L)
-				LLVM_BASE="$OPTARG"
-				LLVM_SRC="$LLVM_BASE/llvm-3.2.src"
-				LLVM_BUILD="$LLVM_BASE/llvm-3.2.build"
-				LLVM_NATIVE="$LLVM_BASE/llvm-3.2-native"
-				LLVM_NATIVE_CC="$LLVM_NATIVE/bin/clang"
-				LLVM_NATIVE_CXX="$LLVM_NATIVE/bin/clang++"
-				LLVM_NATIVE_LIB="$LLVM_NATIVE/lib"
-				;;
 			q) QEMU_FLAGS="$OPTARG" ;;
 			s) VERBOSE=$FALSE ;;
+			l) LIST=$TRUE ;;
 			y) DRYRUN=$TRUE ;;
+			Y) DRYRUN_DOCKERIZED=$TRUE ;;
 			h) help; exit 1 ;;
 			'?') die_help 'Invalid option: -%s' "$OPTARG";;
 		esac
@@ -414,12 +652,9 @@ get_release()
 	else
 		ARGSHIFT=1
 	fi
-	split_release "$1"  # sets RELEASE, ARCH, TARGET and MODE
-	case "$TARGET" in
-		release) ASSERTS='Release+Asserts' ;;
-		debug) ASSERTS='Debug+Asserts' ;;
-		*) die_internal 'get_release(): Unknown target %s' "$TARGET" ;;
-	esac
+	split_release "$1" # sets RELEASE, ARCH, TARGET and MODE
+	set_asserts       # sets ASSERTS to 'Release+Asserts' or 'Debug+Asserts'
+	set_llvm_build   # sets LLVM_BUILD to LLVM_BUILD_RELEASE or LLVM_BUILD_DEBUG
 }
 
 main()
@@ -429,42 +664,58 @@ main()
 	# Command line arguments:
 	get_options "$@"
 	shift $ARGSHIFT
-	if [ $LIST -eq $TRUE ]; then
-		list
-		exit 1
-	fi
 	get_release "$@"
 	shift $ARGSHIFT
 	test $# -eq 0 || die_help "trailing arguments: $@"
 
+	# Procedure:
+	case "$PROCEDURE" in
+		normal)
+			BUILDPATH_BASE="$DATAROOT_BUILD/$ARCH-$TARGET-$MODE"
+			;;
+		llvm)
+			COMPS='z3 protobuf clang compiler-rt llvm-native llvm llvm'
+			BUILDPATH_BASE="$LLVM_BASE"
+			;;
+		*)
+			die_help 'invalid procedure: %s' "$PROCEDURE"
+			;;
+	esac
+	test -d "$DATAROOT_BUILD" || mkdir "$DATAROOT_BUILD"
+
+	# Forced/excluded components:
+	test "$COMPS_FORCE" != 'all' || COMPS_FORCE="$COMPS"
+	test "$COMPS_EXCLUDE" != 'all' || COMPS_EXCLUDE="$COMPS"    # uhm...
+
+	# Special action exit:
 	if [ $DRYRUN -eq $TRUE ]; then
 		dry_run
 		exit 1
+	elif [ $LIST -eq $TRUE ]; then
+		list
+		exit 1
 	fi
 
-	test -d "$BUILDPATH_ROOT" || mkdir "$BUILDPATH_ROOT"
-
+	# Run inside docker:
 	if [ $DOCKERIZED -eq $TRUE ]; then
-		setfacl -m user:$(id -u):rwx "$BUILDPATH_ROOT"
-		setfacl -m user:431:rwx "$BUILDPATH_ROOT"
-		setfacl -d -m user:$(id -u):rwx "$BUILDPATH_ROOT"
-		setfacl -d -m user:431:rwx "$BUILDPATH_ROOT"
+		setfacl -m user:$(id -u):rwx "$DATAROOT_BUILD"
+		setfacl -m user:431:rwx "$DATAROOT_BUILD"
+		setfacl -d -m user:$(id -u):rwx "$DATAROOT_BUILD"
+		setfacl -d -m user:431:rwx "$DATAROOT_BUILD"
 		docker_build
+
+	# Run natively:
 	else
 		info 'Building %s (jobs=%d)' "$RELEASE" "$JOBS"
-		BUILDPATH_ROOT="$BUILDPATH_ROOT/$ARCH-$TARGET-$MODE"
-		CODE_TERM='restart'
-		while [ "$CODE_TERM" = 'restart' ]; do
-			if ! mkdir -p "$BUILDPATH_ROOT"; then
-				die 1 'Permission denied'
-			fi
-			all_build
-		done
-		case "$CODE_TERM" in
-			'success') exit 0 ;;
-			'abort') exit 2 ;;
-			*) die_internal 'main(): unknown termination code: %s' "$CODE_TERM" ;;
-		esac
+
+		# enter:
+		test -d "$BUILDPATH_BASE" || mkdir "$BUILDPATH_BASE"
+
+		# build:
+		if ! mkdir -p "$BUILDPATH_BASE"; then
+			die 1 'Permission denied'
+		fi
+		all_build
 	fi
 }
 
