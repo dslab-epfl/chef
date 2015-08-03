@@ -208,6 +208,7 @@ bool MergingSearcher::mergeEnd(S2EExecutionState *state, bool skipOpcode, bool c
         return true;
     }
 
+#ifdef TARGET_I386
     // Skip the opcode
     if (skipOpcode) {
         target_long val = state->getPc() + 10;
@@ -225,6 +226,9 @@ bool MergingSearcher::mergeEnd(S2EExecutionState *state, bool skipOpcode, bool c
         state->writeCpuRegisterConcrete(CPU_OFFSET(cc_dst), &val, sizeof(val));
         state->writeCpuRegisterConcrete(CPU_OFFSET(cc_tmp), &val, sizeof(val));
     }
+#else
+    assert(0 && "Merging not supported on this architecture");
+#endif
 
     //The TLB state must be identical when we merge
     tlb_flush(env, 1);
