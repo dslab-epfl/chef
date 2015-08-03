@@ -219,10 +219,11 @@ bool MergingSearcher::mergeEnd(S2EExecutionState *state, bool skipOpcode, bool c
     // implying that the flags can be clobbered.
     // XXX: is it possible that these can be symbolic?
     if (clearTmpFlags) {
-        state->regs()->write(CPU_OFFSET(cc_op), 0);
-        state->regs()->write(CPU_OFFSET(cc_src), 0);
-        state->regs()->write(CPU_OFFSET(cc_dst), 0);
-        state->regs()->write(CPU_OFFSET(cc_tmp), 0);
+        target_long val = 0;
+        state->writeCpuRegisterConcrete(CPU_OFFSET(cc_op), &val, sizeof(val));
+        state->writeCpuRegisterConcrete(CPU_OFFSET(cc_src), &val, sizeof(val));
+        state->writeCpuRegisterConcrete(CPU_OFFSET(cc_dst), &val, sizeof(val));
+        state->writeCpuRegisterConcrete(CPU_OFFSET(cc_tmp), &val, sizeof(val));
     }
 
     //The TLB state must be identical when we merge
