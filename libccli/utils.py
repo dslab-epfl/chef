@@ -84,9 +84,27 @@ def set_permissions(path: str, docker_uid: int = 431):
     set_msg_prefix(None)
 
 
-DATAROOT = os.environ.get('CHEF_DATAROOT', '/var/local/chef')
-DATAROOT_VMROOT = os.environ.get('CHEF_DATAROOT_VMROOT', '%s/vm' % DATAROOT)
-DATAROOT_EXPDATA = os.environ.get('CHEF_DATAROOT_VMROOT', '%s/expdata' % DATAROOT)
+# Basic paths:
+CCLIPATH = os.path.abspath(os.path.dirname(__file__))
+SRCROOT = os.path.dirname(CCLIPATH)
+WSROOT = os.path.dirname(SRCROOT)
+
+# Data location:
+DATAROOT = '%s/chef-data' % WSROOT
+DATAROOT_VM = '%s/vm' % DATAROOT
+DATAROOT_EXPDATA = '%s/expdata' % DATAROOT
+DATAROOT_BUILD = '%s/build' % DATAROOT
+
+# Docker:
+DOCKER_IMAGE = 'dslab/s2e-chef:v0.6'
+DOCKER_WSROOT = '/host'
+DOCKER_DATAROOT = '%s/chef-data' % DOCKER_WSROOT
+DOCKER_DATAROOT_BUILD = '%s/build' % DOCKER_DATAROOT
+DOCKER_DATAROOT_EXPDATA = '%s/expdata' % DOCKER_DATAROOT
+DOCKER_DATAROOT_VM = '%s/vm' % DOCKER_DATAROOT
+DOCKERIZED = os.environ.get('CHEF_DOCKERIZED', '1') == '1'
+
+# Build configurations:
 ARCH     = os.environ.get('CHEF_ARCH',     'i386')
 TARGET   = os.environ.get('CHEF_TARGET',   'release')
 MODE     = os.environ.get('CHEF_MODE',     'normal')

@@ -45,7 +45,7 @@ class VM:
 
     def __init__(self, name: str):
         self.name = name
-        self.path = '%s/%s' % (utils.DATAROOT_VMROOT, name)
+        self.path = '%s/%s' % (utils.DATAROOT_VM, name)
         self.path_qcow = '%s/disk.qcow2' % self.path
         self.path_raw = '%s/disk.raw' % self.path
         self.path_s2e = '%s/disk.s2e' % self.path
@@ -213,7 +213,7 @@ class VM:
             exit(1)
 
         # Copy ISO:
-        self.path_iso = '%s/%s' % (utils.DATAROOT_VMROOT,
+        self.path_iso = '%s/%s' % (utils.DATAROOT_VM,
                                    os.path.basename(iso_path))
         utils.set_msg_prefix("register ISO")
         utils.pend("%s => %s" % (iso_path, self.path_iso))
@@ -254,7 +254,7 @@ class VM:
         self.os_name = os_name
         self.description = REMOTES[os_name]['description']
         remote_iso = REMOTES[os_name]['iso']
-        self.path_iso = '%s/%s' % (utils.DATAROOT_VMROOT, remote_iso)
+        self.path_iso = '%s/%s' % (utils.DATAROOT_VM, remote_iso)
         remote_qcow = os.path.basename(self.path_qcow)
         remote_tar_gz = '%s.tar.gz' % os_name
         self.path_tar_gz = '%s/%s' % (self.path, remote_tar_gz)
@@ -331,14 +331,14 @@ class VM:
                 print("  %s" % REMOTES[name]['description'])
                 print("  Based on: %s" % REMOTES[name]['iso'])
         else:
-            for name in os.listdir(utils.DATAROOT_VMROOT):
+            for name in os.listdir(utils.DATAROOT_VM):
                 if iso:
                     _, ext = os.path.splitext(name)
                     if ext != '.iso':
                         continue
                     print(name)
                 else:
-                    if not os.path.isdir('%s/%s' % (utils.DATAROOT_VMROOT, name)):
+                    if not os.path.isdir('%s/%s' % (utils.DATAROOT_VM, name)):
                         continue
                     print(VM(name))
 
@@ -407,9 +407,9 @@ class VM:
     @staticmethod
     def main(argv: [str]):
         # Check environment:
-        if not os.path.isdir(utils.DATAROOT_VMROOT):
+        if not os.path.isdir(utils.DATAROOT_VM):
             utils.fail("%s: Directory not found (please initialise Chef first)"
-                       % utils.DATAROOT_VMROOT)
+                       % utils.DATAROOT_VM)
             exit(1)
 
         # Parse command line arguments:
