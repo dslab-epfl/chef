@@ -1683,8 +1683,8 @@ bool S2EExecutionState::merge(const ExecutionState &_b)
                     << *(*pc).inst << "\n"
                     << *(*b.pc).inst << "\n";
 
-            s << "symb regs a: " << hexval(regs()->getSymbolicRegistersMask()) << "\n";
-            s << "symb regs b: " << hexval(b.regs()->getSymbolicRegistersMask()) << "\n";
+            s << "symb regs a: " << hexval(getSymbolicRegistersMask()) << "\n";
+            s << "symb regs b: " << hexval(b.getSymbolicRegistersMask()) << "\n";
 
             std::stringstream ss;
             g_s2e->getExecutor()->printStack(*this, NULL, ss);
