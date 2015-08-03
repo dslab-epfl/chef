@@ -444,3 +444,76 @@ s2e_sm_succ_count:
     db 0x00
     dd 0x00
     ret
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+s2e_invoke_plugin:
+    push ebp
+    mov ebp, esp
+
+    mov eax, [ebp + 0x8] ; pluginName
+    mov ecx, [ebp + 0xc] ; data
+    mov edx, [ebp + 0x10]; dataSize
+
+    db 0x0f
+    db 0x3f ; S2EOP
+    db 0x00 ; Built-in instructions
+    db 0x0B ; invoke plugin
+    db 0x00
+    db 0x00
+    dd 0x00
+
+    leave
+    ret
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+__MergingSearcher: db "MergingSearcher", 0
+
+s2e_merge_group_begin:
+    push ebp
+    mov ebp, esp
+    sub esp, 8 ; allocate space for groupid and start
+
+    mov dword [ebp - 0x08], 1
+    mov dword [ebp - 0x04], 0
+
+    push 8
+    lea eax, [ebp - 0x8]
+    push eax
+    push __MergingSearcher
+    call s2e_invoke_plugin
+    add esp, 3*4
+
+    leave
+    ret
+
+s2e_merge_group_end:
+    push ebp
+
+    mov ebp, esp
+    sub esp, 8 ; allocate space for the start command
+
+    pusha ;Must make all registers concrete
+    xor eax, eax
+    xor ebx, ebx
+    xor ecx, ecx
+    xor edx, edx
+    xor esi, esi
+    xor edi, edi
+    jmp smge1 ;Force concrete mode
+smge1:
+
+    mov dword [ebp - 0x08], 0
+    mov dword [ebp - 0x04], 0
+
+    push 8
+    lea eax, [ebp - 0x8]
+    push eax
+    push __MergingSearcher
+    call s2e_invoke_plugin
+    add esp, 3*4
+
+    popa
+
+    leave
+    ret

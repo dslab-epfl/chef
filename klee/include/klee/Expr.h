@@ -211,6 +211,12 @@ public:
   /// isFalse - Is this the false expression.
   bool isFalse() const;
 
+  /// isIsZero - Is this expression Eq(0, e)
+  bool isIsZeroOf(const ref<Expr> &e) const;
+
+  bool isNegationOf(const ref<Expr> &e) const;
+
+
   /* Static utility methods */
 
   static void printKind(llvm::raw_ostream &os, Kind k);
@@ -224,9 +230,9 @@ public:
   /* Kind utilities */
 
   /* Utility creation functions */
-  static ref<Expr> createCoerceToPointerType(ref<Expr> e);
-  static ref<Expr> createImplies(ref<Expr> hyp, ref<Expr> conc);
-  static ref<Expr> createIsZero(ref<Expr> e);
+  static ref<Expr> createCoerceToPointerType(const ref<Expr> &e);
+  static ref<Expr> createImplies(const ref<Expr> &hyp, const ref<Expr> &conc);
+  static ref<Expr> createIsZero(const ref<Expr> &e);
 
   /// Create a little endian read of the given type at offset 0 of the
   /// given object.
@@ -248,7 +254,7 @@ struct Expr::CreateArg {
   Width width;
   
   CreateArg(Width w = Bool) : expr(0), width(w) {}
-  CreateArg(ref<Expr> e) : expr(e), width(Expr::InvalidWidth) {}
+  CreateArg(const ref<Expr> &e) : expr(e), width(Expr::InvalidWidth) {}
   
   bool isExpr() { return !isWidth(); }
   bool isWidth() { return width != Expr::InvalidWidth; }
@@ -369,7 +375,7 @@ public:
     return value.ult(cb.value) ? -1 : 1;
   }
 
-  virtual ref<Expr> rebuild(ref<Expr> kids[]) const { 
+  virtual ref<Expr> rebuild(ref<Expr> kids[]) const {
     assert(0 && "rebuild() on ConstantExpr"); 
     return (Expr*) this;
   }
@@ -500,7 +506,7 @@ public:
 class CmpExpr : public BinaryExpr {
 
 protected:
-  CmpExpr(ref<Expr> l, ref<Expr> r) : BinaryExpr(l,r) {}
+  CmpExpr(const ref<Expr> &l, const ref<Expr> &r) : BinaryExpr(l,r) {}
   
 public:                                                       
   Width getWidth() const { return Bool; }
@@ -526,7 +532,7 @@ public:
     return r;
   }
   
-  static ref<Expr> create(ref<Expr> src);
+  static ref<Expr> create(const ref<Expr> &src);
   
   Width getWidth() const { return src->getWidth(); }
   Kind getKind() const { return NotOptimized; }
@@ -717,7 +723,7 @@ public:
     return r;
   }
   
-  static ref<Expr> create(ref<Expr> c, ref<Expr> t, ref<Expr> f);
+  static ref<Expr> create(const ref<Expr> &c, const ref<Expr> &t, const ref<Expr> &f);
 
   Width getWidth() const { return trueExpr->getWidth(); }
   Kind getKind() const { return Select; }
@@ -742,6 +748,32 @@ public:
   virtual ref<Expr> rebuild(ref<Expr> kids[]) const { 
     return create(kids[0], kids[1], kids[2]);
   }
+
+  bool isConstantCases() const {
+    bool res = true;
+    if (SelectExpr* te = dyn_cast<SelectExpr>(trueExpr))
+      res &= te->isConstantCases();
+    else
+      res &= isa<ConstantExpr>(trueExpr);
+    if (SelectExpr* fe = dyn_cast<SelectExpr>(falseExpr))
+      res &= fe->isConstantCases();
+    else
+      res &= isa<ConstantExpr>(falseExpr);
+    return res;
+  }
+
+  bool hasConstantCases() const {
+    if (isa<ConstantExpr>(trueExpr) || isa<ConstantExpr>(falseExpr))
+      return true;
+    if (SelectExpr* te = dyn_cast<SelectExpr>(trueExpr))
+      if (te->hasConstantCases())
+        return true;
+    if (SelectExpr* fe = dyn_cast<SelectExpr>(falseExpr))
+      if (fe->hasConstantCases())
+        return true;
+    return false;
+  }
+
 
 private:
   SelectExpr(const ref<Expr> &c, const ref<Expr> &t, const ref<Expr> &f) 
@@ -834,7 +866,7 @@ public:
   }
   
   /// Creates an ExtractExpr with the given bit offset and width
-  static ref<Expr> create(ref<Expr> e, unsigned bitOff, Width w);
+  static ref<Expr> create(const ref<Expr> &e, unsigned bitOff, Width w);
 
   Width getWidth() const { return width; }
   Kind getKind() const { return Extract; }
@@ -954,7 +986,7 @@ public:                                                          \
   static const Kind kind = _class_kind;                          \
   static const unsigned numKids = 1;                             \
 public:                                                          \
-    _class_kind ## Expr(ref<Expr> e, Width w) : CastExpr(e,w) {} \
+    _class_kind ## Expr(const ref<Expr> &e, Width w) : CastExpr(e,w) {} \
     static ref<Expr> alloc(const ref<Expr> &e, Width w) {        \
       ref<Expr> r(new _class_kind ## Expr(e, w));                \
       r->computeHash();                                          \

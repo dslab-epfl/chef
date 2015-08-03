@@ -1701,7 +1701,17 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     BasicBlock *bb = si->getParent();
 
     cond = simplifyExpr(state, toUnique(state, cond));
-    if (!isa<ConstantExpr>(cond)) {
+
+    if (concolicMode) {
+        klee::ref<klee::Expr> concreteCond = state.concolics.evaluate(cond);
+        klee::ref<klee::Expr> condition = EqExpr::create(concreteCond , cond);
+        StatePair sp = fork(state, condition, true);
+        assert(sp.first == &state);
+        if (sp.second) {
+            sp.second->pc = sp.second->prevPC;
+        }
+        cond = concreteCond;
+    } else {
         // TODO: proper support for symbolic switches
         cond = toConstant(state, cond, "Symbolic switch condition");
     }
@@ -2860,14 +2870,14 @@ void Executor::terminateStateOnExit(ExecutionState &state) {
   terminateState(state);
 }
 
-void Executor::printStack(ExecutionState &state, KInstruction *target, std::stringstream &msg)
+void Executor::printStack(const ExecutionState &state, KInstruction *target, std::stringstream &msg)
 {
     msg << "Stack: \n";
     unsigned idx = 0;
-    for (ExecutionState::stack_ty::reverse_iterator
+    for (ExecutionState::stack_ty::const_reverse_iterator
            it = state.stack.rbegin(), ie = state.stack.rend();
          it != ie; ++it) {
-      StackFrame &sf = *it;
+      const StackFrame &sf = *it;
       Function *f = sf.kf->function;
 
       unsigned assemblyLine = 0;

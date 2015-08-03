@@ -73,7 +73,11 @@ class STPBuilder {
 
 private:
   unsigned getShiftBits(unsigned amount) {
-    return (amount == 64) ? 6 : 5;
+    unsigned bits = 1;
+    amount--;
+    while (amount >>= 1)
+      bits++;
+    return bits;
   }
 
   ExprHandle bvOne(unsigned width);
@@ -81,6 +85,8 @@ private:
   ExprHandle bvMinusOne(unsigned width);
   ExprHandle bvConst32(unsigned width, uint32_t value);
   ExprHandle bvConst64(unsigned width, uint64_t value);
+  ExprHandle bvZExtConst(unsigned width, uint64_t value);
+  ExprHandle bvSExtConst(unsigned width, uint64_t value);
 
   ExprHandle bvBoolExtract(ExprHandle expr, int bit);
   ExprHandle bvExtract(ExprHandle expr, unsigned top, unsigned bottom);

@@ -208,7 +208,8 @@ typedef struct CPUWatchpoint {
 #endif
 
 #define CPU_TEMP_BUF_NLONGS 128
-#define CPU_COMMON                                                      \
+#define CPU_COMMON    \
+    int s2e_common_start; /* Dummy variable to mark the start of the common area */ \
     struct TranslationBlock *current_tb; /* currently executing TB  */  \
     struct TranslationBlock *s2e_current_tb; /* currently executing TB  */  \
     /* soft mmu support */                                              \
@@ -277,6 +278,7 @@ typedef struct CPUWatchpoint {
     struct KVMState *kvm_state;                                         \
     struct kvm_run *kvm_run;                                            \
     int kvm_fd;                                                         \
-    int kvm_vcpu_dirty;
+    int kvm_vcpu_dirty;                                                 \
+    int s2e_common_end; /* Dummy variable to mark the end of the common area */
 
 #endif

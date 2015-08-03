@@ -61,14 +61,6 @@ namespace {
                         clEnumValEnd));
   
   cl::opt<bool>
-  UseMerge("use-merge", 
-           cl::desc("Enable support for klee_merge() (experimental)"));
- 
-  cl::opt<bool>
-  UseBumpMerge("use-bump-merge", 
-           cl::desc("Enable support for klee_merge() (extra experimental)"));
- 
-  cl::opt<bool>
   UseIterativeDeepeningTimeSearch("use-iterative-deepening-time-search", 
                                     cl::desc("(experimental)"));
 
@@ -160,13 +152,6 @@ Searcher *klee::constructUserSearcher(Executor &executor) {
     searcher = new BatchingSearcher(searcher, BatchTime, 0);
   }
 
-  if (UseMerge) {
-    assert(!UseBumpMerge);
-    searcher = new MergingSearcher(executor, searcher);
-  } else if (UseBumpMerge) {    
-    searcher = new BumpMergingSearcher(executor, searcher);
-  }
-  
   if (UseIterativeDeepeningTimeSearch) {
     searcher = new IterativeDeepeningTimeSearcher(searcher);
   }

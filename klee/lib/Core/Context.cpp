@@ -33,7 +33,7 @@ const Context &Context::get() {
 }
 
 
-ref<Expr> Expr::createCoerceToPointerType(ref<Expr> e) {
+ref<Expr> Expr::createCoerceToPointerType(const ref<Expr> &e) {
   return ZExtExpr::create(e, Context::get().getPointerWidth());
 }
 

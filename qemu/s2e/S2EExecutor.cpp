@@ -138,22 +138,6 @@ using namespace std;
 using namespace llvm;
 using namespace klee;
 
-extern "C" {
-    // XXX
-    //void* g_s2e_exec_ret_addr = 0;
-}
-
-namespace {
-    uint64_t hash64(uint64_t val, uint64_t initial = 14695981039346656037ULL) {
-        const char* __first = (const char*) &val;
-        for (unsigned int i = 0; i < sizeof(uint64_t); ++i) {
-            initial ^= static_cast<uint64_t>(*__first++);
-            initial *= static_cast<uint64_t>(1099511628211ULL);
-        }
-        return initial;
-    }
-}
-
 namespace {
     cl::opt<bool>
     UseSelectCleaner("use-select-cleaner",
@@ -629,7 +613,7 @@ S2EExecutor::S2EExecutor(S2E* s2e, TCGLLVMContext *tcgLLVMContext,
                 tcgLLVMContext->getExecutionEngine()),
           m_s2e(s2e), m_tcgLLVMContext(tcgLLVMContext),
           m_executeAlwaysKlee(false), m_forkProcTerminateCurrentState(false),
-          m_inLoadBalancing(false), yieldedState(NULL)
+          m_inLoadBalancing(false)
 {
     delete externalDispatcher;
     externalDispatcher = new S2EExternalDispatcher(
@@ -1503,17 +1487,6 @@ ExecutionState* S2EExecutor::selectNonSpeculativeState(S2EExecutionState *state)
     return newState;
 }
 
-void S2EExecutor::restoreYieldedState(void) {
-    if (yieldedState) {
-        S2EExecutionState* s2eYieldedState =
-            static_cast<S2EExecutionState*>(yieldedState);
-        s2eYieldedState->yield(false);
-        resumeState(yieldedState);
-        yieldedState = NULL;
-        // Yielded state is now available for scheduling
-    }
-}
-
 S2EExecutionState* S2EExecutor::selectNextState(S2EExecutionState *state)
 {
     assert(state->m_active);
@@ -1531,14 +1504,12 @@ S2EExecutionState* S2EExecutor::selectNextState(S2EExecutionState *state)
             static_cast<S2EExecutionState*  >(&newKleeState);
     assert(states.find(newState) != states.end());
 
+    newState->yield(false);
+
     if(!state->m_active) {
         /* Current state might be switched off by merge method */
         state = NULL;
     }
-
-    // Now that we've rescheduled, put the yielded state back
-    // so that we can schedule it again.
-    restoreYieldedState();
 
     if(newState != state) {
         g_s2e->getCorePlugin()->onStateSwitch.emit(state, newState);
@@ -2223,20 +2194,38 @@ bool S2EExecutor::merge(klee::ExecutionState &_base, klee::ExecutionState &_othe
     S2EExecutionState& other = static_cast<S2EExecutionState&>(_other);
 
     /* Ensure that both states are inactive, otherwise merging will not work */
-    if(base.m_active)
+    bool s1 = false, s2 = false;
+    if(base.m_active) {
+        s1 = true;
         doStateSwitch(&base, NULL);
-    else if(other.m_active)
-        doStateSwitch(&other, NULL);
+    }
 
+    if(other.m_active) {
+        s2 = true;
+        doStateSwitch(&other, NULL);
+    }
+
+    bool result;
     if(base.merge(other)) {
         m_s2e->getMessagesStream(&base)
                 << "Merged with state " << other.getID() << '\n';
-        return true;
+        result = true;
     } else {
         m_s2e->getDebugStream(&base)
                 << "Merge with state " << other.getID() << " failed" << '\n';
-        return false;
+        result = false;
     }
+
+    //Reactivate the state
+    if (s1) {
+        doStateSwitch(NULL, &base);
+    }
+
+    if (s2) {
+        doStateSwitch(NULL, &other);
+    }
+
+    return result;
 }
 
 void S2EExecutor::terminateStateEarly(klee::ExecutionState &state, const llvm::Twine &message)
@@ -2268,13 +2257,14 @@ void S2EExecutor::terminateState(ExecutionState &s)
     }
 }
 
-/* Yield the current state.  Once a new state is scheduled,
-   this yielded state will again be schedulable.  Only one
-   state can yield at a time.  If after a state X yields,
-   another state Y yields, state X will again be schedulable.
-   Yielding requires other states to be available:  if there
-   is only one state, yield is a no-op.
-*/
+/**
+ * Yield the current state.
+ * This will force to call the searcher to select the next state.
+ * The next state may or may not be the same as the one that yielded.
+ * It is up to the caller to define a searcher policy
+ * (e.g., enforce that another different state is scheduled).
+ * yieldState() only provides a mechanism.
+ */
 void S2EExecutor::yieldState(ExecutionState &s)
 {
     S2EExecutionState& state = static_cast<S2EExecutionState&>(s);
@@ -2287,25 +2277,7 @@ void S2EExecutor::yieldState(ExecutionState &s)
     m_s2e->getMessagesStream(&state)
         << "Yielding state " << state.getID() << "\n";
 
-    // Check if the state we're yielding has reached the searcher
-    std::set<klee::ExecutionState*>::iterator it = addedStates.find(&state);
-    assert (yieldedState == NULL);
-    yieldedState = &state;
-    if (it != addedStates.end()) {
-        // never reached searcher
-        addedStates.erase(it);
-    }
-
-    // Suspend the state
-    bool result = suspendState(yieldedState);
-    assert (result && "Searcher required to use yield");
     state.yield(true);
-
-    g_s2e->getWarningsStream().flush();
-    g_s2e->getDebugStream().flush();
-
-    // Skip the opcode
-    state.writeCpuState(CPU_OFFSET(PROG_COUNTER), state.getPc() + S2E_OPCODE_SIZE, CPU_REG_SIZE << 3);
 
     // Stop current execution
     state.writeCpuState(CPU_OFFSET(exception_index), EXCP_S2E, 8*sizeof(int));
@@ -2467,44 +2439,6 @@ void S2EExecutor::unrefS2ETb(S2ETranslationBlock* s2e_tb)
             delete static_cast<ExecutionSignal*>(s);
         }
     }
-}
-
-void S2EExecutor::queueStateForMerge(S2EExecutionState *state)
-{
-    if(dynamic_cast<MergingSearcher*>(searcher) == NULL) {
-        m_s2e->getWarningsStream(state)
-                << "State merging request is ignored because"
-                   " MergingSearcher is not activated\n";
-        return;
-    }
-    assert(state->m_active && !state->m_runningConcrete && state->pc);
-
-    /* Ignore attempt to merge states immediately after previous attempt */
-    if(state->m_lastMergeICount == state->getTotalInstructionCount() - 1)
-        return;
-
-    state->m_lastMergeICount = state->getTotalInstructionCount();
-
-    target_ulong mergePoint = 0;
-#ifdef TARGET_ARM
-    if(!state->readCpuRegisterConcrete(CPU_OFFSET(regs[13]), &mergePoint, CPU_REG_SIZE)) {
-        m_s2e->getWarningsStream(state)
-                << "Warning: merge request for a state with symbolic SP" << "\n";
-    }
-#elif defined(TARGET_I386)
-    if(!state->readCpuRegisterConcrete(CPU_OFFSET(regs[R_ESP]), &mergePoint,
-                                                               CPU_REG_SIZE)) {
-        m_s2e->getWarningsStream(state)
-                << "Warning: merge request for a state with symbolic ESP" << '\n';
-    }
-#endif
-    mergePoint = hash64(mergePoint);
-    mergePoint = hash64(state->getPc(), mergePoint);
-
-    m_s2e->getMessagesStream(state) << "Queueing state for merging" << '\n';
-
-    static_cast<MergingSearcher*>(searcher)->queueStateForMerge(*state, mergePoint);
-    throw CpuExitException();
 }
 
 void S2EExecutor::updateStats(S2EExecutionState *state)

@@ -16,6 +16,12 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, see <http://www.gnu.org/licenses/>
  */
+
+#include "config.h"
+#include "qemu-common.h"
+#include "cpus.h"
+#include "cpu.h"
+
 #include "apic_internal.h"
 #include "apic.h"
 #include "ioapic.h"
@@ -166,7 +172,9 @@ static void apic_local_deliver(APICCommonState *s, int vector)
         break;
 
     case APIC_DM_EXTINT:
-        cpu_interrupt(s->cpu_env, CPU_INTERRUPT_HARD);
+        if (!((CPUX86State *)s->cpu_env)->all_apic_interrupts_disabled) {
+            cpu_interrupt(s->cpu_env, CPU_INTERRUPT_HARD);
+        }
         break;
 
     case APIC_DM_FIXED:
@@ -370,7 +378,9 @@ static void apic_update_irq(APICCommonState *s)
         return;
     }
     if (apic_irq_pending(s) > 0) {
-        cpu_interrupt(s->cpu_env, CPU_INTERRUPT_HARD);
+        if (!((CPUX86State *)s->cpu_env)->all_apic_interrupts_disabled) {
+            cpu_interrupt(s->cpu_env, CPU_INTERRUPT_HARD);
+        }
     } else if (apic_accept_pic_intr(&s->busdev.qdev) &&
                pic_get_output(isa_pic)) {
         apic_deliver_pic_intr(&s->busdev.qdev, 1);

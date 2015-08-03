@@ -82,10 +82,6 @@ namespace klee {
 extern llvm::cl::opt<bool> DebugLogStateMerge;
 }
 
-namespace {
-CPUTLBEntry s_cputlb_empty_entry = { -1, -1, -1, -1 };
-}
-
 extern llvm::cl::opt<bool> PrintModeSwitch;
 extern llvm::cl::opt<bool> PrintForkingStatus;
 extern llvm::cl::opt<bool> ConcolicMode;
@@ -212,12 +208,7 @@ void S2EExecutionState::addressSpaceChange(const klee::MemoryObject *mo,
         assert(m_cpuSystemState && m_cpuSystemObject);
 
 
-        CPUArchState* cpu;
-        cpu = m_active ?
-                (CPUArchState*)(m_cpuSystemState->address
-                              - CPU_CONC_LIMIT) :
-                (CPUArchState*)(m_cpuSystemObject->getConcreteStore(true)
-                              - CPU_CONC_LIMIT);
+        CPUArchState* cpu = getCpuState();
 
 
 #ifdef S2E_DEBUG_TLBCACHE
@@ -562,6 +553,15 @@ void S2EExecutionState::makeSymbolic(std::vector< ref<Expr> > &args,
     }
 
     kleeWriteMemory(kleeAddress, symb);
+}
+
+CPUArchState *S2EExecutionState::getCpuState() const {
+    CPUArchState* cpu = m_active ?
+            (CPUArchState*)(m_cpuSystemState->address
+                          - CPU_CONC_LIMIT) :
+            (CPUArchState*)(m_cpuSystemObject->getConcreteStore(true)
+                          - CPU_CONC_LIMIT);
+    return cpu;
 }
 
 uint64_t S2EExecutionState::readCpuState(unsigned offset,
@@ -1679,16 +1679,37 @@ bool S2EExecutionState::merge(const ExecutionState &_b)
         s << "Attempting merge with state " << b.getID() << '\n';
 
     if(pc != b.pc) {
-        if(DebugLogStateMerge)
-            s << "merge failed: different pc" << '\n';
+        if(DebugLogStateMerge) {
+            s << "merge failed: different KLEE pc\n"
+                    << *(*pc).inst << "\n"
+                    << *(*b.pc).inst << "\n";
+
+            s << "symb regs a: " << hexval(getSymbolicRegistersMask()) << "\n";
+            s << "symb regs b: " << hexval(b.getSymbolicRegistersMask()) << "\n";
+
+            std::stringstream ss;
+            g_s2e->getExecutor()->printStack(*this, NULL, ss);
+            g_s2e->getExecutor()->printStack(b, NULL, ss);
+            s << ss.str() << "\n";
+        }
         return false;
     }
 
     // XXX is it even possible for these to differ? does it matter? probably
     // implies difference in object states?
     if(symbolics != b.symbolics) {
-        if(DebugLogStateMerge)
+        if(DebugLogStateMerge) {
             s << "merge failed: different symbolics" << '\n';
+
+            foreach2(it, symbolics.begin(), symbolics.end()) {
+                s << (*it).first->name << "\n";
+            }
+            s << "\n";
+            foreach2(it, b.symbolics.begin(), b.symbolics.end()) {
+                s << (*it).first->name << "\n";
+            }
+
+        }
         return false;
     }
 
@@ -1758,10 +1779,7 @@ bool S2EExecutionState::merge(const ExecutionState &_b)
 
     /* Check CPUArchState */
     {
-        uint8_t* cpuStateA = m_cpuSystemObject->getConcreteStore() - CPU_CONC_LIMIT;
-        uint8_t* cpuStateB = b.m_cpuSystemObject->getConcreteStore() - CPU_CONC_LIMIT;
-        if(memcmp(cpuStateA + CPU_CONC_LIMIT, cpuStateB + CPU_CONC_LIMIT,
-                  CPU_OFFSET(current_tb) - CPU_CONC_LIMIT)) {
+        if (compareArchitecturalConcreteState(b)) {
             if(DebugLogStateMerge)
                 s << "merge failed: different concrete cpu state" << "\n";
             return false;
@@ -1802,7 +1820,9 @@ bool S2EExecutionState::merge(const ExecutionState &_b)
             return false;
         }
         if(ai->second != bi->second && !ai->first->isValueIgnored &&
-                    ai->first != m_cpuSystemState && ai->first != m_dirtyMask) {
+            ai->first != S2EExecutionState::getConcreteRegs() &&
+            ai->first != S2EExecutionState::getDirtyMask()) {
+
             const MemoryObject *mo = ai->first;
             if(DebugLogStateMerge)
                 s << "\t\tmutated: " << mo->id << " (" << mo->name << ")\n";
@@ -1863,8 +1883,9 @@ bool S2EExecutionState::merge(const ExecutionState &_b)
         }
     }
 
-    if(DebugLogStateMerge)
+    if (DebugLogStateMerge) {
         s << "\t\tcreated " << selectCountStack << " select expressions on the stack\n";
+    }
 
     for(std::set<const MemoryObject*>::iterator it = mutated.begin(),
                     ie = mutated.end(); it != ie; ++it) {
@@ -1875,12 +1896,24 @@ bool S2EExecutionState::merge(const ExecutionState &_b)
                "objects mutated but not writable in merging state");
         assert(otherOS);
 
+        if (DebugLogStateMerge) {
+            s << "Merging object " << mo->name << "\n";
+        }
+
         ObjectState *wos = addressSpace.getWriteable(mo, os);
         for (unsigned i=0; i<mo->size; i++) {
             ref<Expr> av = wos->read8(i);
             ref<Expr> bv = otherOS->read8(i);
             if(av != bv) {
-                wos->write(i, SelectExpr::create(inA, av, bv));
+                ref<Expr> e = SelectExpr::create(inA, av, bv);
+
+                #if 0
+                if (DebugLogStateMerge) {
+                    s << "Byte " << i << ": " << e << "\n";
+                }
+                #endif
+
+                wos->write(i, e);
                 selectCountMem += 1;
             }
         }
@@ -1907,31 +1940,16 @@ bool S2EExecutionState::merge(const ExecutionState &_b)
     // dirty mask can only affect performance but not correcntess.
     // NOTE: this requires flushing TLB
     {
-        const ObjectState* os = addressSpace.findObject(m_dirtyMask);
-        ObjectState* wos = addressSpace.getWriteable(m_dirtyMask, os);
+        const MemoryObject *dirtyMask = S2EExecutionState::getDirtyMask();
+        const ObjectState* os = addressSpace.findObject(dirtyMask);
+        ObjectState* wos = addressSpace.getWriteable(dirtyMask, os);
         uint8_t* dirtyMaskA = wos->getConcreteStore();
-        const uint8_t* dirtyMaskB = b.addressSpace.findObject(m_dirtyMask)->getConcreteStore();
+        const uint8_t* dirtyMaskB = b.addressSpace.findObject(dirtyMask)->getConcreteStore();
 
-        for(unsigned i = 0; i < m_dirtyMask->size; ++i) {
+        for(unsigned i = 0; i < dirtyMask->size; ++i) {
             if(dirtyMaskA[i] != dirtyMaskB[i])
                 dirtyMaskA[i] = 0;
         }
-    }
-
-    // Flush TLB
-    {
-        CPUArchState * cpu;
-        cpu = (CPUArchState *) (m_cpuSystemObject->getConcreteStore() - CPU_CONC_LIMIT);
-        cpu->current_tb = NULL;
-
-        for (int mmu_idx = 0; mmu_idx < NB_MMU_MODES; mmu_idx++) {
-            for(int i = 0; i < CPU_TLB_SIZE; i++)
-                cpu->tlb_table[mmu_idx][i] = s_cputlb_empty_entry;
-            for(int i = 0; i < CPU_S2E_TLB_SIZE; i++)
-                cpu->s2e_tlb_table[mmu_idx][i].objectState = 0;
-        }
-
-        memset (cpu->tb_jmp_cache, 0, TB_JMP_CACHE_SIZE * sizeof (void *));
     }
 
     return true;
@@ -1942,6 +1960,19 @@ CPUArchState *S2EExecutionState::getConcreteCpuState() const
     CPUArchState * cpu;
     cpu = (CPUArchState *) (m_cpuSystemState->address - CPU_CONC_LIMIT);
     return cpu;
+}
+
+int S2EExecutionState::compareArchitecturalConcreteState(const S2EExecutionState &other) {
+    CPUArchState *a = getCpuState();
+    CPUArchState *b = other.getCpuState();
+
+    int ret = memcmp(&a->S2E_TARGET_CONC_LIMIT, &b->S2E_TARGET_CONC_LIMIT, CPU_OFFSET(s2e_common_start) - CPU_CONC_LIMIT);
+    if (ret) {
+        return ret;
+    }
+
+    ret = memcmp(&a->s2e_common_end, &b->s2e_common_end, sizeof(CPUArchState) - CPU_OFFSET(s2e_common_end));
+    return ret;
 }
 
 

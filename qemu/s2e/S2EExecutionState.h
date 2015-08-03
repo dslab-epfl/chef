@@ -216,6 +216,14 @@ public:
         return &m_deviceState;
     }
 
+    static const klee::MemoryObject *getDirtyMask() {
+        return m_dirtyMask;
+    }
+
+    static const klee::MemoryObject *getConcreteRegs() {
+        return m_cpuSystemState;
+    }
+
     TranslationBlock *getTb() const;
 
     uint64_t getTotalInstructionCount();
@@ -241,7 +249,6 @@ public:
     /** Yield the state. */
     bool isYielded() const { return m_yielded; }
     void yield(bool new_yield_state) {
-        assert (m_yielded == !new_yield_state);
         m_yielded = new_yield_state;
     }
 
@@ -278,6 +285,8 @@ public:
                         bool addConstraint = false);
     void kleeWriteMemory(klee::ref<klee::Expr> kleeAddressExpr,
                          std::vector<klee::ref<klee::Expr> > &bytes);
+
+    CPUArchState *getCpuState() const;
 
     /** Read CPU system state */
     uint64_t readCpuState(unsigned offset, unsigned width) const;
@@ -424,6 +433,8 @@ public:
     void registerDirtyMask(uint64_t host_address, uint64_t size);
 
     CPUArchState *getConcreteCpuState() const;
+
+    int compareArchitecturalConcreteState(const S2EExecutionState &other);
 
     virtual void addConstraint(klee::ref<klee::Expr> e);
 

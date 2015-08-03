@@ -107,19 +107,33 @@ ExprHandle STPBuilder::getFalse() {
   return vc_falseExpr(vc);
 }
 ExprHandle STPBuilder::bvOne(unsigned width) {
-  return bvConst32(width, 1);
+  return bvZExtConst(width, 1);
 }
 ExprHandle STPBuilder::bvZero(unsigned width) {
-  return bvConst32(width, 0);
+  return bvZExtConst(width, 0);
 }
 ExprHandle STPBuilder::bvMinusOne(unsigned width) {
-  return bvConst64(width, (int64_t) -1);
+  return bvSExtConst(width, (int64_t) -1);
 }
 ExprHandle STPBuilder::bvConst32(unsigned width, uint32_t value) {
   return vc_bvConstExprFromInt(vc, width, value);
 }
 ExprHandle STPBuilder::bvConst64(unsigned width, uint64_t value) {
   return vc_bvConstExprFromLL(vc, width, value);
+}
+ExprHandle STPBuilder::bvZExtConst(unsigned width, uint64_t value) {
+  if (width <= 64)
+    return bvConst64(width, value);
+
+  ExprHandle expr = bvConst64(64, value), zero = bvConst64(64, 0);
+  for (width -= 64; width > 64; width -= 64)
+    expr = vc_bvConcatExpr(vc, zero, expr);
+  return vc_bvConcatExpr(vc, bvConst64(width, 0), expr);
+}
+ExprHandle STPBuilder::bvSExtConst(unsigned width, uint64_t value) {
+  if (width <= 64)
+    return bvConst64(width, value);
+  return vc_bvSignExtend(vc, bvConst64(64, value), width);
 }
 
 ExprHandle STPBuilder::bvBoolExtract(ExprHandle expr, int bit) {
@@ -478,13 +492,13 @@ ExprHandle STPBuilder::constructActual(ref<Expr> e, int *width_out) {
     if (*width_out <= 64)
       return bvConst64(*width_out, CE->getZExtValue());
 
-    // FIXME: Optimize?
     ref<ConstantExpr> Tmp = CE;
     ExprHandle Res = bvConst64(64, Tmp->Extract(0, 64)->getZExtValue());
-    for (unsigned i = (*width_out / 64) - 1; i; --i) {
-      Tmp = Tmp->LShr(ConstantExpr::alloc(64, Tmp->getWidth()));
-      Res = vc_bvConcatExpr(vc, bvConst64(std::min(64U, Tmp->getWidth()),
-                                          Tmp->Extract(0, 64)->getZExtValue()),
+    while (Tmp->getWidth() > 64) {
+      Tmp = Tmp->Extract(64, Tmp->getWidth()-64);
+      unsigned Width = std::min(64U, Tmp->getWidth());
+      Res = vc_bvConcatExpr(vc, bvConst64(Width,
+                                        Tmp->Extract(0, Width)->getZExtValue()),
                             Res);
     }
     return Res;

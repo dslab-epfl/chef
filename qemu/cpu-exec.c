@@ -286,6 +286,10 @@ int cpu_exec(CPUArchState *env)
             assert (env->exception_index != EXCP_S2E);
             if (s2e_qemu_finalize_tb_exec(g_s2e, g_s2e_state)) {
                 s2e_qemu_cleanup_tb_exec();
+                if (env->exception_index == EXCP_S2E) {
+                    cpu_single_env = NULL;
+                    return EXCP_S2E;
+                }
                 continue;
             }
             #endif

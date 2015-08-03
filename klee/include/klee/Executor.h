@@ -553,7 +553,7 @@ public:
 
   Expr::Width getWidthForLLVMType(llvm::Type *type) const;
 
-  void printStack(ExecutionState &state, KInstruction *target, std::stringstream &msg);
+  void printStack(const ExecutionState &state, KInstruction *target, std::stringstream &msg);
 };
 
 } // End klee namespace
