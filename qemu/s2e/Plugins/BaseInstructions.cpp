@@ -618,17 +618,23 @@ void BaseInstructions::handleBuiltInOps(S2EExecutionState* state, uint64_t opcod
                 break;
         }
 
+#ifdef TARGET_I386
         case 0x53: {
                 /**
                  * Clear all temporary flags.
                  * Useful to force concrete mode from guest code.
                  */
                 target_ulong val = 0;
-                state->regs()->write(CPU_OFFSET(cc_op), val);
-                state->regs()->write(CPU_OFFSET(cc_src), val);
-                state->regs()->write(CPU_OFFSET(cc_dst), val);
-                state->regs()->write(CPU_OFFSET(cc_tmp), val);
+                state->writeCpuRegisterConcrete(CPU_OFFSET(cc_op), &val,
+                        sizeof(val));
+                state->writeCpuRegisterConcrete(CPU_OFFSET(cc_src), &val,
+                        sizeof(val));
+                state->writeCpuRegisterConcrete(CPU_OFFSET(cc_dst), &val,
+                        sizeof(val));
+                state->writeCpuRegisterConcrete(CPU_OFFSET(cc_tmp), &val,
+                        sizeof(val));
         } break;
+#endif
 
         default:
             s2e()->getWarningsStream(state)
