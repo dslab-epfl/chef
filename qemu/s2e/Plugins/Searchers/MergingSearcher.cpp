@@ -271,7 +271,9 @@ void MergingSearcher::handleOpcodeInvocation(S2EExecutionState *state,
         return;
     }
 
-    if (!state->mem()->readMemoryConcrete(guestDataPtr, &command, guestDataSize)) {
+
+    if (!state->readMemoryConcrete(guestDataPtr, &command, guestDataSize,
+            S2EExecutionState::VirtualAddress)) {
         s2e()->getWarningsStream(state) <<
                 "MergingSearcher: could not read transmitted data\n";
         return;
