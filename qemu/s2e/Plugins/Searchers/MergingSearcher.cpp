@@ -180,7 +180,6 @@ bool MergingSearcher::mergeStart(S2EExecutionState *state)
 
     plgState->setGroupId(id);
     m_mergePools[id].states.insert(state);
-    state->setPinned(true);
     return true;
 }
 
@@ -206,7 +205,6 @@ bool MergingSearcher::mergeEnd(S2EExecutionState *state, bool skipOpcode, bool c
         //so there is nothing to merge and therefore we return.
         plgState->setGroupId(0);
         m_mergePools.erase(it);
-        state->setPinned(false);
         return true;
     }
 
@@ -247,7 +245,6 @@ bool MergingSearcher::mergeEnd(S2EExecutionState *state, bool skipOpcode, bool c
         resume(mergePool.firstState);
         DECLARE_PLUGINSTATE(MergingSearcherState, mergePool.firstState);
         plgState->setGroupId(0);
-        mergePool.firstState->setPinned(false);
         m_mergePools.erase(it);
     }
 
