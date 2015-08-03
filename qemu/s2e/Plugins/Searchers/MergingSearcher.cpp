@@ -210,7 +210,8 @@ bool MergingSearcher::mergeEnd(S2EExecutionState *state, bool skipOpcode, bool c
 
     // Skip the opcode
     if (skipOpcode) {
-        state->regs()->write<target_ulong>(CPU_OFFSET(eip), state->getPc() + 10);
+        target_long val = state->getPc() + 10;
+        state->writeCpuRegisterConcrete(CPU_OFFSET(eip), &val, sizeof(val));
     }
 
     // Clear temp flags.
