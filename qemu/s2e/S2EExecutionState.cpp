@@ -1953,7 +1953,7 @@ int S2EExecutionState::compareArchitecturalConcreteState(const S2EExecutionState
     CPUArchState *a = getCpuState();
     CPUArchState *b = other.getCpuState();
 
-    int ret = memcmp(&a->eip, &b->eip, CPU_OFFSET(s2e_common_start) - CPU_OFFSET(eip));
+    int ret = memcmp(&a->S2E_TARGET_CONC_LIMIT, &b->S2E_TARGET_CONC_LIMIT, CPU_OFFSET(s2e_common_start) - CPU_CONC_LIMIT);
     if (ret) {
         return ret;
     }
