@@ -25,23 +25,21 @@ note_os()
 {
 	if [ "$OS_NAME" = 'Ubuntu' ] && [ "$OS_VERSION" = '14.04' ]; then
 		cat <<- EOF
-		It seems that you run Ubuntu 14.04.
-
-		It is thus possible to build and run Chef natively on your machine,
-		without docker. However, this comes with the disadvantage of needing to
-		install more packages on your system in order to fullfil the Chef
-		dependencies, and you will need to additionally compile LLVM, which will
-		take a considerable amount of time.
+		Since you are running $OS_NAME $OS_VERSION, it is possible to build and
+		run Chef natively on your machine, without docker. However, this comes
+		with the disadvantage of needing to install more packages on your system
+		in order to fullfil the Chef dependencies, and you will need to
+		additionally compile LLVM, which will take a considerable amount of
+		time.
 
 		It is thus recommended to install docker.
 		EOF
 	else
+		OS_STRING="${OS_NAME}$(test "$OS_NAME" = 'Ubuntu'&&echo " $OS_VERSION")"
 		cat <<- EOF
-		Your system seems to be running $OS_NAME (release: $OS_VERSION).
-
-		It is thus very likely that Chef will not run on your system without
-		using docker, and the installation of docker is necessary to continue
-		the preparation.
+		Since you are running $OS_STRING, it is very unlikely that Chef will run
+		on your system without using docker; the installation of docker is thus
+		necessary to continue the preparation.
 		EOF
 	fi
 }
@@ -62,7 +60,7 @@ ask_docker()
 	cat <<- EOF
 	Chef is rather strict concerning its dependencies and has been developed
 	and tested specifically against Ubuntu 14.04. However, to allow other
-	distributions and/or version to use Chef, a Linux container image has been
+	distributions and/or versions to use Chef, a Linux container image has been
 	prepared with docker; the image contains all necessary dependencies to
 	compile and run Chef.
 
@@ -103,6 +101,8 @@ os_detect()
 
 package_manager_install()
 {
+	package_description="$1"
+	shift
 	package_list=''
 	for p in "$@"; do
 		pname="$(get_package_name "$p")"
@@ -114,12 +114,15 @@ package_manager_install()
 		fi
 	done
 	if [ -n "$package_list" ]; then
+		note '%s' "$package_description"
 		case "$OS_NAME" in
 			Arch) sudo pacman -S $package_list ;;
 			Debian) sudo aptitude install $package_list ;;
 			Ubuntu) sudo apt-get install $package_list ;;
 			*) die_unsupported ;;
 		esac
+	else
+		ok '%s' "$package_description"
 	fi
 }
 
@@ -135,6 +138,16 @@ package_manager_check()
 			|| return $FAILURE ;;
 		*)
 			die_unsupported ;;
+	esac
+}
+
+package_manager_builddep()
+{
+	packages="$1"
+	case "$OS_NAME" in
+		Debian|Ubuntu) apt-get build-dep $1 ;;
+		Arch) die_unsupported ;; # lay aside your sanity!
+		*) die_unsupported ;;
 	esac
 }
 
@@ -174,7 +187,7 @@ package_manager_install_aur()
 	# They lay in an "Arch User Repository" and cannot be installed through the
 	# ordinary package manager.
 	if ! package_manager_check "$1"; then
-		tmpdir="$(mktemp -d s2e_chef_XXXXXXXX)"
+		tmpdir="$(mktemp -d "/tmp/s2e_chef_prepare_${1}_XXXXXXXX")"
 		git clone "https://aur4.archlinux.org/${1}.git" "$tmpdir/${1}.git"
 		cd "$tmpdir/${1}.git"
 		makepkg -i
@@ -196,14 +209,12 @@ package_manager_check_aur()
 
 prepare_dependencies_docker()
 {
-	info 'Installing dependencies: docker'
-	package_manager_install docker acl
+	package_manager_install 'Installing dependencies: docker' docker acl
 }
 
-prepare_dependencies_native()
+prepare_dependencies_s2e()
 {
-	info 'Installing dependencies: native'
-	sudo apt-get install \
+	package_manager_install 'Installing dependencies: S²E' \
 		build-essential \
 		subversion \
 		git \
@@ -219,13 +230,27 @@ prepare_dependencies_native()
 		binutils-dev \
 		libiberty-dev \
 		libc6-dev-i386
-	sudo apt-get build-dep -y llvm-3.3 qemu
+	package_manager_builddep llvm-3.3 qemu
+}
+
+prepare_dependencies_chef()
+{
+	package_manager_install 'Installing dependencies: chef' \
+		gdb \
+		strace \
+		libdwarf-dev \
+		libelf-dev \
+		libboost-dev \
+		libsqlite3-dev \
+		libmemcached-dev \
+		libbost-serialization-dev \
+		libbost-system-dev \
+		libc6-dev-i386
 }
 
 prepare_dependencies_ccli()
 {
-	info 'Installing dependencies for ccli'
-	package_manager_install \
+	package_manager_install 'Installing dependencies: ccli' \
 		coreutils \
 		python3 \
 		python3-netifaces \
@@ -243,7 +268,8 @@ prepare_dependencies()
 		prepare_dependencies_docker
 	elif [ "$OS_NAME" = 'Ubuntu' ] && [ "$OS_VERSION" = '14.04' ]; then
 		USE_DOCKER=$FALSE
-		prepare_dependencies_native
+		prepare_dependencies_s2e
+		prepare_dependencies_chef
 	else
 		die 1 'Cannot continue preparation'
 	fi
@@ -255,10 +281,8 @@ prepare_dependencies()
 prepare_workspace_tree()
 {
 	if [ -d "$DATAROOT" ]; then
-		warn '%s: directory already exists' "$DATAROOT"
-		if [ $FORCE -ne $TRUE ]; then
-			return $FAILURE
-		fi
+		skip '%s: directory already exists' "$DATAROOT"
+		return
 	fi
 	mkdir -p "$DATAROOT" || return $FAILURE
 	mkdir -p "$DATAROOT_VM" || return $FAILURE
@@ -277,9 +301,9 @@ prepare_workspace_permissions()
 
 prepare_workspace()
 {
-	info 'Initialising workspace in %s' "$WSROOT"
-	test -d "$WSROOT" || die '%s: directory not found'
-	test -w "$WSROOT" || die '%s: write permissions denied'
+	info 'Initialising Chef data tree in %s' "$DATAROOT"
+	test -d "$WSROOT" || die '%s: directory not found' "$WSROOT"
+	test -w "$WSROOT" || die '%s: write permissions denied' "$WSROOT"
 
 	prepare_workspace_tree
 	prepare_workspace_permissions
