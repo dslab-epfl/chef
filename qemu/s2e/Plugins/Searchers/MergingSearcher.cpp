@@ -34,7 +34,7 @@ extern "C" {
 #include "config.h"
 #include "qemu-common.h"
 #include "cpu.h"
-extern CPUX86State *env;
+extern CPUArchState *env;
 }
 
 
