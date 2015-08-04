@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# This script is part of ccli.
+# This script is part of the Chef command line tools.
 #
 # `vm` provides means for managing virtual machines that are used with Chef. The
 # virtual machines are basically raw disk image files containing operating
@@ -38,7 +38,6 @@ REMOTES = {
 
 
 class VM:
-    arch = 'x86_64'
     cores = psutil.cpu_count()
     memory = min(max(psutil.virtual_memory().total / 4, 2 * 1024), 4 * 1024)
 
@@ -52,6 +51,8 @@ class VM:
         self.path_meta = '%s/meta' % self.path
         self.path_dysfunct = '%s/dysfunct' % self.path
         self.dysfunct = os.path.exists(self.path_dysfunct)
+        self.path_executable = '%s/%s-%s-%s/opt/bin' % (utils.DATAROOT_BUILD,
+                                           utils.ARCH, utils.TARGET, utils.MODE)
         self.load_meta()
         self.scan_snapshots()
 
@@ -188,7 +189,8 @@ class VM:
         # Raw image:
         utils.set_msg_prefix("create %dMiB image" % size)
         utils.pend()
-        if utils.execute(['qemu-img', 'create', self.path_raw, '%dM' % size],
+        if utils.execute(['%s/qemu-img' % self.path_executable,
+                          'create', self.path_raw, '%dM' % size],
                          msg="execute qemu-img") != 0:
             exit(1)
         utils.ok()
@@ -232,7 +234,7 @@ class VM:
 
         # Launch qemu:
         utils.set_msg_prefix("qemu")
-        qemu_cmd = ['qemu-system-%s' % VM.arch,
+        qemu_cmd = ['%s/qemu-system-%s' % (self.path_executable, utils.ARCH),
                     '-enable-kvm',
                     '-cpu', 'host',
                     '-smp', '%d' % VM.cores,
@@ -367,7 +369,7 @@ class VM:
                                    help="Install an OS from an ISO to a VM")
         pinstall.set_defaults(action=VM.install)
         pinstall.add_argument('iso_path',
-                             help="Path to ISO file containing the OS")
+                              help="Path to ISO file containing the OS")
         pinstall.add_argument('name',
                               help="Machine name")
 
@@ -404,13 +406,22 @@ class VM:
         return vars(args) # make it a dictionary, for easier use
 
 
+    def vm_init(path: str):
+        utils.set_msg_prefix("initialise VM directory: %s" % path)
+        utils.pend()
+        try:
+            os.mkdir(path)
+        except OSError as e:
+            utils.fail(e.strip())
+            exit(1)
+        utils.ok()
+
+
     @staticmethod
     def main(argv: [str]):
         # Check environment:
         if not os.path.isdir(utils.DATAROOT_VM):
-            utils.fail("%s: Directory not found (please initialise Chef first)"
-                       % utils.DATAROOT_VM)
-            exit(1)
+            vm_init()
 
         # Parse command line arguments:
         kwargs = VM.parse_args(argv)

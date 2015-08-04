@@ -244,7 +244,7 @@ def parse_cmd_line():
 
     # Positional: VM name:
     parser.add_argument('vm_name',
-                        help="Name of the VM to use (see `ccli vm list`)")
+                        help="Name of the VM to use (see `ctl vm list`)")
 
     # Positional: Run mode:
     modes = parser.add_subparsers(help="The Chef operation mode")
@@ -444,7 +444,7 @@ def build_cmd_line(args):
 def batch_execute():
     # get list of commands from batch file:
     bare_cmd_lines = []
-    from libccli.batch import Batch
+    from ctltools.batch import Batch
     batch = Batch(args['batch_file'])
     batch_commands = batch.get_commands()
     for command in batch_commands:

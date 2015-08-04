@@ -1,4 +1,4 @@
-# Shell script utilities shared by most ccli scripts.
+# Shell script utilities shared by most ctl scripts.
 # Compatible with set -e
 #
 # To be (mostly) included as follows:
@@ -108,9 +108,12 @@ if [ -z "$SRCROOT" ]; then
 fi
 SRCDIR="$(basename "$SRCROOT")"
 
+# Chef command line tools:
+CTL_RUNPATH="$SRCROOT/ctl"
+
 # Workspace + data:
 WSROOT="$(dirname "$SRCROOT")"
-DATAROOT="$WSROOT/chef-data"
+DATAROOT="$WSROOT"
 DATAROOT_BUILD="$DATAROOT/build"
 DATAROOT_EXPDATA="$DATAROOT/expdata"
 DATAROOT_VM="$DATAROOT/vm"
@@ -129,11 +132,11 @@ LLVM_NATIVE_CXX="$LLVM_NATIVE/bin/clang++"
 DOCKER_IMAGE='dslab/s2e-chef:v0.6'
 DOCKER_WSROOT='/host'
 DOCKER_SRCROOT="$DOCKER_WSROOT/$SRCDIR"
-DOCKER_DATAROOT="$DOCKER_WSROOT/chef-data"
+DOCKER_DATAROOT="$DOCKER_WSROOT"
 DOCKER_DATAROOT_BUILD="$DOCKER_DATAROOT/build"
 DOCKER_DATAROOT_EXPDATA="$DOCKER_DATAROOT/expdata"
 DOCKER_DATAROOT_VM="$DOCKER_DATAROOT/vm"
-DOCKER_LLVM_BASE='/opt/s2e/chefws/chef-data/build/llvm'
+DOCKER_LLVM_BASE='/opt/s2e/chef-data/build/llvm'
 
 # System:
 NULL='/dev/null'
@@ -233,6 +236,7 @@ _OK_="[${ESC_SUCCESS} OK ${ESC_RESET}]"
 SKIP="[${ESC_SUCCESS}SKIP${ESC_RESET}]"
 INFO="[${ESC_MISC}INFO${ESC_RESET}]"
 ALRT="[${ESC_SPECIAL} !! ${ESC_RESET}]"
+ABRT="[${ESC_ERROR}ABORT${ESC_RESET}]"
 PEND="[ .. ]"
 DEBUG="[${ESC_SPECIAL}DEBUG${ESC_RESET}]"
 
@@ -253,6 +257,7 @@ fail()  { _print "$FAIL " $TRUE "$@" >&2; }
 pend()  { _print "$PEND " $TRUE "$@"; }
 pend_() { _print "$PEND " $FALSE "$@"; }
 alert() { _print "$ALRT " $TRUE "$@"; }
+abort() { _print "\n$ABRT " $TRUE "$@" >&2; }
 ok()    { _print "$_OK_ " $TRUE "$@"; }
 debug() { _print "$DEBUG " $TRUE "$@"; }
 

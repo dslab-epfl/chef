@@ -1,21 +1,22 @@
-# Chef Command Line Iterface
+# Chef Command Line Tools
 
 
 ## Name
 
-ccli - Chef Command Line Interface
+ctl
 
 
 ## Synopsis
 
-	ccli COMMAND [ARGS ...]
+	ctl COMMAND [ARGS ...]
 
 
 ## Description
 
-The Chef Command Line Interface is a common interface to a collection of scripts
-that offer a simplified way for using Chef, including building Chef, creating
-and managing disk images, or interacting with running Chef instances.
+The Chef command line tools are a set of scripts that are supposed to be run as
+subcommands to a script at the project's root as a common interface. The tools
+offer a simplified way for using Chef, including building Chef, creating and
+managing disk images, or interacting with running Chef instances.
 
 
 ## Dependencies

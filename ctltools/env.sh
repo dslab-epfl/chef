@@ -8,7 +8,7 @@
 
 # ENV ==========================================================================
 
-ccli_env()
+chef_env()
 {
 	cat <<- EOF
 	CHEF_ARCH=$CHEF_ARCH
@@ -59,7 +59,7 @@ main()
 	shift $ARGSHIFT
 	test $# -eq 0 || die_help "Trailing argument: $@"
 
-	ccli_env
+	chef_env
 }
 
 set -e

@@ -1,4 +1,4 @@
-FROM dslab/s2e-base:v0.3
+FROM dslab/s2e-base:v0.4
 MAINTAINER Stefan Bucur <stefan.bucur@epfl.ch>
 
 RUN apt-get update &&\
@@ -9,12 +9,9 @@ RUN apt-get install -y libdwarf-dev libelf-dev libboost-dev \
   libsqlite3-dev libmemcached-dev libboost-serialization-dev \
   libboost-system-dev libc6-dev-i386
 
-# Install protobuf
-RUN mkdir -p /build &&\
-  wget 'https://protobuf.googlecode.com/svn/rc/protobuf-2.6.0.tar.gz' &&\
-  tar xzvf protobuf-2.6.0.tar.gz &&\
-  cd protobuf-2.6.0 && ./configure && make -j8 && make install && ldconfig &&\
-  rm -rf /build
+# Build and install protobuf:
+RUN /opt/s2e/chef/ccli.py build -p llvm -c protobuf
+RUN /opt/s2e/chef/ccli.py install protobuf
 
 RUN mkdir -p /home/s2e
 WORKDIR /home/s2e
