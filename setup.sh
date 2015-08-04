@@ -13,7 +13,7 @@ sudo apt-get install -y coreutils python3 python3-netifaces python3-psutil pytho
 
 # dependencies for S²E:
 sudo apt-get install -y build-essential subversion git gettext python-docutils python-pygments nasm unzip wget liblua5.1-dev libsdl1.2-dev libsigc++-2.0-dev binutils-dev libiberty-dev libc6-dev-i386
-apt-get build-dep llvm-3.3 qemu
+sudo apt-get build-dep llvm-3.3 qemu
 
 # dependencies for Chef:
 sudo apt-get install gdb strace libdwarf-dev libelf-dev libboost-dev libsqlite3-dev libmemcached-dev libbost-serialization-dev libbost-system-dev
