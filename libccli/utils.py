@@ -27,8 +27,10 @@ def execute(cmd:[str], stdin:str=None, stdout:bool=False, stderr:bool=False,
         out, err = sp.communicate(input=_indata)
         if outfile:
             _out.close()
-        if sp.returncode != 0 and msg:
-            fail("could not %s: %s" % (msg, err.decode()))
+        if sp.returncode != 0:
+            errprefix = "could not %s" % (msg, cmd[0])[msg is None]
+            errmsg = "" if err is None else ": %s" % err.decode()
+            fail("%s%s" % (errprefix, errmsg))
     except FileNotFoundError:
         fail("unknown command: %s" % cmd[0])
         if iowrap:

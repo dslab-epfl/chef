@@ -38,7 +38,6 @@ REMOTES = {
 
 
 class VM:
-    arch = 'x86_64'
     cores = psutil.cpu_count()
     memory = min(max(psutil.virtual_memory().total / 4, 2 * 1024), 4 * 1024)
 
@@ -52,6 +51,8 @@ class VM:
         self.path_meta = '%s/meta' % self.path
         self.path_dysfunct = '%s/dysfunct' % self.path
         self.dysfunct = os.path.exists(self.path_dysfunct)
+        self.path_executable = '%s/%s-%s-%s/opt/bin' % (utils.DATAROOT_BUILD,
+                                           utils.ARCH, utils.TARGET, utils.MODE)
         self.load_meta()
         self.scan_snapshots()
 
@@ -188,7 +189,8 @@ class VM:
         # Raw image:
         utils.set_msg_prefix("create %dMiB image" % size)
         utils.pend()
-        if utils.execute(['qemu-img', 'create', self.path_raw, '%dM' % size],
+        if utils.execute(['%s/qemu-img' % self.path_executable,
+                          'create', self.path_raw, '%dM' % size],
                          msg="execute qemu-img") != 0:
             exit(1)
         utils.ok()
@@ -232,7 +234,7 @@ class VM:
 
         # Launch qemu:
         utils.set_msg_prefix("qemu")
-        qemu_cmd = ['qemu-system-%s' % VM.arch,
+        qemu_cmd = ['%s/qemu-system-%s' % (self.path_executable, utils.ARCH),
                     '-enable-kvm',
                     '-cpu', 'host',
                     '-smp', '%d' % VM.cores,
