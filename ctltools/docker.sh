@@ -4,7 +4,8 @@
 # to interact with the chef source. It is especially handy for debugging things
 # inside the container without having to type the full docker command line.
 #
-# Maintainer: Tinu Weber <martin.weber@epfl.ch>
+# Maintainer:
+#   ayekat (Tinu Weber <martin.weber@epfl.ch>)
 
 
 . "$(readlink -f "$(dirname "$0")")/utils.sh"
@@ -15,7 +16,7 @@ docker_run()
 {
 	test $# -eq 0 || die_help "Trailing arguments: $@"
 	exec docker run --rm -it \
-		-v "$WSROOT":"$DOCKER_WSROOT" \
+		-v "$CHEFROOT":"$DOCKER_CHEFROOT" \
 		"$DOCKER_IMAGE" \
 		/bin/bash
 }
@@ -35,12 +36,12 @@ docker_build()
 	test $# -ge 1 || die_help 'Missing image'
 	test $# -le 1 || die_help "Trailing arguments: $@"
 	docker_image="$1"
-	docker_path="$SRCROOT/docker/image/$docker_image"
+	docker_path="$CHEFROOT_SRC/docker/image/$docker_image"
 	case "$docker_image" in
 		base)
 			mkdir -p "$docker_path/chef"
-			cp -r "$SRCROOT/$RUNDIR" "$docker_path/chef/"
-			cp -r "$SRCROOT/llvm"    "$docker_path/chef/"
+			cp -r "$INVOKEPATH"        "$docker_path/chef/"
+			cp -r "$CHEFROOT_SRC/llvm" "$docker_path/chef/"
 			docker_version='0.4'
 			;;
 		chef)

@@ -86,24 +86,21 @@ def set_permissions(path: str, docker_uid: int = 431):
     set_msg_prefix(None)
 
 
-# Basic paths:
+# Paths:
 THIS_PATH = os.path.abspath(os.path.dirname(__file__))
-SRCROOT = os.path.dirname(THIS_PATH)
-WSROOT = os.path.dirname(SRCROOT)
-
-# Data location:
-DATAROOT = WSROOT
-DATAROOT_VM = '%s/vm' % DATAROOT
-DATAROOT_EXPDATA = '%s/expdata' % DATAROOT
-DATAROOT_BUILD = '%s/build' % DATAROOT
+CHEFROOT_SRC = os.path.dirname(THIS_PATH)
+CHEFROOT = os.path.dirname(CHEFROOT_SRC)
+CHEFROOT_VM = '%s/vm' % CHEFROOT
+CHEFROOT_EXPDATA = '%s/expdata' % CHEFROOT
+CHEFROOT_BUILD = '%s/build' % CHEFROOT
 
 # Docker:
 DOCKER_IMAGE = 'dslab/s2e-chef:v0.6'
-DOCKER_WSROOT = '/host'
-DOCKER_DATAROOT = DOCKER_WSROOT
-DOCKER_DATAROOT_BUILD = '%s/build' % DOCKER_DATAROOT
-DOCKER_DATAROOT_EXPDATA = '%s/expdata' % DOCKER_DATAROOT
-DOCKER_DATAROOT_VM = '%s/vm' % DOCKER_DATAROOT
+DOCKER_CHEFROOT = '/chef'
+DOCKER_CHEFROOT_SRC = '%s/src' % DOCKER_CHEFROOT
+DOCKER_CHEFROOT_BUILD = '%s/build' % DOCKER_CHEFROOT
+DOCKER_CHEFROOT_EXPDATA = '%s/expdata' % DOCKER_CHEFROOT
+DOCKER_CHEFROOT_VM = '%s/vm' % DOCKER_CHEFROOT
 DOCKERIZED = os.environ.get('CHEF_DOCKERIZED', '1') == '1'
 
 # Build configurations:
@@ -112,7 +109,7 @@ TARGET   = os.environ.get('CHEF_TARGET',   'release')
 MODE     = os.environ.get('CHEF_MODE',     'normal')
 RELEASE  = os.environ.get('CHEF_RELEASE',  '%s:%s:%s' % (ARCH, TARGET, MODE))
 
-def split_release(release: str=None):
+def parse_release(release: str=None):
     global ARCH, TARGET, MODE, RELEASE
     RELEASE = release or RELEASE
     release_tuple = RELEASE.split(':')
@@ -122,7 +119,6 @@ def split_release(release: str=None):
     ARCH = arch or ARCH
     TARGET = target or TARGET
     MODE = mode or MODE
-    return ARCH, TARGET, MODE
 
 # USER INTERACTION =============================================================
 

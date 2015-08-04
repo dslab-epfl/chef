@@ -1,12 +1,12 @@
 # Shell script utilities shared by most ctl scripts.
 # Compatible with set -e
 #
-# To be (mostly) included as follows:
+# To be included as follows:
 #
 #   . "$(readlink -f "$(dirname "$0")")/utils.sh"
 #
 # Maintainers:
-#   Tinu Weber <martin.weber@epfl.ch>
+#   ayekat (Tinu Weber <martin.weber@epfl.ch>)
 
 # SHELL ========================================================================
 
@@ -94,33 +94,26 @@ funcify()
 
 # PATHS/NAMES ==================================================================
 
-# Script:
-RUNNAME="$(basename "$0")"
-RUNPATH="$(readlink -f "$(dirname "$0")")"
-RUNDIR="$(basename "$RUNPATH")"
-if [ -z "$INVOKENAME" ]; then
-	INVOKENAME="$RUNNAME"
-fi
+# Script location:
+SCRIPTNAME="$(basename "$0")"
+SCRIPTPATH="$(readlink -f "$0")"
+SCRIPTDIR="$(dirname "$SCRIPTPATH")"
 
-# Chef source:
-if [ -z "$SRCROOT" ]; then
-	SRCROOT="$(dirname "$RUNPATH")"
-fi
-SRCDIR="$(basename "$SRCROOT")"
+# Chef root:
+CHEFROOT_SRC="$(dirname "$SCRIPTDIR")"
+CHEFROOT="$(dirname "$CHEFROOT_SRC")"
+CHEFROOT_BUILD="$CHEFROOT/build"
+CHEFROOT_BUILD_DEPS="$CHEFROOT_BUILD/deps"
+CHEFROOT_EXPDATA="$CHEFROOT/expdata"
+CHEFROOT_VM="$CHEFROOT/expdata"
 
 # Chef command line tools:
-CTL_RUNPATH="$SRCROOT/ctl"
-
-# Workspace + data:
-WSROOT="$(dirname "$SRCROOT")"
-DATAROOT="$WSROOT"
-DATAROOT_BUILD="$DATAROOT/build"
-DATAROOT_EXPDATA="$DATAROOT/expdata"
-DATAROOT_VM="$DATAROOT/vm"
+INVOKEPATH="$CHEFROOT_SRC/ctl"
+test -n "$INVOKENAME" || INVOKENAME="$SCRIPTNAME"
 
 # LLVM:
+LLVM_BASE="$CHEFROOT_BUILD_DEPS/llvm"
 LLVM_VERSION='3.2'
-LLVM_BASE="$DATAROOT_BUILD/llvm"
 LLVM_SRC="$LLVM_BASE/llvm-${LLVM_VERSION}.src"
 LLVM_BUILD_RELEASE="$LLVM_BASE/llvm-${LLVM_VERSION}.build-release"
 LLVM_BUILD_DEBUG="$LLVM_BASE/llvm-${LLVM_VERSION}.build-debug"
@@ -130,13 +123,14 @@ LLVM_NATIVE_CXX="$LLVM_NATIVE/bin/clang++"
 
 # Docker:
 DOCKER_IMAGE='dslab/s2e-chef:v0.6'
-DOCKER_WSROOT='/host'
-DOCKER_SRCROOT="$DOCKER_WSROOT/$SRCDIR"
-DOCKER_DATAROOT="$DOCKER_WSROOT"
-DOCKER_DATAROOT_BUILD="$DOCKER_DATAROOT/build"
-DOCKER_DATAROOT_EXPDATA="$DOCKER_DATAROOT/expdata"
-DOCKER_DATAROOT_VM="$DOCKER_DATAROOT/vm"
-DOCKER_LLVM_BASE='/opt/s2e/chef-data/build/llvm'
+DOCKER_CHEFROOT='/chef'
+DOCKER_CHEFROOT_BUILD="$DOCKER_CHEFROOT/build"
+DOCKER_CHEFROOT_BUILD_DEPS="$DOCKER_CHEFROOT_BUILD/deps"
+DOCKER_CHEFROOT_EXPDATA="$DOCKER_CHEFROOT/expdata"
+DOCKER_CHEFROOT_VM="$DOCKER_CHEFROOT/vm"
+DOCKER_CHEFROOT_SRC="$DOCKER_CHEFROOT/$(basename "$CHEFROOT_SRC")"
+DOCKER_INVOKEPATH="$DOCKER_CHEFROOT_SRC/ctl"
+DOCKER_LLVM_BASE='/opt/s2e/chef/build/llvm'
 
 # System:
 NULL='/dev/null'
@@ -151,17 +145,15 @@ LOGFILE="$NULL"
 util_dryrun()
 {
 	cat <<- EOF
-	RUNNAME=$RUNNAME
-	RUNPATH=$RUNPATH
-	RUNDIR=$RUNDIR
+	SCRIPTNAME=$SCRIPTNAME
+	SCRIPTPATH=$SCRIPTPATH
+	SCRIPTDIR=$SCRIPTDIR
 	INVOKENAME=$INVOKENAME
-	SRCROOT=$SRCROOT
-	SRCDIR=$SRCDIR
-	WSROOT=$WSROOT
-	DATAROOT=$DATAROOT
-	DATAROOT_BUILD=$DATAROOT_BUILD
-	DATAROOT_EXPDATA=$DATAROOT_EXPDATA
-	DATAROOT_VM=$DATAROOT_VM
+	CHEFROOT=$CHEFROOT
+	CHEFROOT_SRC=$CHEFROOT_SRC
+	CHEFROOT_BUILD=$CHEFROOT_BUILD
+	CHEFROOT_EXPDATA=$CHEFROOT_EXPDATA
+	CHEFROOT_VM=$CHEFROOT_VM
 	LLVM_BASE=$LLVM_BASE
 	LLVM_SRC=$LLVM_SRC
 	LLVM_BUILD=$LLVM_BUILD
@@ -171,16 +163,17 @@ util_dryrun()
 	VERBOSE=$VERBOSE
 	DOCKERIZED=$DOCKERIZED
 	DOCKER_IMAGE=$DOCKER_IMAGE
-	DOCKER_WSROOT=$DOCKER_WSROOT
-	DOCKER_SRCROOT=$DOCKER_SRCROOT
-	DOCKER_DATAROOT=$DOCKER_DATAROOT
-	DOCKER_DATAROOT_BUILD=$DOCKER_DATAROOT_BUILD
-	DOCKER_DATAROOT_EXPDATA=$DOCKER_DATAROOT_EXPDATA
-	DOCKER_DATAROOT_VM=$DOCKER_DATAROOT_VM
+	DOCKER_CHEFROOT=$DOCKER_CHEFROOT
+	DOCKER_CHEFROOT_SRC=$DOCKER_CHEFROOT_SRC
+	DOCKER_CHEFROOT_BUILD=$DOCKER_CHEFROOT_BUILD
+	DOCKER_CHEFROOT_EXPDATA=$DOCKER_CHEFROOT_EXPDATA
+	DOCKER_CHEFROOT_VM=$DOCKER_CHEFROOT_VM
+	DOCKER_INVOKEPATH=$DOCKER_INVOKEPATH
 	ARCH=$ARCH
 	TARGET=$TARGET
 	MODE=$MODE
 	RELEASE=$RELEASE
+	RELEASEPATH=$RELEASEPATH
 	DEFAULT_ARCH=$DEFAULT_ARCH
 	DEFAULT_TARGET=$DEFAULT_TARGET
 	DEFAULT_MODE=$DEFAULT_MODE
@@ -459,7 +452,7 @@ DEFAULT_TARGET="${CHEF_TARGET:-"release"}"
 DEFAULT_MODE="${CHEF_MODE:-"normal"}"
 DEFAULT_RELEASE="${CHEF_RELEASE:-"$DEFAULT_ARCH:$DEFAULT_TARGET:$DEFAULT_MODE"}"
 
-split_release()
+parse_release()
 {
 	IFS=: read ARCH TARGET MODE <<- EOF
 	$(echo "$1:")
@@ -475,22 +468,14 @@ split_release()
 		die_help 'Unknown mode: %s' "$MODE"
 	fi
 	RELEASE="$ARCH:$TARGET:$MODE"
-}
-
-set_asserts()
-{
+	RELEASEPATH="$CHEFROOT_BUILD/$ARCH-$TARGET-$MODE"
 	case "$TARGET" in
-		release) ASSERTS='Release+Asserts' ;;
-		debug)   ASSERTS='Debug+Asserts' ;;
-		*) die_internal 'set_asserts(): unknown target %s' "$TARGET" ;;
-	esac
-}
-
-set_llvm_build()
-{
-	case "$TARGET" in
-		release) LLVM_BUILD="$LLVM_BUILD_RELEASE" ;;
-		debug)   LLVM_BUILD="$LLVM_BUILD_DEBUG" ;;
-		*) die_internal 'set_llvm_build(): unknown target %s' "$TARGET" ;;
+		release)
+			ASSERTS='Release+Asserts'
+			LLVM_BUILD="$LLVM_BUILD_RELEASE" ;;
+		debug)
+			ASSERTS='Debug+Asserts'
+			LLVM_BUILD="$LLVM_BUILD_DEBUG" ;;
+		*) die_internal 'parse_release(): unknown target %s' "$TARGET" ;;
 	esac
 }

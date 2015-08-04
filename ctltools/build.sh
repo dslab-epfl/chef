@@ -114,7 +114,7 @@ llvm_generic_patch()
 		   "$llvm_generic_prog" ;;
 	esac
 	llvm_generic_patch="$llvm_generic_vprog-${llvm_generic_patchname}.patch"
-	patch -d "$SRCPATH" -p0 -i "$SRCROOT/llvm/$llvm_generic_patch" \
+	patch -d "$SRCPATH" -p0 -i "$CHEFROOT_SRC/llvm/$llvm_generic_patch" \
 	|| return $FAILURE
 }
 
@@ -366,7 +366,7 @@ tools_configure()
 	"$SRCPATH"/configure \
 		--with-llvmsrc="$LLVM_SRC" \
 		--with-llvmobj="$LLVM_BUILD" \
-		--with-s2esrc="$SRCROOT/qemu" \
+		--with-s2esrc="$CHEFROOT_SRC/qemu" \
 		--target=x86_64 \
 		CC="$LLVM_NATIVE_CC" \
 		CXX="$LLVM_NATIVE_CXX" \
@@ -427,7 +427,7 @@ all_build()
 	for component in $COMPS
 	do
 		BUILDPATH="$BUILDPATH_BASE/$component"
-		SRCPATH="$SRCROOT/$component"
+		SRCPATH="$CHEFROOT_SRC/$component"
 		LOGFILE="${BUILDPATH}.log"
 		rm -f "$LOGFILE"
 		cd "$BUILDPATH_BASE"
@@ -512,10 +512,10 @@ docker_build()
 		die '%s: image not found' "$DOCKER_IMAGE"
 	fi
 
-	exec docker run --rm -it \
-		-v "$WSROOT":"$DOCKER_WSROOT" \
+	docker run --rm -it \
+		-v "$CHEFROOT":"$DOCKER_CHEFROOT" \
 		"$DOCKER_IMAGE" \
-		"$DOCKER_SRCROOT/$RUNDIR/$RUNNAME" \
+		"$DOCKER_INVOKEPATH" build \
 			-p "$PROCEDURE" \
 			-f "$COMPS_FORCE" \
 			-x "$COMPS_EXCLUDE" \
@@ -591,7 +591,7 @@ help()
 
 list()
 {
-	for build in $(find "$DATAROOT_BUILD" -maxdepth 1 -mindepth 1 -type d); do
+	for build in $(find "$CHEFROOT_BUILD" -maxdepth 1 -mindepth 1 -type d); do
 		basename "$build" | sed 's/-/:/g'
 	done
 }
@@ -649,14 +649,19 @@ get_release()
 	else
 		ARGSHIFT=1
 	fi
-	split_release "$1" # sets RELEASE, ARCH, TARGET and MODE
-	set_asserts       # sets ASSERTS to 'Release+Asserts' or 'Debug+Asserts'
-	set_llvm_build   # sets LLVM_BUILD to LLVM_BUILD_RELEASE or LLVM_BUILD_DEBUG
+	parse_release "$1"
 }
 
 main()
 {
-	LOGFILE='./build.log'
+	if [ ! -d "$CHEFROOT_BUILD" ]; then
+		if ! track "initialise build directory: $CHEFROOT_BUILD" \
+			mkdir "$CHEFROOT_BUILD"
+		then
+			exit 1
+		fi
+	fi
+	LOGFILE="$CHEFROOT_BUILD/build.log"
 
 	# Command line arguments:
 	get_options "$@"
@@ -667,18 +672,16 @@ main()
 
 	# Procedure:
 	case "$PROCEDURE" in
-		normal)
-			BUILDPATH_BASE="$DATAROOT_BUILD/$ARCH-$TARGET-$MODE"
-			;;
+		normal) BUILDPATH_BASE="$RELEASEPATH" ;;
 		llvm)
-			COMPS='z3 protobuf clang compiler-rt llvm-native llvm llvm'
-			BUILDPATH_BASE="$LLVM_BASE"
-			;;
-		*)
-			die_help 'invalid procedure: %s' "$PROCEDURE"
-			;;
+			COMPS='clang compiler-rt llvm-native llvm llvm'
+			BUILDPATH_BASE="$LLVM_BASE" ;;
+		z3|protobuf)
+			COMPS="$PROCEDURE"
+			BUILDPATH_BASE="$CHEFROOT_BUILD_DEPS" ;;
+		*) die_help 'invalid procedure: %s' "$PROCEDURE" ;;
 	esac
-	test -d "$DATAROOT_BUILD" || mkdir "$DATAROOT_BUILD"
+	test -d "$CHEFROOT_BUILD" || mkdir "$CHEFROOT_BUILD"
 
 	# Forced/excluded components:
 	test "$COMPS_FORCE" != 'all' || COMPS_FORCE="$COMPS"
@@ -695,10 +698,10 @@ main()
 
 	# Run inside docker:
 	if [ $DOCKERIZED -eq $TRUE ]; then
-		setfacl -m user:$(id -u):rwx "$DATAROOT_BUILD"
-		setfacl -m user:431:rwx "$DATAROOT_BUILD"
-		setfacl -d -m user:$(id -u):rwx "$DATAROOT_BUILD"
-		setfacl -d -m user:431:rwx "$DATAROOT_BUILD"
+		setfacl -m user:$(id -u):rwx "$CHEFROOT_BUILD"
+		setfacl -m user:431:rwx "$CHEFROOT_BUILD"
+		setfacl -d -m user:$(id -u):rwx "$CHEFROOT_BUILD"
+		setfacl -d -m user:431:rwx "$CHEFROOT_BUILD"
 		docker_build
 
 	# Run natively:
