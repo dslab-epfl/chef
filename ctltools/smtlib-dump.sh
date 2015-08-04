@@ -2,31 +2,18 @@
 #
 # This script dumps queries from sqlite3 databases in SMT-Lib format.
 #
-# Maintainer: Tinu Weber <martin.weber@epfl.ch>
-
-# UTILS ========================================================================
+# Maintainers:
+#   ayekat (Tinu Weber <martin.weber@epfl.ch>)
 
 . "$(readlink -f "$(dirname "$0")")/utils.sh"
-
-DOCKER_HOSTPATH_IN='/host-in'
-DOCKER_HOSTPATH_OUT='/host-out'
-DOCKER_HOSTPATH_BUILD='/host-build'
 
 # DUMP =========================================================================
 
 dump()
 {
-	case "$TARGET" in
-		'release') BUILD_NAME='Release+Asserts' ;;
-		'debug') BUILD_NAME='Debug+Asserts' ;;
-		*) die_internal 'dump(): Invalid target: %s' "$TARGET" ;;
-	esac
+	TOOL_BIN="$RELEASEPATH/klee/$ASSERTS/bin/query-tool"
 
-	TOOL_BIN="$BUILD_PATH/$BUILD/klee/$BUILD_NAME/bin/query-tool"
-
-	if [ ! -e "$TOOL_BIN" ]; then
-		die 2 '%s: Executable not found' "$TOOL_BIN"
-	fi
+	test -e "$TOOL_BIN" || die 2 '%s: file not found' "$TOOL_BIN"
 
 	"$TOOL_BIN" \
 		-end-solver="$SOLVER" \
@@ -38,30 +25,14 @@ dump()
 		$IDS_EXPANDED
 }
 
-# DUMPALL ======================================================================
-
-dumpall()
-{
-	DB_ROOT="$DB_PATH"
-	DUMP_ROOT="$DUMP_PATH"
-
-	die 3 'not implemented'
-}
-
 # DOCKER =======================================================================
 
 docker_dump()
 {
-	exec docker run \
-		--rm \
-		-t \
-		-i \
-		-v "$SRCPATH_ROOT":"$DOCKER_HOSTPATH" \
-		-v "$DB_PATH":"$DOCKER_HOSTPATH_IN" \
-		-v "$DUMP_PATH":"$DOCKER_HOSTPATH_OUT" \
-		-v "$BUILD_PATH":"$DOCKER_HOSTPATH_BUILD" \
+	docker run --rm -it \
+		-v "$CHEFROOT":"$DOCKER_CHEFROOT" \
 		"$DOCKER_IMAGE" \
-		"$DOCKER_HOSTPATH"/"$RUNDIR"/"$RUNNAME" \
+		"$DOCKER_INVOKEPATH" smtlib-dump \
 			-b "$DOCKER_HOSTPATH_BUILD" \
 			$(test $COMPACT -eq $TRUE && printf "%s" '-c') \
 			$(test $MONOLITHIC -eq $TRUE && printf "%s" '-M') \
@@ -78,31 +49,19 @@ docker_dump()
 dryrun()
 {
 	cat <<- EOF
-	ARCH=$ARCH
-	MODE=$MODE
-	RELEASE=$RELEASE
 	SOLVER=$SOLVER
-	DUMP_PATH=$DUMP_PATH
 	DB_FILE=$DB_FILE
 	MONOLITHIC=$(as_boolean $MONOLITHIC)
 	HUMAN=$(as_boolean $HUMAN)
 	EOF
-
-	if [ $DOCKERIZED -eq $FALSE ]; then
-		cat <<- EOF
-		DOCKER_HOSTPATH=$SRCPATH_ROOT:$DOCKER_HOSTPATH
-		DOCKER_HOSTPATH_IN=$DB_PATH:$DOCKER_HOSTPATH_IN
-		DOCKER_HOSTPATH_OUT=$DUMP_PATH:$DOCKER_HOSTPATH_OUT
-		DOCKER_HOSTPATH_BUILD=$BUILD_PATH:$DOCKER_HOSTPATH_BUILD
-		EOF
-	fi
+	exit 1
 }
 
 # UTILITIES ====================================================================
 
 usage()
 {
-	echo "Usage: $INVOKENAME [OPTIONS ...] DB_FILE IDS"
+	echo "Usage: $INVOKENAME [OPTIONS ...] EXPNAME IDS DUMPNAME"
 }
 
 help()
@@ -111,34 +70,30 @@ help()
 	cat <<- EOF
 
 	Options:
-	  -b BUILD_PATH  Path to the Chef build directory
-	                 [default=$BUILD_PATH]
 	  -c             Print compact SMTLIB (experimental!)
 	  -d             Dockerized (wrap execution inside docker container)
 	  -h             Display this help
 	  -M             Monolithic dump (no separate files)
-	  -o DUMP_PATH   Dump queries from the DB file to DUMP_PATH
-	                 [default=$DUMP_PATH]
 	  -r RELEASE     Release tuple [default=$DEFAULT_RELEASE]
-	  -s SOLVER      Use solver SOLVER [default=$SOLVER]
+	  -s {z3,cvc3}   Use this solver [default=$SOLVER]
 	  -w             Use whitespace to make it human-readable
 	  -y             Dry run: print runtime variables and exit
-
-	Solvers:
-	  z3  cvc3
 
 	IDs:
 	  The query IDs can be given as a comma-separated list of numbers or ranges,
 	  where a range is two numbers separated by a dash.
+
+	Experiment name:
+	  The name of the experiment data generated with \`ctl run ... sym\`.
+
+	Dump name:
+	  Name of the dump - can be used for \`ctl smtlib-compare\`.
 	EOF
 }
 
 get_options()
 {
-	# Default values:
-	BUILD_PATH="$SRCPATH_ROOT/build"
 	COMPACT=$FALSE
-	DUMP_PATH="$PWD"
 	MONOLITHIC=$FALSE
 	RELEASE="$DEFAULT_RELEASE"
 	SOLVER='stp'
@@ -146,14 +101,12 @@ get_options()
 	DOCKERIZED=$FALSE
 	DRYRUN=$FALSE
 
-	while getopts :b:cdhMo:r:s:wy opt; do
+	while getopts :cdhMr:s:wy opt; do
 		case "$opt" in
-			b) BUILD_PATH="$OPTARG" ;;
 			c) COMPACT=$TRUE ;;
 			d) DOCKERIZED=$TRUE ;;
 			h) help; exit 1 ;;
 			M) MONOLITHIC=$TRUE ;;
-			o) DUMP_PATH="$OPTARG" ;;
 			r) RELEASE="$OPTARG" ;;
 			s) SOLVER="$OPTARG" ;;
 			w) HUMAN=$TRUE ;;
@@ -162,15 +115,8 @@ get_options()
 		esac
 	done
 
-	split_release "$RELEASE"
-	DUMP_PATH="$(readlink -f "$DUMP_PATH")"
-	test -d "$DUMP_PATH" || die 2 '%s: Directory does not exist' "$DUMP_PATH"
-	test -w "$DUMP_PATH" || die 3 '%s: Permission denied' "$DUMP_PATH"
-	BUILD_PATH="$(readlink -f "$BUILD_PATH")"
-	BUILD="$ARCH-$TARGET-$MODE"
-	if [ ! -d "$BUILD_PATH/$BUILD" ]; then
-		die 2 '%s: build does not exist in %s' "$BUILD" "$BUILD_PATH"
-	fi
+	parse_release "$RELEASE"
+	test -d "$RELEASEPATH" || die 1 '%s: release not found' "$RELEASEPATH"
 	ARGSHIFT=$(($OPTIND - 1))
 }
 

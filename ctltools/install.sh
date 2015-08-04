@@ -36,7 +36,7 @@ protobuf_install()
 all_install()
 {
 	for component in $COMPONENTS; do
-		BUILDPATH="$DATAROOT_BUILD/llvm/$component"
+		BUILDPATH="$CHEFROOT_BUILD/llvm/$component"
 		LOGFILE="${BUILDPATH}_install.log"
 		cd "$BUILDPATH"
 

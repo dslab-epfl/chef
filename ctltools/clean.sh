@@ -12,9 +12,8 @@
 # ____
 # ¹ The problematic part is actually only `mkdir -p`, whereas `mkdir` works.
 
-# Maintainer: Tinu Weber <martin.weber@epfl.ch>
-
-# UTILITIES ====================================================================
+# Maintainers:
+#   ayekat (Tinu Weber <martin.weber@epfl.ch>)
 
 . "$(readlink -f "$(dirname "$0")")/utils.sh"
 
@@ -22,7 +21,7 @@
 
 clean()
 {
-	BUILDPATH="$BUILDPATH_ROOT/$ARCH-$TARGET-$MODE"
+	BUILDPATH="$CHEFROOT_BUILD/$ARCH-$TARGET-$MODE"
 	if [ ! -d "$BUILDPATH" ]; then
 		die 2 '%s: Directory does not exist' "$BUILDPATH"
 	fi
@@ -34,13 +33,10 @@ clean()
 
 docker_clean()
 {
-	exec docker run \
-		--rm \
-		-t \
-		-i \
-		-v "$SRCPATH_ROOT":"$DOCKER_HOSTPATH" \
+	exec docker run --rm -it \
+		-v "$CHEFROOT":"$DOCKER_CHEFROOT" \
 		"$DOCKER_IMAGE" \
-		"$DOCKER_HOSTPATH/$RUNDIR/$RUNNAME" \
+		"$DOCKER_INVOKEPATH" clean \
 			$(test $VERBOSE -eq $TRUE && printf '%s' '-v') \
 			"$RELEASE"
 }
@@ -68,8 +64,6 @@ help()
 
 get_options()
 {
-	DOCKERIZED=$DEFAULT_DOCKERIZED
-
 	while getopts :dhv opt; do
 		case "$opt" in
 			d) DOCKERIZED=$TRUE ;;
@@ -88,7 +82,7 @@ get_release()
 	else
 		ARGSHIFT=1
 	fi
-	split_release "$1"  # sets RELEASE, ARCH, TARGET and MODE
+	parse_release "$1"
 }
 
 main()
@@ -102,7 +96,7 @@ main()
 	if [ $DOCKERIZED -eq $TRUE ]; then
 		docker_clean
 	else
-		LOGFILE="$SRCPATH_ROOT/clean.log"
+		LOGFILE="$CHEFROOT_BUILD/clean.log"
 		if ! clean; then
 			failure "Cleaning failed.\n"
 			examine_logs

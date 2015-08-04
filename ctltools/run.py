@@ -49,12 +49,12 @@ MONITOR_PORT = 12345
 VNC_DISPLAY = 0
 VNC_PORT_BASE = 5900
 TIMEOUT = 60
-CONFIGFILE = '%s/config/default-config.lua' % utils.SRCROOT
+CONFIGFILE = '%s/config/default-config.lua' % utils.CHEFROOT_SRC
 NETWORK_MODE = 'user'
 TAP_INTERFACE = 'tap0'
 
 # Docker:
-DOCKER_DATAROOT_CONFIG = '%s/config' % utils.DOCKER_DATAROOT
+DOCKER_CONFIGROOT = '%s/config' % utils.DOCKER_CHEFROOT
 
 
 # COMMUNICATION WITH CHEF ======================================================
@@ -322,7 +322,7 @@ def build_docker_cmd_line(args, command: [str]):
         lua_path = os.environ.get('LUA_PATH', '')
         lua_path_additional = '%s/?.lua' \
                               % (args['config_root'],
-                                 DOCKER_DATAROOT_CONFIG)[args['dockerized']]
+                                 DOCKER_CONFIGROOT)[args['dockerized']]
         docker_cmd_line.extend([
             '-e', 'LUA_PATH=%s;%s' % (lua_path_additional, lua_path)
         ])
@@ -357,9 +357,10 @@ def build_qemu_cmd_line(args):
         qemu_cmd_line.append('strace')
 
     # Qemu path:
-    arch, target, mode = utils.split_release(args['release'])
+    utils.parse_release(args['release'])
+    arch, target, mode = utils.ARCH, utils.TARGET, utils.MODE
     qemu_path = os.path.join(
-        (utils.DATAROOT_BUILD, utils.DOCKER_DATAROOT_BUILD)[args['dockerized']],
+        (utils.CHEFROOT_BUILD, utils.DOCKER_CHEFROOT_BUILD)[args['dockerized']],
         '%s-%s-%s' % (arch, target, mode),
         'opt',
         'bin',
@@ -415,13 +416,13 @@ def build_qemu_cmd_line(args):
             qemu_cmd_line.extend([
                 '-s2e-output-dir', (
                     args['expdata_root'],
-                    utils.DOCKER_DATAROOT_EXPDATA
+                    utils.DOCKER_CHEFROOT_EXPDATA
                 )[args['dockerized']]
             ])
 
     # VM path:
     if args['dockerized']:
-        utils.DATAROOT_VM = utils.DOCKER_DATAROOT_VM
+        utils.CHEFROOT_VM = utils.DOCKER_CHEFROOT_VM
         vm = VM(args['vm_name']) # create VM with dockerized data root path
     qemu_cmd_line.append((vm.path_s2e, vm.path_raw)[args['mode'] == 'kvm'])
 
