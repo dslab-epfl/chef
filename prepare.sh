@@ -13,7 +13,7 @@ SRCROOT="$(readlink -f "$(dirname "$0")")"
 die_unsupported()
 {
 	cat >&2 <<- EOF
-	$OS_NAME is currently unsupported. However the addition of distribution
+	$OS_NAME is currently unsupported. However, the addition of distribution
 	support is usually simple, and we may have just forgotten your distribution.
 	Please open a feature request at https://github.com/dslab-epfl/chef/issues/,
 	and we will happily add support for your operating system.
@@ -58,6 +58,7 @@ note_ccli()
 ask_docker()
 {
 	cat <<- EOF
+
 	Chef is rather strict concerning its dependencies and has been developed
 	and tested specifically against Ubuntu 14.04. However, to allow other
 	distributions and/or versions to use Chef, a Linux container image has been
@@ -103,16 +104,22 @@ package_manager_install()
 {
 	package_description="$1"
 	shift
+
+	# Get package list:
 	package_list=''
 	for p in "$@"; do
 		pname="$(get_package_name "$p")"
 		! package_manager_check "$pname" || continue;
 		if package_manager_check_aur "$pname"; then
+			# use AUR
 			package_manager_install_aur "$pname"
 		else
+			# append to normal packages
 			package_list="$package_list $pname"
 		fi
 	done
+
+	# Install packages:
 	if [ -n "$package_list" ]; then
 		note '%s' "$package_description"
 		case "$OS_NAME" in
@@ -121,9 +128,8 @@ package_manager_install()
 			Ubuntu) sudo apt-get install $package_list ;;
 			*) die_unsupported ;;
 		esac
-	else
-		ok '%s' "$package_description"
 	fi
+	ok '%s' "$package_description"
 }
 
 package_manager_check()
@@ -248,6 +254,12 @@ prepare_dependencies_chef()
 		libc6-dev-i386
 }
 
+prepare_dependencies_llvm()
+{
+	"$CCLI_RUNPATH" build -p llvm
+	"$CCLI_RUNPATH" install z3 protobuf
+}
+
 prepare_dependencies_ccli()
 {
 	package_manager_install 'Installing dependencies: ccli' \
@@ -263,6 +275,7 @@ prepare_dependencies_ccli()
 prepare_dependencies()
 {
 	check_sudo
+	prepare_dependencies_ccli
 	if ask_docker; then
 		USE_DOCKER=$TRUE
 		prepare_dependencies_docker
@@ -270,10 +283,11 @@ prepare_dependencies()
 		USE_DOCKER=$FALSE
 		prepare_dependencies_s2e
 		prepare_dependencies_chef
+		prepare_dependencies_llvm
 	else
-		die 1 'Cannot continue preparation'
+		abort 'Cannot continue preparation'
+		die 1
 	fi
-	prepare_dependencies_ccli
 }
 
 # WORKSPACE ====================================================================
@@ -338,8 +352,8 @@ help()
 	  -y         Dry run: display variable values and exit
 
 	Actions:
-	  dependencies
-	  workspace
+	  dependencies   Install dependencies for making Chef build and run
+	  workspace      Prepare the workspace at $WSROOT
 	EOF
 }
 

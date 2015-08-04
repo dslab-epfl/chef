@@ -393,11 +393,6 @@ guest_compile()
 
 # ALL/GENERIC ==================================================================
 
-generic_enter()
-{
-	cd "$BUILDPATH"
-}
-
 generic_extract()
 {
 	mkdir -p "$BUILDPATH" || return $FAILURE
@@ -567,6 +562,7 @@ help()
 	             [default='$COMPS_FORCE']
 	  -x COMPS   Exclude components COMPS (-f overrides this)
 	             [default='$COMPS_EXCLUDE']
+	  -c COMPS   Only build components COMPS (instead of all)
 	  -j N       Compile with N jobs [default=$JOBS]
 	  -q FLAGS   Additional flags passed to qemu's \`configure\` script
 	  -s         Silent: redirect compilation messages/warnings/errors into log files
@@ -626,12 +622,13 @@ get_options()
 	JOBS=$CPU_CORES
 	QEMU_FLAGS=''
 
-	while getopts :dp:f:x:j:q:slyYh opt; do
+	while getopts :dp:f:x:c:j:q:slyYh opt; do
 		case "$opt" in
 			d) DOCKERIZED=$TRUE ;;
 			p) PROCEDURE="$OPTARG" ;;
 			f) COMPS_FORCE="$OPTARG" ;;
 			x) COMPS_EXCLUDE="$OPTARG" ;;
+			c) COMPS="$OPTARG" ;;
 			j) JOBS="$OPTARG" ;;
 			q) QEMU_FLAGS="$OPTARG" ;;
 			s) VERBOSE=$FALSE ;;

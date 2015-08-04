@@ -4,6 +4,21 @@ Getting Started
 This is a brief introduction for how to get, build and run S²E-Chef.
 
 
+Scratchpad
+----------
+
+* `./prepare.sh dependencies workspace`
+* If not using docker:
+  * `./ccli.py build -p llvm`
+  * `./ccli.py install z3 protobuf`
+* `./ccli.py build`
+* `./ccli.py vm fetch Debian Debian`
+* Regular S²E/Chef Workflow:
+  * `./ccli.py run Debian kvm`
+  * `./ccli.py run Debian prep`
+  * `./ccli.py run Debian sym SNAPSHOT`
+
+
 Chef Command Line Interface
 ---------------------------
 

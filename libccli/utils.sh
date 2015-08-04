@@ -108,6 +108,9 @@ if [ -z "$SRCROOT" ]; then
 fi
 SRCDIR="$(basename "$SRCROOT")"
 
+# CCLI:
+CCLI_RUNPATH="$SRCROOT/ccli.py"
+
 # Workspace + data:
 WSROOT="$(dirname "$SRCROOT")"
 DATAROOT="$WSROOT"
@@ -233,6 +236,7 @@ _OK_="[${ESC_SUCCESS} OK ${ESC_RESET}]"
 SKIP="[${ESC_SUCCESS}SKIP${ESC_RESET}]"
 INFO="[${ESC_MISC}INFO${ESC_RESET}]"
 ALRT="[${ESC_SPECIAL} !! ${ESC_RESET}]"
+ABRT="[${ESC_ERROR}ABORT${ESC_RESET}]"
 PEND="[ .. ]"
 DEBUG="[${ESC_SPECIAL}DEBUG${ESC_RESET}]"
 
@@ -253,6 +257,7 @@ fail()  { _print "$FAIL " $TRUE "$@" >&2; }
 pend()  { _print "$PEND " $TRUE "$@"; }
 pend_() { _print "$PEND " $FALSE "$@"; }
 alert() { _print "$ALRT " $TRUE "$@"; }
+abort() { _print "\n$ABRT " $TRUE "$@" >&2; }
 ok()    { _print "$_OK_ " $TRUE "$@"; }
 debug() { _print "$DEBUG " $TRUE "$@"; }
 

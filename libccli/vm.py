@@ -367,7 +367,7 @@ class VM:
                                    help="Install an OS from an ISO to a VM")
         pinstall.set_defaults(action=VM.install)
         pinstall.add_argument('iso_path',
-                             help="Path to ISO file containing the OS")
+                              help="Path to ISO file containing the OS")
         pinstall.add_argument('name',
                               help="Machine name")
 
@@ -404,13 +404,22 @@ class VM:
         return vars(args) # make it a dictionary, for easier use
 
 
+    def vm_init(path: str):
+        utils.set_msg_prefix("initialise VM directory: %s" % path)
+        utils.pend()
+        try:
+            os.mkdir(path)
+        except OSError as e:
+            utils.fail(e.strip())
+            exit(1)
+        utils.ok()
+
+
     @staticmethod
     def main(argv: [str]):
         # Check environment:
         if not os.path.isdir(utils.DATAROOT_VM):
-            utils.fail("%s: Directory not found (please initialise Chef first)"
-                       % utils.DATAROOT_VM)
-            exit(1)
+            vm_init()
 
         # Parse command line arguments:
         kwargs = VM.parse_args(argv)
