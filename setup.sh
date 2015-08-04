@@ -20,12 +20,12 @@ sudo apt-get install gdb strace libdwarf-dev libelf-dev libboost-dev libsqlite3-
 
 # compile and install Z3:
 "$THIS_DIR"/ctl build -p z3
-cd "$CHEFROOT_BUILD_DEPS/z3"
+cd "$THIS_DIR/../build/deps/z3"
 sudo make -C build install
 
 # compile and install protobuf:
 "$THIS_DIR"/ctl build -p protobuf
-cd "$CHEFROOT_BUILD_DEPS/protobuf"
+cd "$THIS_DIR/../build/deps/protobuf"
 sudo make install
 sudo ldconfig
 
