@@ -6,7 +6,7 @@
 #   ayekat (Tinu Weber <martin.weber@epfl.ch>)
 
 SRCROOT="$(readlink -f "$(dirname "$0")")"
-. "$SRCROOT/libccli/utils.sh"
+. "$SRCROOT/ctltools/utils.sh"
 
 # INTERACTION ==================================================================
 
@@ -44,15 +44,15 @@ note_os()
 	fi
 }
 
-note_ccli()
+note_ctl()
 {
 	cat <<- EOF
-	Chef consists of various parts that are controlled through a common command
-	line interface. Parts of it are written in python, which requires some
-	modules that must be installed in order for it to work properly.
+	Chef consists of various parts that are controlled through a set of command
+	line scripts. Some of them are written in python, so there are some
+	additional packages that must be installed to fulfil the dependencies.
 	EOF
 	echo
-	ask "$ESC_WARNING" '' 'Install ccli dependencies?' || return $FAILURE
+	ask "$ESC_WARNING" '' 'Install ctl dependencies?' || return $FAILURE
 }
 
 ask_docker()
@@ -256,13 +256,13 @@ prepare_dependencies_chef()
 
 prepare_dependencies_llvm()
 {
-	"$CCLI_RUNPATH" build -p llvm
-	"$CCLI_RUNPATH" install z3 protobuf
+	"$CTL_RUNPATH" build -p llvm
+	"$CTL_RUNPATH" install z3 protobuf
 }
 
-prepare_dependencies_ccli()
+prepare_dependencies_ctl()
 {
-	package_manager_install 'Installing dependencies: ccli' \
+	package_manager_install 'Installing dependencies: ctl' \
 		coreutils \
 		python3 \
 		python3-netifaces \
@@ -275,7 +275,7 @@ prepare_dependencies_ccli()
 prepare_dependencies()
 {
 	check_sudo
-	prepare_dependencies_ccli
+	prepare_dependencies_ctl
 	if ask_docker; then
 		USE_DOCKER=$TRUE
 		prepare_dependencies_docker
