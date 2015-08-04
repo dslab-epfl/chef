@@ -118,6 +118,9 @@ ARCH     = os.environ.get('CHEF_ARCH',     'i386')
 TARGET   = os.environ.get('CHEF_TARGET',   'release')
 MODE     = os.environ.get('CHEF_MODE',     'normal')
 RELEASE  = os.environ.get('CHEF_RELEASE',  '%s:%s:%s' % (ARCH, TARGET, MODE))
+ARCHS    = ['i386', 'x86_64', 'arm']
+TARGETS  = ['release', 'debug']
+MODES    = ['normal', 'asan']
 
 def parse_release(release: str=None):
     global ARCH, TARGET, MODE, RELEASE
@@ -125,10 +128,20 @@ def parse_release(release: str=None):
     release_tuple = RELEASE.split(':')
     arch, target, mode = release_tuple + [''] * (3 - len(release_tuple))
     if len(release_tuple) > 3:
-        utils.warn("trailing tokens in tuple: %s" % ':'.join(release_tuple[3:]))
+        warn("trailing tokens in tuple: %s" % ':'.join(release_tuple[3:]))
     ARCH = arch or ARCH
     TARGET = target or TARGET
     MODE = mode or MODE
+    if ARCH not in ARCHS:
+        fail("unknown architecture: %s" % ARCH)
+        exit(1)
+    if TARGET not in TARGETS:
+        fail("unknown target: %s" % TARGET)
+        exit(1)
+    if MODE not in MODES:
+        fail("unknown mode: %s" % MODE)
+        exit(1)
+
 
 # USER INTERACTION =============================================================
 
