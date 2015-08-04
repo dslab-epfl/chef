@@ -406,6 +406,7 @@ class VM:
         return vars(args) # make it a dictionary, for easier use
 
 
+    @staticmethod
     def vm_init(path: str):
         utils.set_msg_prefix("initialise VM directory: %s" % path)
         utils.pend()
@@ -421,7 +422,7 @@ class VM:
     def main(argv: [str]):
         # Check environment:
         if not os.path.isdir(utils.DATAROOT_VM):
-            vm_init()
+            VM.vm_init()
 
         # Parse command line arguments:
         kwargs = VM.parse_args(argv)
