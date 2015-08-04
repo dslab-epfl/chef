@@ -422,7 +422,7 @@ class VM:
     def main(argv: [str]):
         # Check environment:
         if not os.path.isdir(utils.DATAROOT_VM):
-            VM.vm_init()
+            VM.vm_init(utils.DATAROOT_VM)
 
         # Parse command line arguments:
         kwargs = VM.parse_args(argv)
