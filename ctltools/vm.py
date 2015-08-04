@@ -255,7 +255,6 @@ class VM:
                     '-boot', 'order=d']
         utils.info("command line\n%s" % ' '.join(qemu_cmd))
         utils.pend(pending=False)
-        utils.debug('qemu_cmd = %s' % qemu_cmd)
         if utils.execute(qemu_cmd, msg="run qemu", stdout=True, stderr=True) != 0:
             exit(1)
         utils.ok()
