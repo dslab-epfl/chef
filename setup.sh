@@ -18,11 +18,18 @@ sudo apt-get build-dep llvm-3.3 qemu
 # dependencies for Chef:
 sudo apt-get install gdb strace libdwarf-dev libelf-dev libboost-dev libsqlite3-dev libmemcached-dev libboost-serialization-dev libboost-system-dev
 
-# compile Z3, protobuf, LLVM:
+# compile and install Z3:
 "$THIS_DIR"/ctl build -p z3
-sudo "$THIS_DIR"/ctl install z3
+cd "$CHEFROOT_BUILD_DEPS/z3"
+sudo make -C build install
+
+# compile and install protobuf:
 "$THIS_DIR"/ctl build -p protobuf
-sudo "$THIS_DIR"/ctl install protobuf
+cd "$CHEFROOT_BUILD_DEPS/protobuf"
+sudo make install
+sudo ldconfig
+
+# compile LLVM:
 "$THIS_DIR"/ctl build -p llvm
 
 # Clean up:
