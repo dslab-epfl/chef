@@ -51,8 +51,16 @@ class VM:
         self.path_meta = '%s/meta' % self.path
         self.path_dysfunct = '%s/dysfunct' % self.path
         self.dysfunct = os.path.exists(self.path_dysfunct)
-        self.path_executable = '%s/%s-%s-%s/opt/bin' % (utils.CHEFROOT_BUILD,
-                                           utils.ARCH, utils.TARGET, utils.MODE)
+        if utils.DOCKERIZED:
+            self.path_executable = utils.which('qemu-system-%s' % utils.ARCH)
+            if not self.path_executable:
+                utils.fail("could not find a qemu installation on this machine")
+                exit(1)
+            else:
+                self.path_executable, _ = os.path.split(self.path_executable)
+        else:
+            self.path_executable = '%s/%s-%s-%s/opt/bin' \
+                  % (utils.CHEFROOT_BUILD, utils.ARCH, utils.TARGET, utils.MODE)
         self.load_meta()
         self.scan_snapshots()
 
@@ -247,6 +255,7 @@ class VM:
                     '-boot', 'order=d']
         utils.info("command line\n%s" % ' '.join(qemu_cmd))
         utils.pend(pending=False)
+        utils.debug('qemu_cmd = %s' % qemu_cmd)
         if utils.execute(qemu_cmd, msg="run qemu", stdout=True, stderr=True) != 0:
             exit(1)
         utils.ok()

@@ -1,66 +1,9 @@
-#!/usr/bin/env sh
+#!/bin/sh
 
-# This script installs Z3 and LLVM on the system.
-#
-# Maintainers:
-#   Tinu Weber <martin.weber@epfl.ch>
-
+set -e
 . "$(readlink -f "$(dirname "$0")")/utils.sh"
 
-COMPS='z3'
-
-# Z3 ===========================================================================
-
-z3_install()
-{
-	# Fix install location:
-	printf "%%s/^PREFIX=.*\$/PREFIX=$(sedify "$INSTALLDIR")/g\nwq\n" \
-	| ex -s config.mk \
-	|| return $FAILURE
-
-	# Install:
-	make -C build install || return $FAILURE
-}
-
-# PROTOBUF =====================================================================
-
-protobuf_install()
-{
-	# Install location should be fine
-	make install || return $FALSE
-	ldconfig || return $FALSE
-}
-
-# ALL ==========================================================================
-
-all_install()
-{
-	for component in $COMPONENTS; do
-		BUILDPATH="$CHEFROOT_BUILD/llvm/$component"
-		LOGFILE="${BUILDPATH}_install.log"
-		cd "$BUILDPATH"
-
-		handler=${component}_install
-		if is_command "$handler"; then
-			if ! track "installing $component" $handler; then
-				examine_logs
-				return $FAILURE
-			fi
-		else
-			fail 'component %s not found, skipping' "$component"
-			return $FAILURE
-		fi
-	done
-	success 'installation to %s successful!' "$INSTALLDIR"
-}
-
-# MAIN =========================================================================
-
-usage()
-{
-	echo "Usage: $INVOKENAME [OPTIONS ...] COMPONENTS ..."
-}
-
+usage() { echo "Usage: $INVOKENAME [OPTIONS ...] COMPONENTS ..."; }
 help()
 {
 	usage
@@ -72,42 +15,34 @@ help()
 	  -t PATH  Location to which the components are installed
 	           [default=$INSTALLDIR]
 	  -h       Display help message and exit
-	  -v       Verbose output
 	EOF
 }
 
-get_options()
-{
-	INSTALLDIR='/usr/local'
+# Get options:
+INSTALLDIR='/usr/local'
+while getopts :ht: opt; do
+	case "$opt" in
+		h) help; exit 1 ;;
+		t) INSTALLDIR="$OPTARG" ;;
+		'?') die_help 'Unknown option: -%s' "$OPTARG" ;;
+	esac
+done
+shift $(($OPTIND - 1))
 
-	while getopts :ht:v opt; do
-		case "$opt" in
-			h) help; exit 1 ;;
-			t) INSTALLDIR="$OPTARG" ;;
-			v) VERBOSE=$TRUE ;;
-			'?') die_help 'Unknown option: -%s' "$OPTARG" ;;
-		esac
-	done
-	ARGSHIFT=$(($OPTIND - 1))
+# Check:
+test -d "$INSTALLDIR" || die 1 '%s: directory not found' "$INSTALLDIR"
+test -w "$INSTALLDIR" || die 1 '%s: write permissions denied' "$INSTALLDIR"
 
-	test -d "$INSTALLDIR" || die 1 '%s: directory not found' "$INSTALLDIR"
-	test -w "$INSTALLDIR" || die 1 '%s: write permission denied' "$INSTALLDIR"
-}
+# Z3:
+if [ "$1" = 'z3' ] || [ "$2" = 'z3' ]; then
+	cd "$CHEFROOT_BUILD_DEPS/z3"
+	printf "%%s/^PREFIX=.*\$/PREFIX=$(sedify "$INSTALLDIR")/g\nwq\n" | ex -s config.mk
+	make -C build install
+fi
 
-get_components()
-{
-	COMPONENTS="$@"
-}
-
-main()
-{
-	get_options "$@"
-	shift $ARGSHIFT
-	get_components "$@"
-
-	all_install || exit $FAILURE
-}
-
-set -e
-main "$@"
-set +e
+# protobuf:
+if [ "$1" = 'protobuf' ] || [ "$2" = 'protobuf' ]; then
+	cd "$CHEFROOT_BUILD_DEPS/protobuf"
+	make install
+	ldconfig
+fi

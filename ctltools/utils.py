@@ -55,6 +55,16 @@ def sudo(cmd:[str], sudo_msg:str=None, **kwargs: dict):
     sudo_cmd = ['sudo', '-p', sudo_prompt] + cmd
     return execute(sudo_cmd, **kwargs)
 
+
+def which(cmd:str):
+    paths = os.environ.get('PATH', '')
+    for path in paths.split(':'):
+        fullpath = '%s/%s' % (path, cmd)
+        if os.path.exists(fullpath):
+            return fullpath
+    return None
+
+
 # S2E/CHEF =====================================================================
 
 def set_permissions(path: str, docker_uid: int = 431):

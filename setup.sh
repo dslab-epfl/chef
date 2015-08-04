@@ -1,4 +1,4 @@
-#!/usr/bin/env sh
+#!/bin/sh
 
 THIS_DIR="$(readlink -f "$(dirname "$0")")"
 
@@ -20,9 +20,9 @@ sudo apt-get install gdb strace libdwarf-dev libelf-dev libboost-dev libsqlite3-
 
 # compile Z3, protobuf, LLVM:
 "$THIS_DIR"/ctl build -p z3
-"$THIS_DIR"/ctl install z3
+sudo "$THIS_DIR"/ctl install z3
 "$THIS_DIR"/ctl build -p protobuf
-"$THIS_DIR"/ctl install protobuf
+sudo "$THIS_DIR"/ctl install protobuf
 "$THIS_DIR"/ctl build -p llvm
 
 # Clean up:
