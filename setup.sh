@@ -17,15 +17,9 @@ apt-get install gdb strace libdwarf-dev libelf-dev libboost-dev libsqlite3-dev l
 ./ctl install protobuf
 ./ctl build -p llvm
 
-cd ..
-for directory in src build expdata vm; do
-	setfacl -m user:431:rwx "$directory"
-	setfacl -d -m user:431:rwx "$directory"
-	setfacl -m user:$(id -u):rwx "$directory"
-	setfacl -d -m user:$(id -u):rwx "$directory"
-done
+# Clean up:
 if [ "$1" = '--no-keep' ]; then
-	cd build/deps/
+	cd ../build/deps/
 	for file in *.log *.tar.gz clang compiler-rt llvm/*.log llvm/*.tar.gz llvm/*-native.*; do
 		rm -rf "$file"
 	done
