@@ -27,8 +27,10 @@ def execute(cmd:[str], stdin:str=None, stdout:bool=False, stderr:bool=False,
         out, err = sp.communicate(input=_indata)
         if outfile:
             _out.close()
-        if sp.returncode != 0 and msg:
-            fail("could not %s: %s" % (msg, err.decode()))
+        if sp.returncode != 0:
+            errprefix = "could not %s" % (msg, cmd[0])[msg is None]
+            errmsg = "" if err is None else ": %s" % err.decode()
+            fail("%s%s" % (errprefix, errmsg))
     except FileNotFoundError:
         fail("unknown command: %s" % cmd[0])
         if iowrap:
@@ -85,12 +87,12 @@ def set_permissions(path: str, docker_uid: int = 431):
 
 
 # Basic paths:
-CCLIPATH = os.path.abspath(os.path.dirname(__file__))
-SRCROOT = os.path.dirname(CCLIPATH)
+THIS_PATH = os.path.abspath(os.path.dirname(__file__))
+SRCROOT = os.path.dirname(THIS_PATH)
 WSROOT = os.path.dirname(SRCROOT)
 
 # Data location:
-DATAROOT = '%s/chef-data' % WSROOT
+DATAROOT = WSROOT
 DATAROOT_VM = '%s/vm' % DATAROOT
 DATAROOT_EXPDATA = '%s/expdata' % DATAROOT
 DATAROOT_BUILD = '%s/build' % DATAROOT
@@ -98,7 +100,7 @@ DATAROOT_BUILD = '%s/build' % DATAROOT
 # Docker:
 DOCKER_IMAGE = 'dslab/s2e-chef:v0.6'
 DOCKER_WSROOT = '/host'
-DOCKER_DATAROOT = '%s/chef-data' % DOCKER_WSROOT
+DOCKER_DATAROOT = DOCKER_WSROOT
 DOCKER_DATAROOT_BUILD = '%s/build' % DOCKER_DATAROOT
 DOCKER_DATAROOT_EXPDATA = '%s/expdata' % DOCKER_DATAROOT
 DOCKER_DATAROOT_VM = '%s/vm' % DOCKER_DATAROOT
