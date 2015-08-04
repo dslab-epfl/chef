@@ -442,8 +442,7 @@ all_build()
 				# second encounter with LLVM:
 				TARGET=debug
 			fi
-			set_asserts
-			set_llvm_build
+			parse_release "$ARCH:$TARGET:$MODE" # sets LLVM_BUILD
 		fi
 
 		# Prepare:
@@ -585,7 +584,7 @@ help()
 	$(help_list_with_default "$DEFAULT_MODE" $MODES)
 
 	Procedures:
-	  [normal]  llvm
+	  [chef]  z3  protobuf  llvm
 	EOF
 }
 
@@ -616,7 +615,7 @@ get_options()
 	DRYRUN_DOCKERIZED=$FALSE
 	LIST=$FALSE
 	VERBOSE=${CHEF_VERBOSE:-$TRUE}  # override utils.sh
-	PROCEDURE=normal
+	PROCEDURE=chef
 	COMPS_FORCE=''
 	COMPS_EXCLUDE=''
 	JOBS=$CPU_CORES
@@ -672,7 +671,8 @@ main()
 
 	# Procedure:
 	case "$PROCEDURE" in
-		normal) BUILDPATH_BASE="$RELEASEPATH" ;;
+		chef|default|'')
+			BUILDPATH_BASE="$RELEASEPATH" ;;
 		llvm)
 			COMPS='clang compiler-rt llvm-native llvm llvm'
 			BUILDPATH_BASE="$LLVM_BASE" ;;
