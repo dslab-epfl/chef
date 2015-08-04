@@ -63,6 +63,7 @@ class VM:
                   % (utils.CHEFROOT_BUILD, utils.ARCH, utils.TARGET, utils.MODE)
         self.load_meta()
         self.scan_snapshots()
+        self.size = os.stat(self.path_raw).st_size if self.exists() else 0
 
 
     def load_meta(self):
@@ -110,6 +111,8 @@ class VM:
         if self.dysfunct:
             string += "\n  %s<dysfunct>%s" % (utils.ESC_ERROR, utils.ESC_RESET)
             return string
+        if self.size > 0:
+            string += "\n  Size: %.1fMiB" % (self.size / utils.MEBI)
         if self.os_name:
             string += "\n  Operating System: %s" % self.os_name
         if self.path_iso:
@@ -124,10 +127,9 @@ class VM:
     # UTILITIES ================================================================
 
     def exists(self):
-        return self.name \
-        and os.path.isdir(self.path) \
-        and os.path.exists(self.path_raw) \
-        and os.path.exists(self.path_s2e)
+        return os.path.isdir(self.path) \
+           and os.path.exists(self.path_raw) \
+           and os.path.exists(self.path_s2e)
 
 
     def initialise(self, force: bool):
@@ -201,6 +203,7 @@ class VM:
                           'create', self.path_raw, '%dM' % size],
                          msg="execute qemu-img") != 0:
             exit(1)
+        self.size = size
         utils.ok()
         utils.set_msg_prefix(None)
 
@@ -248,7 +251,6 @@ class VM:
                     '-smp', '%d' % VM.cores,
                     '-m', '%d' % VM.memory,
                     '-vga', 'std',
-                    '-net', 'user',
                     '-monitor', 'tcp::1234,server,nowait',
                     '-drive', 'file=%s,if=virtio,format=raw' % self.path_raw,
                     '-drive', 'file=%s,media=cdrom,readonly' % self.path_iso,
