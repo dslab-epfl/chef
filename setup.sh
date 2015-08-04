@@ -1,16 +1,22 @@
 #!/usr/bin/env sh
 
-# ctl:
-apt-get install coreutils python3 python3-netifaces python3-psutil python3-requests python3-yaml qemu
+# quit on error:
+set -e
 
-# S²E:
-apt-get install build-essential subversion git gettext python-docutils python-pygments nasm unzip wget liblua5.1-dev libsdl1.2-dev libsigc++-2.0-dev binutils-dev libiberty-dev libc6-dev-i386
+# update package tree:
+apt-get update
+
+# dependencies for ctl:
+apt-get install -y coreutils python3 python3-netifaces python3-psutil python3-requests python3-yaml
+
+# dependencies for S²E:
+apt-get install -y build-essential subversion git gettext python-docutils python-pygments nasm unzip wget liblua5.1-dev libsdl1.2-dev libsigc++-2.0-dev binutils-dev libiberty-dev libc6-dev-i386
 apt-get build-dep llvm-3.3 qemu
 
-# Chef:
+# dependencies for Chef:
 apt-get install gdb strace libdwarf-dev libelf-dev libboost-dev libsqlite3-dev libmemcached-dev libbost-serialization-dev libbost-system-dev
 
-# Build Z3, protobuf and LLVM:
+# compile Z3, protobuf, LLVM:
 ./ctl build -p z3
 ./ctl install z3
 ./ctl build -p protobuf
