@@ -16,7 +16,7 @@ sudo apt-get install -y build-essential subversion git gettext python-docutils p
 sudo apt-get build-dep llvm-3.3 qemu
 
 # dependencies for Chef:
-sudo apt-get install gdb strace libdwarf-dev libelf-dev libboost-dev libsqlite3-dev libmemcached-dev libbost-serialization-dev libbost-system-dev
+sudo apt-get install gdb strace libdwarf-dev libelf-dev libboost-dev libsqlite3-dev libmemcached-dev libboost-serialization-dev libboost-system-dev
 
 # compile Z3, protobuf, LLVM:
 "$THIS_DIR"/ctl build -p z3
