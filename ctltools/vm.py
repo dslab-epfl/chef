@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# This script is part of ccli.
+# This script is part of the Chef command line tools.
 #
 # `vm` provides means for managing virtual machines that are used with Chef. The
 # virtual machines are basically raw disk image files containing operating

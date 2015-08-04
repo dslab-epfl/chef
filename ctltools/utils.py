@@ -87,8 +87,8 @@ def set_permissions(path: str, docker_uid: int = 431):
 
 
 # Basic paths:
-CCLIPATH = os.path.abspath(os.path.dirname(__file__))
-SRCROOT = os.path.dirname(CCLIPATH)
+THIS_PATH = os.path.abspath(os.path.dirname(__file__))
+SRCROOT = os.path.dirname(THIS_PATH)
 WSROOT = os.path.dirname(SRCROOT)
 
 # Data location:

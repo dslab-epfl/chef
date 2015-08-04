@@ -1,4 +1,4 @@
-# Shell script utilities shared by most ccli scripts.
+# Shell script utilities shared by most ctl scripts.
 # Compatible with set -e
 #
 # To be (mostly) included as follows:
@@ -108,8 +108,8 @@ if [ -z "$SRCROOT" ]; then
 fi
 SRCDIR="$(basename "$SRCROOT")"
 
-# CCLI:
-CCLI_RUNPATH="$SRCROOT/ccli.py"
+# Chef command line tools:
+CTL_RUNPATH="$SRCROOT/ctl"
 
 # Workspace + data:
 WSROOT="$(dirname "$SRCROOT")"

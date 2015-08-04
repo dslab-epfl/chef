@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
-# ccli - Chef Command Line Interface
-# Runs scripts that are in libccli
+# ctl - command line interface for controlling Chef
+# Common interface for scripts that are in ctltools
 
 import sys
 import os
@@ -12,7 +12,7 @@ RUNPATH = os.path.dirname(os.path.realpath(__file__))
 RUNNAME = sys.argv[0]
 INVOKENAME = os.path.basename(RUNNAME)
 
-COMMAND_LIB = 'libccli'
+COMMAND_LIB = 'ctltools'
 COMMAND_PATH = '%s/%s' % (RUNPATH, COMMAND_LIB)
 COMMAND_EXTS = ['.sh', '.py'] # valid scripts
 COMMANDS = {} # populated in scan_commands()
