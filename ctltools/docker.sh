@@ -35,37 +35,32 @@ docker_build()
 {
 	test $# -ge 1 || die_help 'Missing image'
 	test $# -le 1 || die_help "Trailing arguments: $@"
-	docker_image="$1"
-	docker_path="$CHEFROOT_SRC/docker/image/$docker_image"
-	case "$docker_image" in
-		base)
-			mkdir -p "$docker_path/chef"
-			cp -r "$INVOKEPATH"        "$docker_path/chef/"
-			cp -r "$CHEFROOT_SRC/llvm" "$docker_path/chef/"
-			docker_version='0.4'
-			;;
-		chef)
-			# cp not necessary, it's based on dslab/s2e-base:v0.4
-			docker_version='0.7'
-			;;
+
+	docker_imagename="$1"
+	docker_path="$CHEFROOT_SRC/docker/image/$docker_imagename"
+	docker_share="$docker_path/src"
+
+	rm -rf "$docker_share"
+	mkdir "$docker_share"
+	cp -r "$CHEFROOT_SRC/setup.sh" "$docker_share/"
+	cp -r "$CHEFROOT_SRC/ctl"      "$docker_share/"
+	cp -r "$CHEFROOT_SRC/ctltools" "$docker_share/"
+	cp -r "$CHEFROOT_SRC/llvm"     "$docker_share/"
+	# Because https://github.com/docker/docker/issues/1676
+
+	case "$docker_imagename" in
+		base) docker_image="$DOCKER_IMAGE_BASE_NEXT" ;;
+		chef) docker_image="$DOCKER_IMAGE_NEXT" ;;
 		'-h') help; exit 1 ;;
-		*) die_help 'Unknown image: %s' "$docker_image" ;;
+		*) die_help 'Unknown image name: %s' "$docker_imagename" ;;
 	esac
 
-	# Because https://github.com/docker/docker/issues/1676
-	docker build --rm -t="dslab/s2e-$docker_image:v$docker_version" \
-		"$docker_path"
+	exec docker build --rm -t="$docker_image" "$docker_path"
 }
 
 # MAIN =========================================================================
 
-usage()
-{
-	cat <<- EOF
-	Usage: $INVOKENAME [OPTIONS ...] ACTION
-	EOF
-}
-
+usage() { echo "Usage: $INVOKENAME [OPTIONS ...] ACTION"; }
 help()
 {
 	usage

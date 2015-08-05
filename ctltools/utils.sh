@@ -123,6 +123,10 @@ LLVM_NATIVE_CXX="$LLVM_NATIVE/bin/clang++"
 
 # Docker:
 DOCKER_IMAGE='dslab/s2e-chef:v0.6'
+DOCKER_IMAGE_NEXT='dslab/s2e-chef:v0.7'
+DOCKER_IMAGE_BASE='dslab/s2e-base:v0.3'
+DOCKER_IMAGE_BASE_NEXT='dslab/s2e-base:v0.4'
+
 DOCKER_CHEFROOT='/chef'
 DOCKER_CHEFROOT_BUILD="$DOCKER_CHEFROOT/build"
 DOCKER_CHEFROOT_BUILD_DEPS="$DOCKER_CHEFROOT_BUILD/deps"
@@ -444,7 +448,7 @@ docker_image_exists()
 
 # S2E/CHEF =====================================================================
 
-ARCHS='i386 x86_64'
+ARCHS='i386 x86_64 arm'
 TARGETS='release debug'
 MODES='normal asan libmemtracer'
 DEFAULT_ARCH="${CHEF_ARCH:-"i386"}"
@@ -458,13 +462,13 @@ parse_release()
 	$(echo "$1:")
 	EOF
 
-	if case "${ARCH:="$DEFAULT_ARCH"}" in (i386|x86_64) false;; esac; then
+	if ! list_contains "$ARCHS" "${ARCH:="$DEFAULT_ARCH"}"; then
 		die_help 'Unknown architecture: %s' "$ARCH"
 	fi
-	if case "${TARGET:="$DEFAULT_TARGET"}" in (release|debug) false;; esac; then
+	if ! list_contains "$TARGETS" "${TARGET:="$DEFAULT_TARGET"}"; then
 		die_help 'Unknown target: %s' "$TARGET"
 	fi
-	if case "${MODE:="$DEFAULT_MODE"}" in (normal|asan|libmemtracer) false;; esac; then
+	if ! list_contains "$MODES" "${MODE:="$DEFAULT_MODE"}"; then
 		die_help 'Unknown mode: %s' "$MODE"
 	fi
 	RELEASE="$ARCH:$TARGET:$MODE"

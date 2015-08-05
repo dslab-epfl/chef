@@ -387,6 +387,7 @@ guest_compile()
 	case "$ARCH" in
 		i386) guest_cflags='-m32' ;;
 		x86_64) guest_cflags='-m64' ;;
+		*) die_internal 'guest_compile(): unknown architecture: %s' "$ARCH"
 	esac
 	make -j$JOBS CFLAGS="$guest_cflags" || return $FAILURE
 }
