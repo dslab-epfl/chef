@@ -404,26 +404,30 @@ generic_compile()
 	make -j$JOBS || return $FAILURE
 }
 
+check_llvm()
+{
+	if [ -d "$LLVM_BASE" ]; then
+		ok 'Found LLVM build'
+		return $SUCCESS   # LLVM is there, it's fine!
+	fi
+	if ! case "$PROCEDURE" in (llvm|z3|protobuf) false ;; esac; then
+		return $SUCCESS   # building LLVM, so LLVM is not required :)
+	fi
+	if [ ! -d "$DOCKER_LLVM_BASE" ]; then
+		fail 'LLVM missing in %s - please build LLVM first' "$LLVM_BASE"
+		return $FAILURE   # no existing LLVM build to copy
+	fi
+	note 'Found existing LLVM build in %s' "$DOCKER_LLVM_BASE"
+	if ! track "Copying existing LLVM build to $LLVM_BASE" \
+		cp -r "$DOCKER_LLVM_BASE" "$LLVM_BASE"
+	then
+		examine_logs
+		return $FAILURE
+	fi
+}
+
 all_build()
 {
-	# Don't unnecessarily recompile LLVM & Co:
-	if [ "$PROCEDURE" = llvm ] && [ -d "$DOCKER_LLVM_BASE" ]; then
-		info 'Found existing LLVM build in %s' "$DOCKER_LLVM_BASE"
-		if [ ! -d "$LLVM_BASE" ]; then
-			LOGFILE="${LLVM_BASE}.log"
-			if ! track "copying existing LLVM build to $LLVM_BASE" \
-				cp -r "$DOCKER_LLVM_BASE" "$LLVM_BASE"
-			then
-				examine_logs
-			else
-				return $SUCCESS
-			fi
-		else
-			skip '%s: already exists, not copying' "$LLVM_BASE"
-			return $SUCCESS
-		fi
-	fi
-
 	llvm_seen=$FALSE
 	for component in $COMPS
 	do
@@ -708,14 +712,8 @@ main()
 	# Run natively:
 	else
 		info 'Building %s (jobs=%d)' "$RELEASE" "$JOBS"
-
-		# enter:
-		test -d "$BUILDPATH_BASE" || mkdir "$BUILDPATH_BASE"
-
-		# build:
-		if ! mkdir -p "$BUILDPATH_BASE"; then
-			die 1 'Permission denied'
-		fi
+		mkdir -p "$BUILDPATH_BASE" || die 1 'Permission denied'
+		check_llvm
 		all_build
 	fi
 }

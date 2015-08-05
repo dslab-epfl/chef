@@ -19,14 +19,14 @@ RUN groupadd -g 78 kvm
 RUN usermod  -a -G kvm s2e
 
 # Run Chef setup:
-ADD src/setup.sh                            /opt/s2e/chef/
-ADD src/ctl                                 /opt/s2e/chef/
-ADD src/ctltools/build.sh                   /opt/s2e/chef/ctltools/
-ADD src/ctltools/utils.sh                   /opt/s2e/chef/ctltools/
-ADD src/llvm/llvm-3.2-memorytracer.patch    /opt/s2e/chef/llvm/
-ADD src/llvm/clang-3.2-memorytracer.patch   /opt/s2e/chef/llvm/
-ADD src/llvm/compiler-rt-3.2-asan4s2e.patch /opt/s2e/chef/llvm/
-RUN /opt/s2e/chef/setup.sh
+ADD src/setup.sh                            /opt/s2e/chef/src/
+ADD src/ctl                                 /opt/s2e/chef/src/
+ADD src/ctltools/build.sh                   /opt/s2e/chef/src/ctltools/
+ADD src/ctltools/utils.sh                   /opt/s2e/chef/src/ctltools/
+ADD src/llvm/llvm-3.2-memorytracer.patch    /opt/s2e/chef/src/llvm/
+ADD src/llvm/clang-3.2-memorytracer.patch   /opt/s2e/chef/src/llvm/
+ADD src/llvm/compiler-rt-3.2-asan4s2e.patch /opt/s2e/chef/src/llvm/
+RUN /opt/s2e/chef/src/setup.sh
 
 # Switch to user
 USER s2e

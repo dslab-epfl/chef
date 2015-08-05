@@ -122,10 +122,8 @@ LLVM_NATIVE_CC="$LLVM_NATIVE/bin/clang"
 LLVM_NATIVE_CXX="$LLVM_NATIVE/bin/clang++"
 
 # Docker:
-DOCKER_IMAGE='dslab/s2e-chef:v0.6'
-DOCKER_IMAGE_NEXT='dslab/s2e-chef:v0.7'
+DOCKER_IMAGE='dslab/s2e-chef:v0.7'
 DOCKER_IMAGE_BASE='dslab/s2e-base:v0.3'
-DOCKER_IMAGE_BASE_NEXT='dslab/s2e-base:v0.4'
 
 DOCKER_CHEFROOT='/chef'
 DOCKER_CHEFROOT_BUILD="$DOCKER_CHEFROOT/build"
@@ -134,7 +132,7 @@ DOCKER_CHEFROOT_EXPDATA="$DOCKER_CHEFROOT/expdata"
 DOCKER_CHEFROOT_VM="$DOCKER_CHEFROOT/vm"
 DOCKER_CHEFROOT_SRC="$DOCKER_CHEFROOT/$(basename "$CHEFROOT_SRC")"
 DOCKER_INVOKEPATH="$DOCKER_CHEFROOT_SRC/ctl"
-DOCKER_LLVM_BASE='/opt/s2e/chef/build/llvm'
+DOCKER_LLVM_BASE='/opt/s2e/chef/build/deps/llvm'
 
 # System:
 NULL='/dev/null'
