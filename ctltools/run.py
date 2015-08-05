@@ -53,9 +53,6 @@ CONFIGFILE = '%s/config/default-config.lua' % utils.CHEFROOT_SRC
 NETWORK_MODE = 'user'
 TAP_INTERFACE = 'tap0'
 
-# Docker:
-DOCKER_CONFIGROOT = '%s/config' % utils.DOCKER_CHEFROOT
-
 
 # COMMUNICATION WITH CHEF ======================================================
 
@@ -226,9 +223,6 @@ def parse_cmd_line():
                          help="Run under strace")
 
     # Communication:
-    parser.add_argument('-d','--dockerized', action='store_true',
-                        default=utils.DOCKERIZED,
-                        help="Wrap execution in a docker container")
     parser.add_argument('-b','--background', action='store_true', default=False,
                         help="Fork execution to background") # XXX internal option for batch execution
     parser.add_argument('-m','--monitor-port', type=int,
@@ -300,47 +294,6 @@ def parse_cmd_line():
 
 # BUILD COMMAND LINE ===========================================================
 
-def build_docker_cmd_line(args, command: [str]):
-    docker_cmd_line = ['docker', 'run', '--rm']
-    if not args['background']:
-        docker_cmd_line.extend(['-t', '-i'])
-    docker_cmd_line.extend([
-        '-v', '%s:%s' % (utils.WSROOT, utils.DOCKER_WSROOT),
-        '-p', '%d:%d' % (args['monitor_port'], args['monitor_port']),
-        '-p', '%d:%d' % (args['vnc_port'], args['vnc_port']),
-    ])
-
-    # Mode-specific: KVM:
-    if args['mode'] == 'kvm':
-        docker_cmd_line.append('--privileged=true')
-
-    # Mode-specific: Symbolic:
-    if args['mode'] == 'sym':
-        docker_cmd_line.extend([
-            '-p', '%d:%d' % (args['command_port'], args['command_port']),
-        ])
-        lua_path = os.environ.get('LUA_PATH', '')
-        lua_path_additional = '%s/?.lua' \
-                              % (args['config_root'],
-                                 DOCKER_CONFIGROOT)[args['dockerized']]
-        docker_cmd_line.extend([
-            '-e', 'LUA_PATH=%s;%s' % (lua_path_additional, lua_path)
-        ])
-
-    docker_cmd_line.append(utils.DOCKER_IMAGE)
-
-    # In KVM, adapt ACL for KVM device:
-    if args['mode'] == 'kvm':
-        docker_cmd_line.extend([
-            '/bin/bash', '-c', 'sudo setfacl -m group:kvm:rw /dev/kvm; exec %s'
-                               % ' '.join(command)
-        ])
-    else:
-        docker_cmd_line.extend(command)
-
-    return docker_cmd_line
-
-
 def build_qemu_cmd_line(args):
     qemu_cmd_line = []
 
@@ -360,7 +313,7 @@ def build_qemu_cmd_line(args):
     utils.parse_release(args['release'])
     arch, target, mode = utils.ARCH, utils.TARGET, utils.MODE
     qemu_path = os.path.join(
-        (utils.CHEFROOT_BUILD, utils.DOCKER_CHEFROOT_BUILD)[args['dockerized']],
+        utils.CHEFROOT_BUILD,
         '%s-%s-%s' % (arch, target, mode),
         'opt',
         'bin',
@@ -406,24 +359,13 @@ def build_qemu_cmd_line(args):
     # Mode-specific: Symbolic:
     if args['mode'] == 'sym':
         qemu_cmd_line.extend([
-            '-s2e-config-file', (
-                args['config_file'],
-                os.path.join(DOCKER_CONFIGROOT, args['config_filename'])
-            )[args['dockerized']],
+            '-s2e-config-file', args['config_file'],
             '-s2e-verbose'
         ])
         if args['expdata_root']:
-            qemu_cmd_line.extend([
-                '-s2e-output-dir', (
-                    args['expdata_root'],
-                    utils.DOCKER_CHEFROOT_EXPDATA
-                )[args['dockerized']]
-            ])
+            qemu_cmd_line.extend(['-s2e-output-dir', args['expdata_root']])
 
     # VM path:
-    if args['dockerized']:
-        utils.CHEFROOT_VM = utils.DOCKER_CHEFROOT_VM
-        vm = VM(args['vm_name']) # create VM with dockerized data root path
     qemu_cmd_line.append((vm.path_s2e, vm.path_raw)[args['mode'] == 'kvm'])
 
     return qemu_cmd_line
@@ -435,8 +377,6 @@ def build_parallel_cmd_line(args: dict):
 
 def build_cmd_line(args):
     cmd_line = build_qemu_cmd_line(args)
-    if args['dockerized']:
-        cmd_line = build_docker_cmd_line(args, cmd_line)
     return cmd_line
 
 
@@ -472,8 +412,6 @@ def batch_execute():
                         % (args['vnc_display'] + batch_offset)])
         cmd_line.extend(['sym'])
         cmd_line.extend(['--config-file', command.config])
-        if args['dockerized']:
-            cmd_line.append('--dockerized')
         if args['timeout']:
             cmd_line.extend(['--timeout', '%d' % args['timeout']])
         if args['env_var']:

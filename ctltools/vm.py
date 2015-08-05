@@ -53,15 +53,7 @@ class VM:
         self.path_meta = '%s/meta' % self.path
         self.path_defunct = '%s/defunct' % self.path
         self.defunct = os.path.exists(self.path_defunct)
-        if utils.DOCKERIZED:
-            self.path_executable = utils.which('qemu-system-%s' % utils.ARCH)
-            if not self.path_executable:
-                utils.fail("could not find a qemu installation on this machine")
-                exit(1)
-            else:
-                self.path_executable, _ = os.path.split(self.path_executable)
-        else:
-            self.path_executable = '%s/%s-%s-%s/opt/bin' \
+        self.path_executable = '%s/%s-%s-%s/opt/bin' \
                   % (utils.CHEFROOT_BUILD, utils.ARCH, utils.TARGET, utils.MODE)
         self.load_meta()
         self.scan_snapshots()
@@ -183,11 +175,6 @@ class VM:
         utils.set_msg_prefix(None)
 
 
-    def set_permissions(self):
-        for f in [self.path, self.path_raw]:
-            utils.set_permissions(f)
-
-
     def mark_defunct(self):
         self.defunct = True
         open(self.path_defunct, 'w').close()
@@ -214,9 +201,6 @@ class VM:
 
         # Metadata:
         self.store_meta()
-
-        # Permissions:
-        self.set_permissions()
 
 
     def install(self, iso_path: str, **kwargs: dict):
@@ -317,9 +301,6 @@ class VM:
 
         # Metadata:
         self.store_meta()
-
-        # Permissions:
-        self.set_permissions()
 
         utils.set_msg_prefix(None)
 

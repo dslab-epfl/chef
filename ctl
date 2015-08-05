@@ -28,13 +28,7 @@ COMMAND_DESCRIPTIONS = {
     'docker':        "Run docker container (useful for debugging/tinkering)",
     'env':           "List Chef-specific environment variables",
 }
-COMMAND_GROUPS = OrderedDict([
-    ('Chef', ['build', 'run', 'clean']),
-    ('SMTLIB', ['smtlib-dump', 'smtlib-compare', 'smtlib-sort']),
-    ('Environment', ['init', 'vm', 'env']),
-    ('Miscellaneous', []),
-])
-COMMAND_IGNORED = ['__init__.py', 'utils.py', 'utils.sh']
+COMMAND_IGNORED = ['utils.py', 'utils.sh']
 
 
 # EXECUTION ====================================================================
@@ -71,12 +65,12 @@ def usage(file=sys.stdout):
 
 def help():
     usage()
-    print("\n%s: Chef Command Line Interface\n" % INVOKENAME)
+    print("\n%s: Command Line Tools for Chef\n" % INVOKENAME)
     print("Commands:")
-    for c in ['build', 'run', 'clean', 'vm',
-              'smtlib-dump', 'smtlib-compare', 'smtlib-sort', 'docker', 'env']:
+    for c in ['build', 'run', 'vm',
+              'smtlib-dump', 'smtlib-compare', 'smtlib-sort', 'env']:
         print("  {:<15}: {}".format(c, COMMANDS[c]['description']))
-    print("\nEach command can be run with `-h` for more information")
+    print("\nMost commands can be run with `-h` for more information")
     exit(1)
 
 

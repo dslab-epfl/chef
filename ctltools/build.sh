@@ -1,4 +1,5 @@
 #!/usr/bin/env sh
+set -e
 
 # This script builds S²E-Chef.
 #
@@ -9,7 +10,11 @@
 
 export C_INCLUDE_PATH='/usr/include:/usr/include/x86_64-linux-gnu'
 export CPLUS_INCLUDE_PATH="$C_INCLUDE_PATH:/usr/include/x86_64-linux-gnu/c++/4.8"
-COMPS='lua stp klee qemu tools guest'
+
+COMPS_CHEF='lua stp klee qemu tools guest'
+COMPS_Z3='z3'
+COMPS_PROTOBUF='protobuf'
+COMPS_LLVM='clang compiler-rt llvm-native llvm llvm'
 
 # Z3 ===========================================================================
 
@@ -230,9 +235,7 @@ llvm_compile()
 
 lua_dir="lua-5.1"
 lua_tarball="${lua_dir}.tar.gz"
-lua_urlbase='http://www.lua.org'
-lua_urlpath='ftp'
-lua_url="$lua_urlbase/$lua_urlpath/$lua_tarball"
+lua_url="http://www.lua.org/ftp/$lua_tarball"
 
 lua_fetch()
 {
@@ -397,28 +400,6 @@ generic_compile()
 	make -j$JOBS || return $FAILURE
 }
 
-check_llvm()
-{
-	if [ -d "$LLVM_BASE" ]; then
-		ok 'Found LLVM build'
-		return $SUCCESS   # LLVM is there, it's fine!
-	fi
-	if ! case "$PROCEDURE" in (llvm|z3|protobuf) false ;; esac; then
-		return $SUCCESS   # building LLVM, so LLVM is not required :)
-	fi
-	if [ ! -d "$DOCKER_LLVM_BASE" ]; then
-		fail 'LLVM missing in %s - please build LLVM first' "$LLVM_BASE"
-		return $FAILURE   # no existing LLVM build to copy
-	fi
-	note 'Found existing LLVM build in %s' "$DOCKER_LLVM_BASE"
-	if ! track "Copying existing LLVM build to $LLVM_BASE" \
-		cp -r "$DOCKER_LLVM_BASE" "$LLVM_BASE"
-	then
-		examine_logs
-		return $FAILURE
-	fi
-}
-
 all_build()
 {
 	llvm_seen=$FALSE
@@ -501,59 +482,15 @@ all_build()
 	return $SUCCESS
 }
 
-# DOCKER =======================================================================
-
-docker_build()
-{
-	if ! docker_image_exists "$DOCKER_IMAGE"; then
-		die 1 '%s: image not found' "$DOCKER_IMAGE"
-	fi
-
-	docker run --rm -it \
-		-v "$CHEFROOT":"$DOCKER_CHEFROOT" \
-		"$DOCKER_IMAGE" \
-		"$DOCKER_INVOKEPATH" build \
-			-p "$PROCEDURE" \
-			-f "$COMPS_FORCE" \
-			-x "$COMPS_EXCLUDE" \
-			-j $JOBS \
-			-q "$QEMU_FLAGS" \
-			$(test $VERBOSE -eq $FALSE && printf '%s' '-s') \
-			$(test $DRYRUN_DOCKERIZED -eq $TRUE && printf '%s' '-y') \
-			"$RELEASE"
-}
-
 # MAIN =========================================================================
 
-usage()
-{
-	cat <<- EOF
-	Usage: $INVOKENAME [OPTIONS ...] [[ARCH]:[TARGET]:[MODE]]
-	       $INVOKENAME [OPTIONS ...] llvm {release|debug}
-	EOF
-}
-
-help_list_with_default()
-{
-	default="$1"
-	shift
-	for e in "$@"; do
-		if [ "$e" = "$default" ]; then
-			printf '  [%s]' "$e"
-		else
-			printf '  %s' "$e"
-		fi
-	done
-}
-
+usage() { echo "Usage: $INVOKENAME [OPTIONS ...] [[ARCH]:[TARGET]:[MODE]]"; }
 help()
 {
 	usage
-
 	cat <<- EOF
 
 	Options:
-	  -d         Dockerized (wrap build process inside docker container)
 	  -p PROC    Change procedure (see below for more information)
 	  -f COMPS   Force-rebuild components COMPS from scratch
 	             [default='$COMPS_FORCE']
@@ -565,7 +502,6 @@ help()
 	  -s         Silent: redirect compilation messages/warnings/errors into log files
 	  -l         List existing builds and exit
 	  -y         Dry run: print build-related variables and exit
-	  -Y         Like -y, but wait until inside docker before printing variables
 	  -h         Display this help and exit
 
 	Components:
@@ -586,11 +522,25 @@ help()
 	EOF
 }
 
-list()
+help_list_with_default()
+{
+	default="$1"
+	shift
+	for e in "$@"; do
+		if [ "$e" = "$default" ]; then
+			printf '  [%s]' "$e"
+		else
+			printf '  %s' "$e"
+		fi
+	done
+}
+
+list_builds()
 {
 	for build in $(find "$CHEFROOT_BUILD" -maxdepth 1 -mindepth 1 -type d); do
 		basename "$build" | sed 's/-/:/g'
 	done
+	exit 1
 }
 
 dry_run()
@@ -605,12 +555,12 @@ dry_run()
 	PROCEDURE=$PROCEDURE
 	QEMU_FLAGS='$QEMU_FLAGS'
 	EOF
+	exit 1
 }
 
 get_options()
 {
 	DRYRUN=$FALSE
-	DRYRUN_DOCKERIZED=$FALSE
 	LIST=$FALSE
 	VERBOSE=${CHEF_VERBOSE:-$TRUE}  # override utils.sh
 	PROCEDURE=chef
@@ -619,9 +569,8 @@ get_options()
 	JOBS=$CPU_CORES
 	QEMU_FLAGS=''
 
-	while getopts :dp:f:x:c:j:q:slyYh opt; do
+	while getopts :p:f:x:c:j:q:slyh opt; do
 		case "$opt" in
-			d) DOCKERIZED=$TRUE ;;
 			p) PROCEDURE="$OPTARG" ;;
 			f) COMPS_FORCE="$OPTARG" ;;
 			x) COMPS_EXCLUDE="$OPTARG" ;;
@@ -631,7 +580,6 @@ get_options()
 			s) VERBOSE=$FALSE ;;
 			l) LIST=$TRUE ;;
 			y) DRYRUN=$TRUE ;;
-			Y) DRYRUN_DOCKERIZED=$TRUE ;;
 			h) help; exit 1 ;;
 			'?') die_help 'Invalid option: -%s' "$OPTARG";;
 		esac
@@ -671,12 +619,16 @@ main()
 	case "$PROCEDURE" in
 		chef|default|'')
 			info 'Building %s' "$RELEASE"
+			COMPS="$COMPS_CHEF"
 			BUILDPATH_BASE="$RELEASEPATH" ;;
 		llvm)
-			COMPS='clang compiler-rt llvm-native llvm llvm'
+			COMPS="$COMPS_LLVM"
 			BUILDPATH_BASE="$LLVM_BASE" ;;
-		z3|protobuf)
-			COMPS="$PROCEDURE"
+		z3)
+			COMPS="$COMPS_Z3"
+			BUILDPATH_BASE="$CHEFROOT_BUILD_DEPS" ;;
+		protobuf)
+			COMPS="$COMPS_PROTOBUF"
 			BUILDPATH_BASE="$CHEFROOT_BUILD_DEPS" ;;
 		*) die_help 'invalid procedure: %s' "$PROCEDURE" ;;
 	esac
@@ -687,31 +639,11 @@ main()
 	test "$COMPS_EXCLUDE" != 'all' || COMPS_EXCLUDE="$COMPS"    # uhm...
 
 	# Special action exit:
-	if [ $DRYRUN -eq $TRUE ]; then
-		dry_run
-		exit 1
-	elif [ $LIST -eq $TRUE ]; then
-		list
-		exit 1
-	fi
+	test $DRYRUN -eq $FALSE || dryrun
+	test $LIST -eq $FALSE || list_builds
 
-	# Run inside docker:
-	if [ $DOCKERIZED -eq $TRUE ]; then
-		setfacl -m user:$(id -u):rwx "$CHEFROOT_BUILD"
-		setfacl -m user:431:rwx "$CHEFROOT_BUILD"
-		setfacl -d -m user:$(id -u):rwx "$CHEFROOT_BUILD"
-		setfacl -d -m user:431:rwx "$CHEFROOT_BUILD"
-		docker_build
-
-	# Run natively:
-	else
-		mkdir -p "$BUILDPATH_BASE" || die 1 'Permission denied'
-		debug 'jobs: %d' $JOBS
-		check_llvm
-		all_build
-	fi
+	mkdir -p "$BUILDPATH_BASE" || die 1 'Permission denied'
+	debug 'jobs: %d' $JOBS
+	all_build
 }
-
-set -e
 main "$@"
-set +e

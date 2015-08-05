@@ -121,25 +121,11 @@ LLVM_NATIVE="$LLVM_BASE/llvm-${LLVM_VERSION}-native"
 LLVM_NATIVE_CC="$LLVM_NATIVE/bin/clang"
 LLVM_NATIVE_CXX="$LLVM_NATIVE/bin/clang++"
 
-# Docker:
-DOCKER_IMAGE='dslab/s2e-chef:v0.7'
-DOCKER_IMAGE_BASE='dslab/s2e-base:v0.3'
-
-DOCKER_CHEFROOT='/chef'
-DOCKER_CHEFROOT_BUILD="$DOCKER_CHEFROOT/build"
-DOCKER_CHEFROOT_BUILD_DEPS="$DOCKER_CHEFROOT_BUILD/deps"
-DOCKER_CHEFROOT_EXPDATA="$DOCKER_CHEFROOT/expdata"
-DOCKER_CHEFROOT_VM="$DOCKER_CHEFROOT/vm"
-DOCKER_CHEFROOT_SRC="$DOCKER_CHEFROOT/$(basename "$CHEFROOT_SRC")"
-DOCKER_INVOKEPATH="$DOCKER_CHEFROOT_SRC/ctl"
-DOCKER_LLVM_BASE='/opt/s2e/chef/build/deps/llvm'
-
 # System:
 NULL='/dev/null'
 
 # Behaviour (default):
 VERBOSE=${CHEF_VERBOSE:-$FALSE}
-DOCKERIZED=${CHEF_DOCKERIZED:-$FALSE}
 LOGFILE="$NULL"
 
 # DEBUG ========================================================================
@@ -163,14 +149,6 @@ util_dryrun()
 	LLVM_NATIVE_CC=$LLVM_NATIVE_CC
 	LLVM_NATIVE_CXX=$LLVM_NATIVE_CXX
 	VERBOSE=$VERBOSE
-	DOCKERIZED=$DOCKERIZED
-	DOCKER_IMAGE=$DOCKER_IMAGE
-	DOCKER_CHEFROOT=$DOCKER_CHEFROOT
-	DOCKER_CHEFROOT_SRC=$DOCKER_CHEFROOT_SRC
-	DOCKER_CHEFROOT_BUILD=$DOCKER_CHEFROOT_BUILD
-	DOCKER_CHEFROOT_EXPDATA=$DOCKER_CHEFROOT_EXPDATA
-	DOCKER_CHEFROOT_VM=$DOCKER_CHEFROOT_VM
-	DOCKER_INVOKEPATH=$DOCKER_INVOKEPATH
 	ARCH=$ARCH
 	TARGET=$TARGET
 	MODE=$MODE
@@ -431,17 +409,6 @@ lang_plural()
 lang_continuous()
 {
 	printf '%sing' "$(lang_body "$1" 'e')"
-}
-
-# DOCKER =======================================================================
-
-docker_image_exists()
-{
-	if docker inspect "$1" >"$NULL" 2>&1; then
-		return $SUCCESS
-	else
-		return $FAILURE
-	fi
 }
 
 # S2E/CHEF =====================================================================

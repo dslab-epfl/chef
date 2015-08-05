@@ -67,35 +67,6 @@ def which(cmd:str):
 
 # S2E/CHEF =====================================================================
 
-def set_permissions(path: str, docker_uid: int = 431):
-    set_msg_prefix("set permissions")
-    pend(path)
-    try:
-        os.chown(path, -1, grp.getgrnam('kvm').gr_gid)
-        if os.path.isdir(path):
-            os.chmod(path, 0o2775)
-        else:
-            os.chmod(path, 0o0664)
-        for mode in ['normal', 'default']:
-            cmd = ['setfacl']
-            if mode == 'default':
-                if os.path.isdir(path):
-                    cmd.append('-d')
-                else:
-                    continue
-            cmd.extend(['-m', 'user:%d:rw%s'
-                              % (docker_uid, ('', 'x')[os.path.isdir(path)]),
-                        path])
-            if execute(cmd, msg="set %s ACL permissions for user %d"
-                       % (mode, docker_uid)) != 0:
-                exit(1)
-        ok(path)
-    except PermissionError:
-        fail("Cannot modify permissions for %s: Permission denied" % path)
-        exit(1)
-    set_msg_prefix(None)
-
-
 # Paths:
 THIS_PATH = os.path.abspath(os.path.dirname(__file__))
 CHEFROOT_SRC = os.path.dirname(THIS_PATH)
@@ -103,15 +74,6 @@ CHEFROOT = os.path.dirname(CHEFROOT_SRC)
 CHEFROOT_VM = '%s/vm' % CHEFROOT
 CHEFROOT_EXPDATA = '%s/expdata' % CHEFROOT
 CHEFROOT_BUILD = '%s/build' % CHEFROOT
-
-# Docker:
-DOCKER_IMAGE = 'dslab/s2e-chef:v0.6'
-DOCKER_CHEFROOT = '/chef'
-DOCKER_CHEFROOT_SRC = '%s/src' % DOCKER_CHEFROOT
-DOCKER_CHEFROOT_BUILD = '%s/build' % DOCKER_CHEFROOT
-DOCKER_CHEFROOT_EXPDATA = '%s/expdata' % DOCKER_CHEFROOT
-DOCKER_CHEFROOT_VM = '%s/vm' % DOCKER_CHEFROOT
-DOCKERIZED = os.environ.get('CHEF_DOCKERIZED', '1') == '1'
 
 # Build configurations:
 ARCH     = os.environ.get('CHEF_ARCH',     'i386')
