@@ -13,11 +13,7 @@ COMPS='lua stp klee qemu tools guest'
 
 # Z3 ===========================================================================
 
-z3_urlbase='http://download-codeplex.sec.s-msft.com'
-z3_urlpath='Download/SourceControlFileDownload.ashx'
-z3_id='dd62ca5eb36c2a62ee44fc5a79fc27c883de21ae'
-z3_urlparam="ProjectName=z3&changeSetId=$z3_id"
-z3_url="$z3_urlbase/$z3_urlpath?$z3_urlparam"
+z3_url='http://download-codeplex.sec.s-msft.com/Download/SourceControlFileDownload.ashx?ProjectName=z3&changeSetId=dd62ca5eb36c2a62ee44fc5a79fc27c883de21ae'
 z3_tarball='z3.zip'
 
 z3_fetch()
@@ -50,12 +46,9 @@ z3_compile()
 
 protobuf_fetch()
 {
-	protobuf_version='2.6.0'
-	protobuf_dirname="protobuf-$protobuf_version"
+	protobuf_dirname="protobuf-2.6.0"
 	protobuf_tarball="${protobuf_dirname}.tar.gz"
-	protobuf_urlbase="https://protobuf.googlecode.com"
-	protobuf_urlpath="/svn/rc/$protobuf_tarball"
-	protobuf_url="${protobuf_urlbase}$protobuf_urlpath"
+	protobuf_url="https://protobuf.googlecode.com/svn/rc/$protobuf_tarball"
 
 	if [ -e "$protobuf_tarball" ]; then
 		return $SKIPPED
@@ -513,7 +506,7 @@ all_build()
 docker_build()
 {
 	if ! docker_image_exists "$DOCKER_IMAGE"; then
-		die '%s: image not found' "$DOCKER_IMAGE"
+		die 1 '%s: image not found' "$DOCKER_IMAGE"
 	fi
 
 	docker run --rm -it \
@@ -677,6 +670,7 @@ main()
 	# Procedure:
 	case "$PROCEDURE" in
 		chef|default|'')
+			info 'Building %s' "$RELEASE"
 			BUILDPATH_BASE="$RELEASEPATH" ;;
 		llvm)
 			COMPS='clang compiler-rt llvm-native llvm llvm'
@@ -711,8 +705,8 @@ main()
 
 	# Run natively:
 	else
-		info 'Building %s (jobs=%d)' "$RELEASE" "$JOBS"
 		mkdir -p "$BUILDPATH_BASE" || die 1 'Permission denied'
+		debug 'jobs: %d' $JOBS
 		check_llvm
 		all_build
 	fi

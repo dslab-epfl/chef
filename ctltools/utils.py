@@ -177,9 +177,13 @@ def fetch(url: str, path: str, msg: str=None, overwrite: bool=False,
         set_msg_prefix(None)
         return
 
-    r = requests.get(url, stream=True)
-    if r.status_code != 200:
-        fail("%s: %d" % (url, r.status_code))
+    try:
+        r = requests.get(url, stream=True)
+        if r.status_code != 200:
+            fail("%s: %d" % (url, r.status_code))
+            return -1
+    except requests.exceptions.ConnectionError:
+        fail("Connection refused")
         return -1
 
     with open(path, 'wb') as file:

@@ -24,6 +24,8 @@ import re
 
 INVOKENAME = os.environ.get('INVOKENAME', sys.argv[0])
 FETCH_URL_BASE = 'http://localhost/~ayekat' # TODO real host
+
+# TODO split "repository" from script
 REMOTES = {
     'Debian': {
         'iso': 'debian-7.8.0-i386-netinst.iso',
@@ -38,7 +40,7 @@ REMOTES = {
 
 
 class VM:
-    cores = psutil.cpu_count()
+    cores = os.cpu_count()
     memory = min(max(psutil.virtual_memory().total / 4, 2 * 1024), 4 * 1024)
 
 
@@ -49,8 +51,8 @@ class VM:
         self.path_raw = '%s/disk.raw' % self.path
         self.path_s2e = '%s/disk.s2e' % self.path
         self.path_meta = '%s/meta' % self.path
-        self.path_dysfunct = '%s/dysfunct' % self.path
-        self.dysfunct = os.path.exists(self.path_dysfunct)
+        self.path_defunct = '%s/defunct' % self.path
+        self.defunct = os.path.exists(self.path_defunct)
         if utils.DOCKERIZED:
             self.path_executable = utils.which('qemu-system-%s' % utils.ARCH)
             if not self.path_executable:
@@ -108,8 +110,8 @@ class VM:
 
     def __str__(self):
         string = "%s" % self.name
-        if self.dysfunct:
-            string += "\n  %s<dysfunct>%s" % (utils.ESC_ERROR, utils.ESC_RESET)
+        if self.defunct:
+            string += "\n  %s<defunct>%s" % (utils.ESC_ERROR, utils.ESC_RESET)
             return string
         if self.size > 0:
             string += "\n  Size: %.1fMiB" % (self.size / utils.MEBI)
@@ -171,7 +173,7 @@ class VM:
         if not exists or invalid:
             if utils.execute(['ln', '-fs', dest, self.path_s2e],
                              msg="symlink") != 0:
-                self.mark_dysfunct()
+                self.mark_defunct()
                 exit(1)
             if invalid:
                 utils.note("fix invalid S2E image (pointed")
@@ -186,9 +188,9 @@ class VM:
             utils.set_permissions(f)
 
 
-    def mark_dysfunct(self):
-        self.dysfunct = True
-        open(self.path_dysfunct, 'w').close()
+    def mark_defunct(self):
+        self.defunct = True
+        open(self.path_defunct, 'w').close()
 
 
     # ACTIONS ==================================================================
@@ -279,7 +281,7 @@ class VM:
         utils.info("URL: %s" % url)
         if utils.fetch(url, self.path_tar_gz, unit=utils.MEBI,
                        msg="fetch image bundle") != 0:
-            self.mark_dysfunct()
+            self.mark_defunct()
             exit(1)
 
         # Extract:
@@ -296,7 +298,7 @@ class VM:
                 if utils.execute(['tar', '-z', '-f', self.path_tar_gz,
                                   '-x', remote, '-O'],
                                  msg="extract", outfile=local) != 0:
-                    self.mark_dysfunct()
+                    self.mark_defunct()
                     exit(1)
                 utils.ok(msg)
 
@@ -306,7 +308,7 @@ class VM:
         if utils.execute(['qemu-img', 'convert', '-f', 'qcow2',
                           '-O', 'raw', self.path_qcow, self.path_raw],
                           msg="expand qemu image") != 0:
-            self.mark_dysfunct()
+            self.mark_defunct()
             exit(1)
         utils.ok()
 
