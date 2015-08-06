@@ -344,17 +344,6 @@ qemu_configure()
 	|| return $FAILURE
 }
 
-qemu_install()
-{
-	make install || return $FAILURE
-	cp "$ARCH-s2e-softmmu/op_helper.bc" \
-		"$BUILDPATH_BASE/opt/share/qemu/op_helper.bc.$ARCH"
-	cp "$ARCH-softmmu/qemu-system-$ARCH" \
-		"$BUILDPATH_BASE/opt/bin/qemu-system-$ARCH"
-	cp "$ARCH-s2e-softmmu/qemu-system-$ARCH" \
-		"$BUILDPATH_BASE/opt/bin/qemu-system-$ARCH-s2e"
-}
-
 # TOOLS ========================================================================
 
 tools_configure()
