@@ -40,6 +40,7 @@ import time
 import subprocess
 import shutil
 import utils
+from datetime import datetime
 from vm import VM
 
 from datetime import datetime, timedelta
@@ -53,6 +54,10 @@ TIMEOUT = 60
 CONFIGFILE = '%s/config/default-config.lua' % utils.CHEFROOT_SRC
 NETWORK_MODE = 'user'
 TAP_INTERFACE = 'tap0'
+
+TIMESTAMP = time.strftime('%Y-%m-%dT%H:%M:%S.'
+                          + datetime.utcnow().strftime('%f')[:3]
+                          + '%z')
 
 
 # COMMUNICATION WITH CHEF ======================================================
@@ -200,13 +205,22 @@ def execute(args, cmd_line):
             async_send_command(obj, 'localhost', args['command_port'],
                                timeout=args['timeout'])
 
+        # each experiment gets its own directory:
+        utils.pend("creating experiment directory %s" % args['exppath'])
+        os.makedirs(args['exppath'])
+        utils.ok()
+
+        # drop `s2e-last` symlink somewhere where it does not get in the way:
+        os.chdir(utils.CHEFROOT_EXPDATA)
+
     os.execvpe(cmd_line[0], cmd_line, environ)
 
 
 # PARSE COMMAND LINE ARGUMENTS =================================================
 
 def parse_cmd_line():
-    parser = argparse.ArgumentParser(description="High-level interface to running Chef.")
+    parser = argparse.ArgumentParser(description="High-level interface to running Chef.",
+                                     prog=utils.INVOKENAME)
 
     # Chef release:
     parser.add_argument('-r', '--release', default=utils.RELEASE,
@@ -276,7 +290,7 @@ def parse_cmd_line():
                                help="YAML file that contains the commands to be executed")
     symbolic_mode.add_argument('--batch-delay', type=int, default=1,
                                help="Seconds to wait before executing next command")
-    symbolic_mode.add_argument('--expname', default='%.2f' % time.time(),
+    symbolic_mode.add_argument('--expname', default='auto_%s' % TIMESTAMP,
                                help="Name of the experiment")
     symbolic_mode.add_argument('snapshot',
                                help="Snapshot to resume from")
@@ -292,9 +306,6 @@ def parse_cmd_line():
     if kwargs['mode'] == 'sym':
         kwargs['exppath'] = os.path.join(utils.CHEFROOT_EXPDATA, kwargs['expname'])
         kwargs['config_root'], kwargs['config_filename'] = os.path.split(kwargs['config_file'])
-        utils.pend("creating experiment directory %s" % kwargs['exppath'])
-        os.makedirs(kwargs['exppath'])
-        utils.ok()
 
     return kwargs
 
@@ -438,7 +449,7 @@ def main():
     args = parse_cmd_line()
 
     if args['mode'] == 'sym' and args['batch_file']:
-        # FIXME
+        # FIXME this feature has not been tested in a loooooong time:
         utils.warn("this feature has not been thoroughly tested yet!")
         batch_execute(args)
     else:

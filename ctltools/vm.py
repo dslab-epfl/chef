@@ -22,7 +22,6 @@ import shutil
 import json
 import re
 
-INVOKENAME = os.environ.get('INVOKENAME', sys.argv[0])
 FETCH_URL_BASE = 'http://localhost/~ayekat' # TODO real host
 
 # TODO split "repository" from script
@@ -326,7 +325,7 @@ class VM:
     @staticmethod
     def parse_args(argv: [str]):
         p = argparse.ArgumentParser(description="Handle Virtual Machines",
-                                    prog=INVOKENAME)
+                                    prog=utils.INVOKENAME)
         p.add_argument('-r', '--release', type=str, default=utils.RELEASE,
                        help="Release tuple architecture:target:mode")
 

@@ -75,6 +75,8 @@ CHEFROOT_VM = '%s/vm' % CHEFROOT
 CHEFROOT_EXPDATA = '%s/expdata' % CHEFROOT
 CHEFROOT_BUILD = '%s/build' % CHEFROOT
 
+INVOKENAME = os.environ.get('INVOKENAME', sys.argv[0])
+
 # Build configurations:
 ARCHS    = ['i386', 'x86_64', 'arm']
 TARGETS  = ['release', 'debug']
