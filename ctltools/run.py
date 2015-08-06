@@ -38,6 +38,7 @@ import sys
 import pipes
 import time
 import subprocess
+import shutil
 import utils
 from vm import VM
 
@@ -275,6 +276,8 @@ def parse_cmd_line():
                                help="YAML file that contains the commands to be executed")
     symbolic_mode.add_argument('--batch-delay', type=int, default=1,
                                help="Seconds to wait before executing next command")
+    symbolic_mode.add_argument('--expname', default='%.2f' % time.time(),
+                               help="Name of the experiment")
     symbolic_mode.add_argument('snapshot',
                                help="Snapshot to resume from")
     symbolic_mode.add_argument('command', nargs=argparse.REMAINDER,
@@ -287,7 +290,11 @@ def parse_cmd_line():
     # Adapt a few options:
     kwargs['vnc_port'] = VNC_PORT_BASE + kwargs['vnc_display']
     if kwargs['mode'] == 'sym':
+        kwargs['exppath'] = os.path.join(utils.CHEFROOT_EXPDATA, kwargs['expname'])
         kwargs['config_root'], kwargs['config_filename'] = os.path.split(kwargs['config_file'])
+        utils.pend("creating experiment directory %s" % kwargs['exppath'])
+        os.makedirs(kwargs['exppath'])
+        utils.ok()
 
     return kwargs
 
@@ -362,8 +369,7 @@ def build_qemu_cmd_line(args):
             '-s2e-config-file', args['config_file'],
             '-s2e-verbose'
         ])
-        if args['expdata_root']:
-            qemu_cmd_line.extend(['-s2e-output-dir', args['expdata_root']])
+        qemu_cmd_line.extend(['-s2e-output-dir', args['exppath']])
 
     # VM path:
     qemu_cmd_line.append((vm.path_s2e, vm.path_raw)[args['mode'] == 'kvm'])
@@ -398,7 +404,7 @@ def batch_execute():
     for bare_cmd_line in bare_cmd_lines:
         # experiment data path:
         expdata_dir = '%04d-%s' % (batch_offset, os.path.basename(c[0]))
-        expdata_path = os.path.join(args['expdata_root'], expdata_dir)
+        expdata_path = os.path.join(args['exppath'], expdata_dir)
         expdata_paths.append(expdata_path)
 
         # command:

@@ -71,7 +71,7 @@ def help():
     print("\n%s: Command Line Tools for Chef\n" % INVOKENAME)
     print("Commands:")
     for c in ['build', 'run', 'vm',
-              'smtlib-dump', 'smtlib-compare', 'smtlib-sort', 'env']:
+              'smtlib-dump', 'smtlib-compare', 'smtlib-sort']:
         print("  {:<15}: {}".format(c, COMMANDS[c]['description']))
     print("\nMost commands can be run with `-h` for more information")
     exit(1)
