@@ -27,9 +27,6 @@ COMMAND_DESCRIPTIONS = {
     'build':         "Build Chef in a given configuration",
     'run':           "Run Chef in a given mode",
     'vm':            "Manage chef virtual machines",
-    'smtlib-dump':   "Dump collected queries in SMT-LIB format",
-    'smtlib-compare':"Compare two query dumps on logic equality",
-    'smtlib-sort':   "Sort query dumps by 'interesting'",
 }
 COMMAND_IGNORED = ['utils.py', 'utils.sh']
 
@@ -70,10 +67,9 @@ def help():
     usage()
     print("\n%s: Command Line Tools for Chef\n" % INVOKENAME)
     print("Commands:")
-    for c in ['build', 'run', 'vm',
-              'smtlib-dump', 'smtlib-compare', 'smtlib-sort']:
+    for c in ['build', 'run', 'vm']:
         print("  {:<15}: {}".format(c, COMMANDS[c]['description']))
-    print("\nMost commands can be run with `-h` for more information")
+    print("\nEach command can be run with `-h` for more information")
     exit(1)
 
 
