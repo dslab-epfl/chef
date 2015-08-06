@@ -53,7 +53,7 @@ class VM:
         self.path_meta = '%s/meta' % self.path
         self.path_defunct = '%s/defunct' % self.path
         self.defunct = os.path.exists(self.path_defunct)
-        self.path_executable = '%s/%s-%s-%s/opt/bin' \
+        self.path_executable = '%s/%s-%s-%s/qemu' \
                   % (utils.CHEFROOT_BUILD, utils.ARCH, utils.TARGET, utils.MODE)
         self.load_meta()
         self.scan_snapshots()

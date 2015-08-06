@@ -13,8 +13,10 @@ s2e = {
 
 plugins = {
   "BaseInstructions",
-  --"ExecutionTracer", "MemoryTracer",
-  "InterpreterMonitor", "ConcolicSession"
+  --"ExecutionTracer",
+  --"MemoryTracer",
+  --"InterpreterMonitor",
+  --"ConcolicSession"
 }
 
 pluginsConfig = {}

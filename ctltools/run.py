@@ -322,9 +322,9 @@ def build_qemu_cmd_line(args):
     qemu_path = os.path.join(
         utils.CHEFROOT_BUILD,
         '%s-%s-%s' % (arch, target, mode),
-        'opt',
-        'bin',
-        'qemu-system-%s%s' % (arch, ('', '-s2e')[args['mode'] == 'sym'])
+        'qemu',
+        '%s%s-softmmu' % (arch, ('', '-s2e')[args['mode'] == 'sym']),
+        'qemu-system-%s' % arch
     )
 
     # Base command:
