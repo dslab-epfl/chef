@@ -32,14 +32,6 @@
  * All contributors are listed in the S2E-AUTHORS file.
  */
 
-
-extern "C" {
-#include "config.h"
-#include "qemu-common.h"
-#include "cpu.h"
-extern CPUX86State *env;
-}
-
 #include "s2e/S2E.h"
 #include "s2e/S2EExecutor.h"
 #include "s2e/S2EExecutionState.h"
