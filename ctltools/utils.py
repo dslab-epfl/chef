@@ -76,24 +76,24 @@ CHEFROOT_EXPDATA = '%s/expdata' % CHEFROOT
 CHEFROOT_BUILD = '%s/build' % CHEFROOT
 
 # Build configurations:
-ARCH     = os.environ.get('CHEF_ARCH',     'i386')
-TARGET   = os.environ.get('CHEF_TARGET',   'release')
-MODE     = os.environ.get('CHEF_MODE',     'normal')
-RELEASE  = os.environ.get('CHEF_RELEASE',  '%s:%s:%s' % (ARCH, TARGET, MODE))
 ARCHS    = ['i386', 'x86_64', 'arm']
 TARGETS  = ['release', 'debug']
 MODES    = ['normal', 'asan']
+ARCH     = ARCHS[0]
+TARGET   = TARGETS[0]
+MODE     = MODES[0]
+RELEASE  = '%s:%s:%s' % (ARCH, TARGET, MODE)
 
 def parse_release(release: str=None):
-    global ARCH, TARGET, MODE, RELEASE
+    global ARCH, TARGET, MODE, RELEASE, ARCHS, TARGET, MODES
     RELEASE = release or RELEASE
     release_tuple = RELEASE.split(':')
     arch, target, mode = release_tuple + [''] * (3 - len(release_tuple))
     if len(release_tuple) > 3:
         warn("trailing tokens in tuple: %s" % ':'.join(release_tuple[3:]))
-    ARCH = arch or ARCH
-    TARGET = target or TARGET
-    MODE = mode or MODE
+    ARCH = arch or ARCHS[0]
+    TARGET = target or TARGETS[0]
+    MODE = mode or MODES[0]
     if ARCH not in ARCHS:
         fail("unknown architecture: %s" % ARCH)
         exit(1)
@@ -229,7 +229,8 @@ def set_msg_prefix(prefix: str):
     global msg_prefix
     msg_prefix = prefix
 
-def print_msg(status: str, msg: str, file = sys.stdout, eol = '\n'):
+def print_msg(status: str, msg: str, file=sys.stdout, eol: str='\n',
+              erase_prefix: bool=True):
     global msg_prefix
     print("%s%s%s%s%s" % (ESC_ERASE,
                           ('%s ' % status, '')[status is None],
@@ -237,23 +238,30 @@ def print_msg(status: str, msg: str, file = sys.stdout, eol = '\n'):
                           (': ', '')[msg_prefix is None or msg is None],
                           (msg, '')[msg is None]),
           file=file, end=eol)
+    if erase_prefix:
+        set_msg_prefix(None)
 
-def info(msg: str='', eol: str='\n'):
-    print_msg(INFO, msg, eol=eol)
-def skip(msg: str, eol: str='\n'):
-    print_msg(SKIP, msg, eol=eol)
-def ok(msg: str=None, eol: str='\n'):
-    print_msg(_OK_, msg, eol=eol)
-def fail(msg: str=None, eol: str='\n'):
-    print_msg(FAIL, msg, eol=eol, file=sys.stderr)
-def warn(msg: str, eol: str='\n'):
-    print_msg(WARN, msg, eol=eol, file=sys.stderr)
-def alert(msg: str, eol: str='\n'):
-    print_msg(ALRT, msg, eol=eol)
-def abort(msg: str, eol: str='\n'):
+# start ...
+def pend(prefix: str, msg: str=None, pending: bool=True):
+    set_msg_prefix(prefix)
+    print_msg(PEND, msg, eol=('\n', ESC_RETURN)[pending], erase_prefix=False)
+
+# ... and end
+def info(msg: str):
+    print_msg(INFO, msg)
+def skip(msg: str):
+    print_msg(SKIP, msg)
+def ok(msg: str=None):
+    print_msg(_OK_, msg)
+def fail(msg: str):
+    print_msg(FAIL, msg, file=sys.stderr)
+def warn(msg: str):
+    print_msg(WARN, msg, file=sys.stderr)
+def alert(msg: str):
+    print_msg(ALRT, msg)
+def abort(msg: str):
     print()
-    print_msg(ABRT, msg, eol=eol)
-def pend(msg: str=None, pending: bool=True):
-    print_msg(PEND, msg, eol=('\n', ESC_RETURN)[pending])
-def debug(msg: str, eol='\n'):
-    print_msg(DEBG, msg, eol=eol, file=sys.stderr)
+    print_msg(ABRT, msg)
+
+def debug(msg: str):
+    print_msg(DEBG, msg, file=sys.stderr, erase_prefix=False)

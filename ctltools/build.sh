@@ -562,7 +562,7 @@ get_options()
 {
 	DRYRUN=$FALSE
 	LIST=$FALSE
-	VERBOSE=${CHEF_VERBOSE:-$TRUE}  # override utils.sh
+	VERBOSE=$TRUE  # override utils.sh
 	PROCEDURE=chef
 	COMPS_FORCE=''
 	COMPS_EXCLUDE=''
@@ -618,7 +618,6 @@ main()
 	# Procedure:
 	case "$PROCEDURE" in
 		chef|default|'')
-			info 'Building %s' "$RELEASE"
 			COMPS="$COMPS_CHEF"
 			BUILDPATH_BASE="$RELEASEPATH" ;;
 		llvm)
@@ -643,7 +642,7 @@ main()
 	test $LIST -eq $FALSE || list_builds
 
 	mkdir -p "$BUILDPATH_BASE" || die 1 'Permission denied'
-	debug 'jobs: %d' $JOBS
+	info 'building to %s (jobs: %d)' "$BUILDPATH_BASE" $JOBS
 	all_build
 }
 main "$@"

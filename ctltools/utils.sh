@@ -125,7 +125,7 @@ LLVM_NATIVE_CXX="$LLVM_NATIVE/bin/clang++"
 NULL='/dev/null'
 
 # Behaviour (default):
-VERBOSE=${CHEF_VERBOSE:-$FALSE}
+VERBOSE=$FALSE
 LOGFILE="$NULL"
 
 # DEBUG ========================================================================
@@ -416,10 +416,10 @@ lang_continuous()
 ARCHS='i386 x86_64 arm'
 TARGETS='release debug'
 MODES='normal asan libmemtracer'
-DEFAULT_ARCH="${CHEF_ARCH:-"i386"}"
-DEFAULT_TARGET="${CHEF_TARGET:-"release"}"
-DEFAULT_MODE="${CHEF_MODE:-"normal"}"
-DEFAULT_RELEASE="${CHEF_RELEASE:-"$DEFAULT_ARCH:$DEFAULT_TARGET:$DEFAULT_MODE"}"
+DEFAULT_ARCH='i386'
+DEFAULT_TARGET='release'
+DEFAULT_MODE='normal'
+DEFAULT_RELEASE="$DEFAULT_ARCH:$DEFAULT_TARGET:$DEFAULT_MODE"
 
 parse_release()
 {
