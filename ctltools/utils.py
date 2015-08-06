@@ -67,35 +67,6 @@ def which(cmd:str):
 
 # S2E/CHEF =====================================================================
 
-def set_permissions(path: str, docker_uid: int = 431):
-    set_msg_prefix("set permissions")
-    pend(path)
-    try:
-        os.chown(path, -1, grp.getgrnam('kvm').gr_gid)
-        if os.path.isdir(path):
-            os.chmod(path, 0o2775)
-        else:
-            os.chmod(path, 0o0664)
-        for mode in ['normal', 'default']:
-            cmd = ['setfacl']
-            if mode == 'default':
-                if os.path.isdir(path):
-                    cmd.append('-d')
-                else:
-                    continue
-            cmd.extend(['-m', 'user:%d:rw%s'
-                              % (docker_uid, ('', 'x')[os.path.isdir(path)]),
-                        path])
-            if execute(cmd, msg="set %s ACL permissions for user %d"
-                       % (mode, docker_uid)) != 0:
-                exit(1)
-        ok(path)
-    except PermissionError:
-        fail("Cannot modify permissions for %s: Permission denied" % path)
-        exit(1)
-    set_msg_prefix(None)
-
-
 # Paths:
 THIS_PATH = os.path.abspath(os.path.dirname(__file__))
 CHEFROOT_SRC = os.path.dirname(THIS_PATH)
@@ -104,34 +75,25 @@ CHEFROOT_VM = '%s/vm' % CHEFROOT
 CHEFROOT_EXPDATA = '%s/expdata' % CHEFROOT
 CHEFROOT_BUILD = '%s/build' % CHEFROOT
 
-# Docker:
-DOCKER_IMAGE = 'dslab/s2e-chef:v0.6'
-DOCKER_CHEFROOT = '/chef'
-DOCKER_CHEFROOT_SRC = '%s/src' % DOCKER_CHEFROOT
-DOCKER_CHEFROOT_BUILD = '%s/build' % DOCKER_CHEFROOT
-DOCKER_CHEFROOT_EXPDATA = '%s/expdata' % DOCKER_CHEFROOT
-DOCKER_CHEFROOT_VM = '%s/vm' % DOCKER_CHEFROOT
-DOCKERIZED = os.environ.get('CHEF_DOCKERIZED', '1') == '1'
-
 # Build configurations:
-ARCH     = os.environ.get('CHEF_ARCH',     'i386')
-TARGET   = os.environ.get('CHEF_TARGET',   'release')
-MODE     = os.environ.get('CHEF_MODE',     'normal')
-RELEASE  = os.environ.get('CHEF_RELEASE',  '%s:%s:%s' % (ARCH, TARGET, MODE))
 ARCHS    = ['i386', 'x86_64', 'arm']
 TARGETS  = ['release', 'debug']
 MODES    = ['normal', 'asan']
+ARCH     = ARCHS[0]
+TARGET   = TARGETS[0]
+MODE     = MODES[0]
+RELEASE  = '%s:%s:%s' % (ARCH, TARGET, MODE)
 
 def parse_release(release: str=None):
-    global ARCH, TARGET, MODE, RELEASE
+    global ARCH, TARGET, MODE, RELEASE, ARCHS, TARGET, MODES
     RELEASE = release or RELEASE
     release_tuple = RELEASE.split(':')
     arch, target, mode = release_tuple + [''] * (3 - len(release_tuple))
     if len(release_tuple) > 3:
         warn("trailing tokens in tuple: %s" % ':'.join(release_tuple[3:]))
-    ARCH = arch or ARCH
-    TARGET = target or TARGET
-    MODE = mode or MODE
+    ARCH = arch or ARCHS[0]
+    TARGET = target or TARGETS[0]
+    MODE = mode or MODES[0]
     if ARCH not in ARCHS:
         fail("unknown architecture: %s" % ARCH)
         exit(1)
@@ -177,9 +139,13 @@ def fetch(url: str, path: str, msg: str=None, overwrite: bool=False,
         set_msg_prefix(None)
         return
 
-    r = requests.get(url, stream=True)
-    if r.status_code != 200:
-        fail("%s: %d" % (url, r.status_code))
+    try:
+        r = requests.get(url, stream=True)
+        if r.status_code != 200:
+            fail("%s: %d" % (url, r.status_code))
+            return -1
+    except requests.exceptions.ConnectionError:
+        fail("Connection refused")
         return -1
 
     with open(path, 'wb') as file:
@@ -263,7 +229,8 @@ def set_msg_prefix(prefix: str):
     global msg_prefix
     msg_prefix = prefix
 
-def print_msg(status: str, msg: str, file = sys.stdout, eol = '\n'):
+def print_msg(status: str, msg: str, file=sys.stdout, eol: str='\n',
+              erase_prefix: bool=True):
     global msg_prefix
     print("%s%s%s%s%s" % (ESC_ERASE,
                           ('%s ' % status, '')[status is None],
@@ -271,23 +238,30 @@ def print_msg(status: str, msg: str, file = sys.stdout, eol = '\n'):
                           (': ', '')[msg_prefix is None or msg is None],
                           (msg, '')[msg is None]),
           file=file, end=eol)
+    if erase_prefix:
+        set_msg_prefix(None)
 
-def info(msg: str='', eol: str='\n'):
-    print_msg(INFO, msg, eol=eol)
-def skip(msg: str, eol: str='\n'):
-    print_msg(SKIP, msg, eol=eol)
-def ok(msg: str=None, eol: str='\n'):
-    print_msg(_OK_, msg, eol=eol)
-def fail(msg: str=None, eol: str='\n'):
-    print_msg(FAIL, msg, eol=eol, file=sys.stderr)
-def warn(msg: str, eol: str='\n'):
-    print_msg(WARN, msg, eol=eol, file=sys.stderr)
-def alert(msg: str, eol: str='\n'):
-    print_msg(ALRT, msg, eol=eol)
-def abort(msg: str, eol: str='\n'):
+# start ...
+def pend(prefix: str, msg: str=None, pending: bool=True):
+    set_msg_prefix(prefix)
+    print_msg(PEND, msg, eol=('\n', ESC_RETURN)[pending], erase_prefix=False)
+
+# ... and end
+def info(msg: str):
+    print_msg(INFO, msg)
+def skip(msg: str):
+    print_msg(SKIP, msg)
+def ok(msg: str=None):
+    print_msg(_OK_, msg)
+def fail(msg: str):
+    print_msg(FAIL, msg, file=sys.stderr)
+def warn(msg: str):
+    print_msg(WARN, msg, file=sys.stderr)
+def alert(msg: str):
+    print_msg(ALRT, msg)
+def abort(msg: str):
     print()
-    print_msg(ABRT, msg, eol=eol)
-def pend(msg: str=None, pending: bool=True):
-    print_msg(PEND, msg, eol=('\n', ESC_RETURN)[pending])
-def debug(msg: str, eol='\n'):
-    print_msg(DEBG, msg, eol=eol, file=sys.stderr)
+    print_msg(ABRT, msg)
+
+def debug(msg: str):
+    print_msg(DEBG, msg, file=sys.stderr, erase_prefix=False)

@@ -1,7 +1,14 @@
 #!/usr/bin/env python3
+
+# ctl - Command line tools for Chef
+# This script is a common interface for running the scripts located in ctltools/
+# that make up the base functionalities. Each of the script is ran as a
+# subcommand to ctl (similar to command line utilities like git, ip,
+# docker, ...).
 #
-# ctl - command line interface for controlling Chef
-# Common interface for scripts that are in ctltools
+# Maintainers:
+#   ayekat (Tinu Weber <martin.weber@epfl.ch>)
+
 
 import sys
 import os
@@ -19,22 +26,12 @@ COMMANDS = {} # populated in scan_commands()
 COMMAND_DESCRIPTIONS = {
     'build':         "Build Chef in a given configuration",
     'run':           "Run Chef in a given mode",
-    'clean':         "Clean the build results",
+    'vm':            "Manage chef virtual machines",
     'smtlib-dump':   "Dump collected queries in SMT-LIB format",
     'smtlib-compare':"Compare two query dumps on logic equality",
     'smtlib-sort':   "Sort query dumps by 'interesting'",
-    'init':          "Initialise Chef environment",
-    'vm':            "Manage chef virtual machines",
-    'docker':        "Run docker container (useful for debugging/tinkering)",
-    'env':           "List Chef-specific environment variables",
 }
-COMMAND_GROUPS = OrderedDict([
-    ('Chef', ['build', 'run', 'clean']),
-    ('SMTLIB', ['smtlib-dump', 'smtlib-compare', 'smtlib-sort']),
-    ('Environment', ['init', 'vm', 'env']),
-    ('Miscellaneous', []),
-])
-COMMAND_IGNORED = ['__init__.py', 'utils.py', 'utils.sh']
+COMMAND_IGNORED = ['utils.py', 'utils.sh']
 
 
 # EXECUTION ====================================================================
@@ -71,12 +68,12 @@ def usage(file=sys.stdout):
 
 def help():
     usage()
-    print("\n%s: Chef Command Line Interface\n" % INVOKENAME)
+    print("\n%s: Command Line Tools for Chef\n" % INVOKENAME)
     print("Commands:")
-    for c in ['build', 'run', 'clean', 'vm',
-              'smtlib-dump', 'smtlib-compare', 'smtlib-sort', 'docker', 'env']:
+    for c in ['build', 'run', 'vm',
+              'smtlib-dump', 'smtlib-compare', 'smtlib-sort', 'env']:
         print("  {:<15}: {}".format(c, COMMANDS[c]['description']))
-    print("\nEach command can be run with `-h` for more information")
+    print("\nMost commands can be run with `-h` for more information")
     exit(1)
 
 

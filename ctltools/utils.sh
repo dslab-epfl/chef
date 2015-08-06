@@ -121,23 +121,11 @@ LLVM_NATIVE="$LLVM_BASE/llvm-${LLVM_VERSION}-native"
 LLVM_NATIVE_CC="$LLVM_NATIVE/bin/clang"
 LLVM_NATIVE_CXX="$LLVM_NATIVE/bin/clang++"
 
-# Docker:
-DOCKER_IMAGE='dslab/s2e-chef:v0.6'
-DOCKER_CHEFROOT='/chef'
-DOCKER_CHEFROOT_BUILD="$DOCKER_CHEFROOT/build"
-DOCKER_CHEFROOT_BUILD_DEPS="$DOCKER_CHEFROOT_BUILD/deps"
-DOCKER_CHEFROOT_EXPDATA="$DOCKER_CHEFROOT/expdata"
-DOCKER_CHEFROOT_VM="$DOCKER_CHEFROOT/vm"
-DOCKER_CHEFROOT_SRC="$DOCKER_CHEFROOT/$(basename "$CHEFROOT_SRC")"
-DOCKER_INVOKEPATH="$DOCKER_CHEFROOT_SRC/ctl"
-DOCKER_LLVM_BASE='/opt/s2e/chef/build/llvm'
-
 # System:
 NULL='/dev/null'
 
 # Behaviour (default):
-VERBOSE=${CHEF_VERBOSE:-$FALSE}
-DOCKERIZED=${CHEF_DOCKERIZED:-$FALSE}
+VERBOSE=$FALSE
 LOGFILE="$NULL"
 
 # DEBUG ========================================================================
@@ -161,14 +149,6 @@ util_dryrun()
 	LLVM_NATIVE_CC=$LLVM_NATIVE_CC
 	LLVM_NATIVE_CXX=$LLVM_NATIVE_CXX
 	VERBOSE=$VERBOSE
-	DOCKERIZED=$DOCKERIZED
-	DOCKER_IMAGE=$DOCKER_IMAGE
-	DOCKER_CHEFROOT=$DOCKER_CHEFROOT
-	DOCKER_CHEFROOT_SRC=$DOCKER_CHEFROOT_SRC
-	DOCKER_CHEFROOT_BUILD=$DOCKER_CHEFROOT_BUILD
-	DOCKER_CHEFROOT_EXPDATA=$DOCKER_CHEFROOT_EXPDATA
-	DOCKER_CHEFROOT_VM=$DOCKER_CHEFROOT_VM
-	DOCKER_INVOKEPATH=$DOCKER_INVOKEPATH
 	ARCH=$ARCH
 	TARGET=$TARGET
 	MODE=$MODE
@@ -431,26 +411,15 @@ lang_continuous()
 	printf '%sing' "$(lang_body "$1" 'e')"
 }
 
-# DOCKER =======================================================================
-
-docker_image_exists()
-{
-	if docker inspect "$1" >"$NULL" 2>&1; then
-		return $SUCCESS
-	else
-		return $FAILURE
-	fi
-}
-
 # S2E/CHEF =====================================================================
 
-ARCHS='i386 x86_64'
+ARCHS='i386 x86_64 arm'
 TARGETS='release debug'
 MODES='normal asan libmemtracer'
-DEFAULT_ARCH="${CHEF_ARCH:-"i386"}"
-DEFAULT_TARGET="${CHEF_TARGET:-"release"}"
-DEFAULT_MODE="${CHEF_MODE:-"normal"}"
-DEFAULT_RELEASE="${CHEF_RELEASE:-"$DEFAULT_ARCH:$DEFAULT_TARGET:$DEFAULT_MODE"}"
+DEFAULT_ARCH='i386'
+DEFAULT_TARGET='release'
+DEFAULT_MODE='normal'
+DEFAULT_RELEASE="$DEFAULT_ARCH:$DEFAULT_TARGET:$DEFAULT_MODE"
 
 parse_release()
 {
@@ -458,13 +427,13 @@ parse_release()
 	$(echo "$1:")
 	EOF
 
-	if case "${ARCH:="$DEFAULT_ARCH"}" in (i386|x86_64) false;; esac; then
+	if ! list_contains "$ARCHS" "${ARCH:="$DEFAULT_ARCH"}"; then
 		die_help 'Unknown architecture: %s' "$ARCH"
 	fi
-	if case "${TARGET:="$DEFAULT_TARGET"}" in (release|debug) false;; esac; then
+	if ! list_contains "$TARGETS" "${TARGET:="$DEFAULT_TARGET"}"; then
 		die_help 'Unknown target: %s' "$TARGET"
 	fi
-	if case "${MODE:="$DEFAULT_MODE"}" in (normal|asan|libmemtracer) false;; esac; then
+	if ! list_contains "$MODES" "${MODE:="$DEFAULT_MODE"}"; then
 		die_help 'Unknown mode: %s' "$MODE"
 	fi
 	RELEASE="$ARCH:$TARGET:$MODE"

@@ -24,6 +24,8 @@ import re
 
 INVOKENAME = os.environ.get('INVOKENAME', sys.argv[0])
 FETCH_URL_BASE = 'http://localhost/~ayekat' # TODO real host
+
+# TODO split "repository" from script
 REMOTES = {
     'Debian': {
         'iso': 'debian-7.8.0-i386-netinst.iso',
@@ -38,7 +40,7 @@ REMOTES = {
 
 
 class VM:
-    cores = psutil.cpu_count()
+    cores = os.cpu_count()
     memory = min(max(psutil.virtual_memory().total / 4, 2 * 1024), 4 * 1024)
 
 
@@ -49,20 +51,13 @@ class VM:
         self.path_raw = '%s/disk.raw' % self.path
         self.path_s2e = '%s/disk.s2e' % self.path
         self.path_meta = '%s/meta' % self.path
-        self.path_dysfunct = '%s/dysfunct' % self.path
-        self.dysfunct = os.path.exists(self.path_dysfunct)
-        if utils.DOCKERIZED:
-            self.path_executable = utils.which('qemu-system-%s' % utils.ARCH)
-            if not self.path_executable:
-                utils.fail("could not find a qemu installation on this machine")
-                exit(1)
-            else:
-                self.path_executable, _ = os.path.split(self.path_executable)
-        else:
-            self.path_executable = '%s/%s-%s-%s/opt/bin' \
+        self.path_defunct = '%s/defunct' % self.path
+        self.defunct = os.path.exists(self.path_defunct)
+        self.path_executable = '%s/%s-%s-%s/opt/bin' \
                   % (utils.CHEFROOT_BUILD, utils.ARCH, utils.TARGET, utils.MODE)
         self.load_meta()
         self.scan_snapshots()
+        self.size = os.stat(self.path_raw).st_size if self.exists() else 0
 
 
     def load_meta(self):
@@ -73,7 +68,6 @@ class VM:
                     meta = json.load(f)
                 except ValueError as ve:
                     utils.warn(ve)
-        utils.set_msg_prefix(None)
         self.path_tar_gz = meta.get('path_tar_gz', None)
         self.path_iso = meta.get('path_iso', None)
         self.os_name = meta.get('os_name', None)
@@ -81,8 +75,7 @@ class VM:
 
 
     def store_meta(self):
-        utils.set_msg_prefix("store metadata")
-        utils.pend()
+        utils.pend("store metadata")
         meta = {
             'path_tar_xz': self.path_tar_gz,
             'path_iso': self.path_iso,
@@ -92,7 +85,6 @@ class VM:
         with open(self.path_meta, 'w') as f:
             json.dump(meta, f)
         utils.ok()
-        utils.set_msg_prefix(None)
 
 
     def scan_snapshots(self):
@@ -107,9 +99,11 @@ class VM:
 
     def __str__(self):
         string = "%s" % self.name
-        if self.dysfunct:
-            string += "\n  %s<dysfunct>%s" % (utils.ESC_ERROR, utils.ESC_RESET)
+        if self.defunct:
+            string += "\n  %s<defunct>%s" % (utils.ESC_ERROR, utils.ESC_RESET)
             return string
+        if self.size > 0:
+            string += "\n  Size: %.1fMiB" % (self.size / utils.MEBI)
         if self.os_name:
             string += "\n  Operating System: %s" % self.os_name
         if self.path_iso:
@@ -124,15 +118,13 @@ class VM:
     # UTILITIES ================================================================
 
     def exists(self):
-        return self.name \
-        and os.path.isdir(self.path) \
-        and os.path.exists(self.path_raw) \
-        and os.path.exists(self.path_s2e)
+        return os.path.isdir(self.path) \
+           and os.path.exists(self.path_raw) \
+           and os.path.exists(self.path_s2e)
 
 
     def initialise(self, force: bool):
-        utils.set_msg_prefix("initialise VM")
-        utils.pend()
+        utils.pend("initialise VM")
         try:
             os.mkdir(self.path)
             utils.ok()
@@ -155,12 +147,10 @@ class VM:
             else:
                 utils.info(msg)
                 exit(1)
-        utils.set_msg_prefix(None)
 
 
     def create_s2e(self):
-        utils.set_msg_prefix("symlink S2E image")
-        utils.pend()
+        utils.pend("symlink S²E image")
         dest = os.path.basename(self.path_raw)
         exists = os.path.exists(self.path_s2e)
         if exists:
@@ -169,24 +159,17 @@ class VM:
         if not exists or invalid:
             if utils.execute(['ln', '-fs', dest, self.path_s2e],
                              msg="symlink") != 0:
-                self.mark_dysfunct()
+                self.mark_defunct()
                 exit(1)
             if invalid:
-                utils.note("fix invalid S2E image (pointed")
+                utils.note("fix invalid S²E image (pointed")
             else:
                 utils.ok()
 
-        utils.set_msg_prefix(None)
 
-
-    def set_permissions(self):
-        for f in [self.path, self.path_raw]:
-            utils.set_permissions(f)
-
-
-    def mark_dysfunct(self):
-        self.dysfunct = True
-        open(self.path_dysfunct, 'w').close()
+    def mark_defunct(self):
+        self.defunct = True
+        open(self.path_defunct, 'w').close()
 
 
     # ACTIONS ==================================================================
@@ -195,23 +178,19 @@ class VM:
         self.initialise(force)
 
         # Raw image:
-        utils.set_msg_prefix("create %dMiB image" % size)
-        utils.pend()
+        utils.pend("create %dMiB image" % size)
         if utils.execute(['%s/qemu-img' % self.path_executable,
                           'create', self.path_raw, '%dM' % size],
                          msg="execute qemu-img") != 0:
             exit(1)
+        self.size = size
         utils.ok()
-        utils.set_msg_prefix(None)
 
         # S2E image:
         self.create_s2e()
 
         # Metadata:
         self.store_meta()
-
-        # Permissions:
-        self.set_permissions()
 
 
     def install(self, iso_path: str, **kwargs: dict):
@@ -225,8 +204,7 @@ class VM:
         # Copy ISO:
         self.path_iso = '%s/%s' % (utils.CHEFROOT_VM,
                                    os.path.basename(iso_path))
-        utils.set_msg_prefix("register ISO")
-        utils.pend("%s => %s" % (iso_path, self.path_iso))
+        utils.pend("register ISO", msg="%s => %s" % (iso_path, self.path_iso))
         if not os.path.exists(self.path_iso):
             try:
                 shutil.copy(iso_path, self.path_iso)
@@ -241,20 +219,18 @@ class VM:
             utils.skip("%s already exists" % self.path_iso)
 
         # Launch qemu:
-        utils.set_msg_prefix("qemu")
         qemu_cmd = ['%s/qemu-system-%s' % (self.path_executable, utils.ARCH),
                     '-enable-kvm',
                     '-cpu', 'host',
                     '-smp', '%d' % VM.cores,
                     '-m', '%d' % VM.memory,
                     '-vga', 'std',
-                    '-net', 'user',
                     '-monitor', 'tcp::1234,server,nowait',
                     '-drive', 'file=%s,if=virtio,format=raw' % self.path_raw,
                     '-drive', 'file=%s,media=cdrom,readonly' % self.path_iso,
                     '-boot', 'order=d']
-        utils.info("command line\n%s" % ' '.join(qemu_cmd))
-        utils.pend(pending=False)
+        utils.info("qemu: command line\n%s" % ' '.join(qemu_cmd))
+        utils.pend("qemu", pending=False)
         if utils.execute(qemu_cmd, msg="run qemu", stdout=True, stderr=True) != 0:
             exit(1)
         utils.ok()
@@ -277,11 +253,11 @@ class VM:
         utils.info("URL: %s" % url)
         if utils.fetch(url, self.path_tar_gz, unit=utils.MEBI,
                        msg="fetch image bundle") != 0:
-            self.mark_dysfunct()
+            self.mark_defunct()
             exit(1)
 
         # Extract:
-        utils.set_msg_prefix("extract bundle")
+        utils.pend("extract bundle")
         mapping = {remote_qcow: self.path_qcow,
                    remote_iso: self.path_iso}
         for remote in mapping:
@@ -294,17 +270,16 @@ class VM:
                 if utils.execute(['tar', '-z', '-f', self.path_tar_gz,
                                   '-x', remote, '-O'],
                                  msg="extract", outfile=local) != 0:
-                    self.mark_dysfunct()
+                    self.mark_defunct()
                     exit(1)
                 utils.ok(msg)
 
         # Raw image:
-        utils.set_msg_prefix("expand raw image")
-        utils.pend()
+        utils.pend("expand raw image")
         if utils.execute(['qemu-img', 'convert', '-f', 'qcow2',
                           '-O', 'raw', self.path_qcow, self.path_raw],
                           msg="expand qemu image") != 0:
-            self.mark_dysfunct()
+            self.mark_defunct()
             exit(1)
         utils.ok()
 
@@ -314,15 +289,9 @@ class VM:
         # Metadata:
         self.store_meta()
 
-        # Permissions:
-        self.set_permissions()
-
-        utils.set_msg_prefix(None)
-
 
     def delete(self, **kwargs: dict):
-        utils.set_msg_prefix("delete %s" % self.name)
-        utils.pend()
+        utils.pend("delete %s" % self.name)
         try:
             shutil.rmtree(self.path)
         except PermissionError:
@@ -418,8 +387,7 @@ class VM:
 
     @staticmethod
     def vm_init(path: str):
-        utils.set_msg_prefix("initialise VM directory: %s" % path)
-        utils.pend()
+        utils.pend("initialise VM directory: %s" % path)
         try:
             os.mkdir(path)
         except OSError as e:

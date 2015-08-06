@@ -1,28 +1,33 @@
-FROM dslab/s2e-base:v0.4
-MAINTAINER Stefan Bucur <stefan.bucur@epfl.ch>
+# S²E-Chef container
 
-RUN apt-get update &&\
-  apt-get install -y emacs23-nox sudo tmux gdb strace
+FROM ubuntu:14.04
+MAINTAINER Tinu Weber <martin.weber@epfl.ch>
 
-# Additional S2E dependencies
-RUN apt-get install -y libdwarf-dev libelf-dev libboost-dev \
-  libsqlite3-dev libmemcached-dev libboost-serialization-dev \
-  libboost-system-dev libc6-dev-i386
+# Place at the same level as the chef repository (named `src`), then launch with
+# something like: `docker build --rm -t='dslab/s2e-chef:v0.7' .`
 
-# Build and install protobuf:
-RUN /opt/s2e/chef/ccli.py build -p llvm -c protobuf
-RUN /opt/s2e/chef/ccli.py install protobuf
+# Install base:
+RUN apt-get install -y sudo
 
-RUN mkdir -p /home/s2e
-WORKDIR /home/s2e
-
-# Create an image user
-# Tip from http://www.projectatomic.io/docs/docker-image-author-guidance/ 
-RUN groupadd -r s2e -g 433 && \
-  useradd -u 431 -r -g s2e -d /home/s2e -s /sbin/nologin -c "S2E image user" s2e
+# Setup user (TODO replace login shell by custom script):
+RUN groupadd -r -g 666 s2e
+RUN useradd  -r -g s2e -u 666 -d /home/s2e -m -s /sbin/nologin -c "S2E image user" s2e
 RUN echo 's2e ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/s2e
-RUN usermod -a -G kvm s2e
 
-RUN chown -R s2e:s2e /home/s2e
+# Setup qemu, since it is not going to be installed:
+RUN groupadd -g 78 kvm
+RUN usermod  -a -G kvm s2e
 
+# Run Chef setup:
+ADD src/setup.sh                            /opt/s2e/chef/src/
+ADD src/ctl                                 /opt/s2e/chef/src/
+ADD src/ctltools/build.sh                   /opt/s2e/chef/src/ctltools/
+ADD src/ctltools/utils.sh                   /opt/s2e/chef/src/ctltools/
+ADD src/llvm/llvm-3.2-memorytracer.patch    /opt/s2e/chef/src/llvm/
+ADD src/llvm/clang-3.2-memorytracer.patch   /opt/s2e/chef/src/llvm/
+ADD src/llvm/compiler-rt-3.2-asan4s2e.patch /opt/s2e/chef/src/llvm/
+RUN /opt/s2e/chef/src/setup.sh
+
+# Switch to user
 USER s2e
+WORKDIR /home/s2e

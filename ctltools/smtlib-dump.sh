@@ -1,5 +1,6 @@
 #!/usr/bin/env sh
-#
+set -e
+
 # This script dumps queries from sqlite3 databases in SMT-Lib format.
 #
 # Maintainers:
@@ -25,25 +26,6 @@ dump()
 		$IDS_EXPANDED
 }
 
-# DOCKER =======================================================================
-
-docker_dump()
-{
-	docker run --rm -it \
-		-v "$CHEFROOT":"$DOCKER_CHEFROOT" \
-		"$DOCKER_IMAGE" \
-		"$DOCKER_INVOKEPATH" smtlib-dump \
-			-b "$DOCKER_HOSTPATH_BUILD" \
-			$(test $COMPACT -eq $TRUE && printf "%s" '-c') \
-			$(test $MONOLITHIC -eq $TRUE && printf "%s" '-M') \
-			-o "$DOCKER_HOSTPATH_OUT" \
-			-r "$RELEASE" \
-			-s "$SOLVER" \
-			$(test $HUMAN -eq $TRUE && printf "%s" '-w') \
-			"$DOCKER_HOSTPATH_IN/$DB_NAME" \
-			"$IDS"
-}
-
 # DRY RUN ======================================================================
 
 dryrun()
@@ -59,11 +41,7 @@ dryrun()
 
 # UTILITIES ====================================================================
 
-usage()
-{
-	echo "Usage: $INVOKENAME [OPTIONS ...] EXPNAME IDS DUMPNAME"
-}
-
+usage() { echo "Usage: $INVOKENAME [OPTIONS ...] EXPNAME IDS DUMPNAME"; }
 help()
 {
 	usage
@@ -71,7 +49,6 @@ help()
 
 	Options:
 	  -c             Print compact SMTLIB (experimental!)
-	  -d             Dockerized (wrap execution inside docker container)
 	  -h             Display this help
 	  -M             Monolithic dump (no separate files)
 	  -r RELEASE     Release tuple [default=$DEFAULT_RELEASE]
@@ -98,13 +75,11 @@ get_options()
 	RELEASE="$DEFAULT_RELEASE"
 	SOLVER='stp'
 	HUMAN=$FALSE
-	DOCKERIZED=$FALSE
 	DRYRUN=$FALSE
 
-	while getopts :cdhMr:s:wy opt; do
+	while getopts :chMr:s:wy opt; do
 		case "$opt" in
 			c) COMPACT=$TRUE ;;
-			d) DOCKERIZED=$TRUE ;;
 			h) help; exit 1 ;;
 			M) MONOLITHIC=$TRUE ;;
 			r) RELEASE="$OPTARG" ;;
@@ -120,20 +95,10 @@ get_options()
 	ARGSHIFT=$(($OPTIND - 1))
 }
 
-get_db_path()
+get_expname()
 {
-	DB_FILE="$1"
-	if [ -z "$DB_FILE" ]; then
-		die_help 'Missing database path'
-	fi
-	DB_FILE="$(readlink -f "$DB_FILE")"
-	if [ ! -e "$DB_FILE" ]; then
-		die 2 '%s: database does not exist' "$DB_FILE"
-	fi
-	DB_NAME="$(basename "$DB_FILE")"
-	DB_PATH="$(dirname "$DB_FILE")"
-	DB_DIR="$(basename "$DB_PATH")"
-	ARGSHIFT=1
+	# TODO convert EXPNAME to EXPDBPATH
+	die_help 'get_expname(): experiment names not implemented yet'
 }
 
 get_ids()
@@ -148,28 +113,26 @@ get_ids()
 	ARGSHIFT=1
 }
 
+get_dumpname()
+{
+	# TODO convert DUMPNAME to DUMPPATH
+	die_help 'get_dumpname(): dump names not implemented yet'
+}
+
 main()
 {
 	get_options "$@"
 	shift $ARGSHIFT
-	get_db_path "$@"
+	get_expname "$@"
 	shift $ARGSHIFT
 	get_ids "$@"
 	shift $ARGSHIFT
+	get_dumpname "$@"
+	shift $ARGSHIFT
 	test $# -eq 0 || die_help "Trailing arguments: $@"
 
-	if [ $DRYRUN -eq $TRUE ]; then
-		dryrun
-		exit
-	fi
+	test $DRYRUN -eq $FALSE || dryrun
 
-	if [ $DOCKERIZED -eq $TRUE ]; then
-		docker_dump
-	else
-		dump
-	fi
+	dump
 }
-
-set -e
 main "$@"
-set +e

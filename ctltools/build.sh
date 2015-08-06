@@ -1,4 +1,5 @@
 #!/usr/bin/env sh
+set -e
 
 # This script builds S²E-Chef.
 #
@@ -9,15 +10,15 @@
 
 export C_INCLUDE_PATH='/usr/include:/usr/include/x86_64-linux-gnu'
 export CPLUS_INCLUDE_PATH="$C_INCLUDE_PATH:/usr/include/x86_64-linux-gnu/c++/4.8"
-COMPS='lua stp klee qemu tools guest'
+
+COMPS_CHEF='lua stp klee qemu tools guest'
+COMPS_Z3='z3'
+COMPS_PROTOBUF='protobuf'
+COMPS_LLVM='clang compiler-rt llvm-native llvm llvm'
 
 # Z3 ===========================================================================
 
-z3_urlbase='http://download-codeplex.sec.s-msft.com'
-z3_urlpath='Download/SourceControlFileDownload.ashx'
-z3_id='dd62ca5eb36c2a62ee44fc5a79fc27c883de21ae'
-z3_urlparam="ProjectName=z3&changeSetId=$z3_id"
-z3_url="$z3_urlbase/$z3_urlpath?$z3_urlparam"
+z3_url='http://download-codeplex.sec.s-msft.com/Download/SourceControlFileDownload.ashx?ProjectName=z3&changeSetId=dd62ca5eb36c2a62ee44fc5a79fc27c883de21ae'
 z3_tarball='z3.zip'
 
 z3_fetch()
@@ -50,12 +51,9 @@ z3_compile()
 
 protobuf_fetch()
 {
-	protobuf_version='2.6.0'
-	protobuf_dirname="protobuf-$protobuf_version"
+	protobuf_dirname="protobuf-2.6.0"
 	protobuf_tarball="${protobuf_dirname}.tar.gz"
-	protobuf_urlbase="https://protobuf.googlecode.com"
-	protobuf_urlpath="/svn/rc/$protobuf_tarball"
-	protobuf_url="${protobuf_urlbase}$protobuf_urlpath"
+	protobuf_url="https://protobuf.googlecode.com/svn/rc/$protobuf_tarball"
 
 	if [ -e "$protobuf_tarball" ]; then
 		return $SKIPPED
@@ -237,9 +235,7 @@ llvm_compile()
 
 lua_dir="lua-5.1"
 lua_tarball="${lua_dir}.tar.gz"
-lua_urlbase='http://www.lua.org'
-lua_urlpath='ftp'
-lua_url="$lua_urlbase/$lua_urlpath/$lua_tarball"
+lua_url="http://www.lua.org/ftp/$lua_tarball"
 
 lua_fetch()
 {
@@ -387,6 +383,7 @@ guest_compile()
 	case "$ARCH" in
 		i386) guest_cflags='-m32' ;;
 		x86_64) guest_cflags='-m64' ;;
+		*) die_internal 'guest_compile(): unknown architecture: %s' "$ARCH"
 	esac
 	make -j$JOBS CFLAGS="$guest_cflags" || return $FAILURE
 }
@@ -405,24 +402,6 @@ generic_compile()
 
 all_build()
 {
-	# Don't unnecessarily recompile LLVM & Co:
-	if [ "$PROCEDURE" = llvm ] && [ -d "$DOCKER_LLVM_BASE" ]; then
-		info 'Found existing LLVM build in %s' "$DOCKER_LLVM_BASE"
-		if [ ! -d "$LLVM_BASE" ]; then
-			LOGFILE="${LLVM_BASE}.log"
-			if ! track "copying existing LLVM build to $LLVM_BASE" \
-				cp -r "$DOCKER_LLVM_BASE" "$LLVM_BASE"
-			then
-				examine_logs
-			else
-				return $SUCCESS
-			fi
-		else
-			skip '%s: already exists, not copying' "$LLVM_BASE"
-			return $SUCCESS
-		fi
-	fi
-
 	llvm_seen=$FALSE
 	for component in $COMPS
 	do
@@ -503,59 +482,15 @@ all_build()
 	return $SUCCESS
 }
 
-# DOCKER =======================================================================
-
-docker_build()
-{
-	if ! docker_image_exists "$DOCKER_IMAGE"; then
-		die '%s: image not found' "$DOCKER_IMAGE"
-	fi
-
-	docker run --rm -it \
-		-v "$CHEFROOT":"$DOCKER_CHEFROOT" \
-		"$DOCKER_IMAGE" \
-		"$DOCKER_INVOKEPATH" build \
-			-p "$PROCEDURE" \
-			-f "$COMPS_FORCE" \
-			-x "$COMPS_EXCLUDE" \
-			-j $JOBS \
-			-q "$QEMU_FLAGS" \
-			$(test $VERBOSE -eq $FALSE && printf '%s' '-s') \
-			$(test $DRYRUN_DOCKERIZED -eq $TRUE && printf '%s' '-y') \
-			"$RELEASE"
-}
-
 # MAIN =========================================================================
 
-usage()
-{
-	cat <<- EOF
-	Usage: $INVOKENAME [OPTIONS ...] [[ARCH]:[TARGET]:[MODE]]
-	       $INVOKENAME [OPTIONS ...] llvm {release|debug}
-	EOF
-}
-
-help_list_with_default()
-{
-	default="$1"
-	shift
-	for e in "$@"; do
-		if [ "$e" = "$default" ]; then
-			printf '  [%s]' "$e"
-		else
-			printf '  %s' "$e"
-		fi
-	done
-}
-
+usage() { echo "Usage: $INVOKENAME [OPTIONS ...] [[ARCH]:[TARGET]:[MODE]]"; }
 help()
 {
 	usage
-
 	cat <<- EOF
 
 	Options:
-	  -d         Dockerized (wrap build process inside docker container)
 	  -p PROC    Change procedure (see below for more information)
 	  -f COMPS   Force-rebuild components COMPS from scratch
 	             [default='$COMPS_FORCE']
@@ -567,7 +502,6 @@ help()
 	  -s         Silent: redirect compilation messages/warnings/errors into log files
 	  -l         List existing builds and exit
 	  -y         Dry run: print build-related variables and exit
-	  -Y         Like -y, but wait until inside docker before printing variables
 	  -h         Display this help and exit
 
 	Components:
@@ -588,11 +522,25 @@ help()
 	EOF
 }
 
-list()
+help_list_with_default()
+{
+	default="$1"
+	shift
+	for e in "$@"; do
+		if [ "$e" = "$default" ]; then
+			printf '  [%s]' "$e"
+		else
+			printf '  %s' "$e"
+		fi
+	done
+}
+
+list_builds()
 {
 	for build in $(find "$CHEFROOT_BUILD" -maxdepth 1 -mindepth 1 -type d); do
 		basename "$build" | sed 's/-/:/g'
 	done
+	exit 1
 }
 
 dry_run()
@@ -607,23 +555,22 @@ dry_run()
 	PROCEDURE=$PROCEDURE
 	QEMU_FLAGS='$QEMU_FLAGS'
 	EOF
+	exit 1
 }
 
 get_options()
 {
 	DRYRUN=$FALSE
-	DRYRUN_DOCKERIZED=$FALSE
 	LIST=$FALSE
-	VERBOSE=${CHEF_VERBOSE:-$TRUE}  # override utils.sh
+	VERBOSE=$TRUE  # override utils.sh
 	PROCEDURE=chef
 	COMPS_FORCE=''
 	COMPS_EXCLUDE=''
 	JOBS=$CPU_CORES
 	QEMU_FLAGS=''
 
-	while getopts :dp:f:x:c:j:q:slyYh opt; do
+	while getopts :p:f:x:c:j:q:slyh opt; do
 		case "$opt" in
-			d) DOCKERIZED=$TRUE ;;
 			p) PROCEDURE="$OPTARG" ;;
 			f) COMPS_FORCE="$OPTARG" ;;
 			x) COMPS_EXCLUDE="$OPTARG" ;;
@@ -633,7 +580,6 @@ get_options()
 			s) VERBOSE=$FALSE ;;
 			l) LIST=$TRUE ;;
 			y) DRYRUN=$TRUE ;;
-			Y) DRYRUN_DOCKERIZED=$TRUE ;;
 			h) help; exit 1 ;;
 			'?') die_help 'Invalid option: -%s' "$OPTARG";;
 		esac
@@ -672,12 +618,16 @@ main()
 	# Procedure:
 	case "$PROCEDURE" in
 		chef|default|'')
+			COMPS="$COMPS_CHEF"
 			BUILDPATH_BASE="$RELEASEPATH" ;;
 		llvm)
-			COMPS='clang compiler-rt llvm-native llvm llvm'
+			COMPS="$COMPS_LLVM"
 			BUILDPATH_BASE="$LLVM_BASE" ;;
-		z3|protobuf)
-			COMPS="$PROCEDURE"
+		z3)
+			COMPS="$COMPS_Z3"
+			BUILDPATH_BASE="$CHEFROOT_BUILD_DEPS" ;;
+		protobuf)
+			COMPS="$COMPS_PROTOBUF"
 			BUILDPATH_BASE="$CHEFROOT_BUILD_DEPS" ;;
 		*) die_help 'invalid procedure: %s' "$PROCEDURE" ;;
 	esac
@@ -688,37 +638,11 @@ main()
 	test "$COMPS_EXCLUDE" != 'all' || COMPS_EXCLUDE="$COMPS"    # uhm...
 
 	# Special action exit:
-	if [ $DRYRUN -eq $TRUE ]; then
-		dry_run
-		exit 1
-	elif [ $LIST -eq $TRUE ]; then
-		list
-		exit 1
-	fi
+	test $DRYRUN -eq $FALSE || dryrun
+	test $LIST -eq $FALSE || list_builds
 
-	# Run inside docker:
-	if [ $DOCKERIZED -eq $TRUE ]; then
-		setfacl -m user:$(id -u):rwx "$CHEFROOT_BUILD"
-		setfacl -m user:431:rwx "$CHEFROOT_BUILD"
-		setfacl -d -m user:$(id -u):rwx "$CHEFROOT_BUILD"
-		setfacl -d -m user:431:rwx "$CHEFROOT_BUILD"
-		docker_build
-
-	# Run natively:
-	else
-		info 'Building %s (jobs=%d)' "$RELEASE" "$JOBS"
-
-		# enter:
-		test -d "$BUILDPATH_BASE" || mkdir "$BUILDPATH_BASE"
-
-		# build:
-		if ! mkdir -p "$BUILDPATH_BASE"; then
-			die 1 'Permission denied'
-		fi
-		all_build
-	fi
+	mkdir -p "$BUILDPATH_BASE" || die 1 'Permission denied'
+	info 'building to %s (jobs: %d)' "$BUILDPATH_BASE" $JOBS
+	all_build
 }
-
-set -e
 main "$@"
-set +e
