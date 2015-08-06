@@ -55,9 +55,7 @@ protobuf_fetch()
 	protobuf_tarball="${protobuf_dirname}.tar.gz"
 	protobuf_url="https://protobuf.googlecode.com/svn/rc/$protobuf_tarball"
 
-	if [ -e "$protobuf_tarball" ]; then
-		return $SKIPPED
-	fi
+	test ! -e "$protobuf_tarball" || return $SKIPPED
 	if ! wget -O "$protobuf_tarball" "$protobuf_url"; then
 		rm -f "$protobuf_tarball"
 		return $FAILURE
@@ -86,9 +84,7 @@ llvm_generic_fetch()
 	llvm_generic_urlbase="http://llvm.org/releases/$LLVM_VERSION"
 	llvm_generic_url="$llvm_generic_urlbase/$llvm_generic_tarball"
 
-	if [ -e "$llvm_generic_tarball" ]; then
-		return $SKIPPED
-	fi
+	test ! -e "$llvm_generic_tarball" || return $SKIPPED
 	if ! wget -O "$llvm_generic_tarball" "$llvm_generic_url"; then
 		rm -f "$llvm_generic_tarball"
 		return $FAILURE
@@ -187,8 +183,10 @@ llvm_prepare()
 	# This is a little less tricky than llvm-native:
 	# - Source in llvm-3.2.src
 	# - Build in llvm-3.2.build
+	# - Do not install
 	SRCPATH="$LLVM_SRC"
 	BUILDPATH="$LLVM_BUILD"
+	INSTALLPATH="$BUILDPATH"
 	echo
 	echo "LLVM:"
 	echo "  SRCPATH=$SRCPATH"
@@ -212,6 +210,7 @@ llvm_configure()
 		*) die_internal 'llvm_configure(): invalid target: %s' "$TARGET"
 	esac
 	"$SRCPATH"/configure \
+		--prefix="$INSTALLPATH" \
 		--enable-jit \
 		--target=x86_64 \
 		--enable-targets=x86 \
@@ -239,9 +238,7 @@ lua_url="http://www.lua.org/ftp/$lua_tarball"
 
 lua_fetch()
 {
-	if [ -e "$lua_tarball" ]; then
-		return $SKIPPED
-	fi
+	test ! -e "$lua_tarball" || return $SKIPPED
 	if ! wget -O "$lua_tarball" "$lua_url"; then
 		rm -f "$lua_tarball"
 		return $FAILURE
@@ -264,11 +261,12 @@ lua_compile()
 stp_extract()
 {
 	cp -r "$SRCPATH" "$BUILDPATH" || return $FAILURE
+	SRCPATH="$BUILDPATH"
 }
 
 stp_configure()
 {
-	scripts/configure \
+	"$SRCPATH/scripts"/configure \
 		--with-prefix="$BUILDPATH" \
 		--with-fpic \
 		--with-gcc="$LLVM_NATIVE_CC" \
@@ -379,15 +377,8 @@ guest_compile()
 
 # ALL/GENERIC ==================================================================
 
-generic_extract()
-{
-	mkdir -p "$BUILDPATH" || return $FAILURE
-}
-
-generic_compile()
-{
-	make -j$JOBS || return $FAILURE
-}
+generic_extract() { mkdir -p "$BUILDPATH" || return $FAILURE; }
+generic_compile() { make -j$JOBS || return $FAILURE; }
 
 all_build()
 {
@@ -598,10 +589,8 @@ main()
 	LOGFILE="$CHEFROOT_BUILD/build.log"
 
 	# Command line arguments:
-	get_options "$@"
-	shift $ARGSHIFT
-	get_release "$@"
-	shift $ARGSHIFT
+	get_options "$@" && shift $ARGSHIFT
+	get_release "$@" && shift $ARGSHIFT
 	test $# -eq 0 || die_help "trailing arguments: $@"
 
 	# Procedure:

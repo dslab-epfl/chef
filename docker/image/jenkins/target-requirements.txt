@@ -1,7 +1,0 @@
-git+https://github.com/dslab-epfl/simplejson.git@chef#egg=simplejson
-Jinja2==2.7.3
-PyYAML==3.11
-unicodecsv==0.9.4
-webapp2==2.5.2
-WebOb==1.4
-xlrd==0.9.3
