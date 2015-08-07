@@ -477,10 +477,10 @@ help()
 
 	Options:
 	  -p PROC    Change procedure (see below for more information)
-	  -f COMPS   Force-rebuild components COMPS from scratch
-	             [default='$COMPS_FORCE']
-	  -x COMPS   Exclude components COMPS (-f overrides this)
-	             [default='$COMPS_EXCLUDE']
+	  -f COMPS   Comma-separated list of components to be force-compiled from scratch
+	             [default=$COMPS_FORCE]
+	  -x COMPS   Comma-separated list of components to be excluded (-f overrides this)
+	             [default=$COMPS_EXCLUDE]
 	  -c COMPS   Only build components COMPS (instead of all)
 	  -j N       Compile with N jobs [default=$JOBS]
 	  -q FLAGS   Additional flags passed to qemu's \`configure\` script
@@ -491,7 +491,7 @@ help()
 
 	Components:
 	  $COMPS
-	  You may specify 'all'
+	  For -f and -x, you may also specify \`all\`.
 
 	Architectures:
 	$(help_list_with_default "$DEFAULT_ARCH" $ARCHS)
@@ -557,8 +557,8 @@ get_options()
 	while getopts :p:f:x:c:j:q:slyh opt; do
 		case "$opt" in
 			p) PROCEDURE="$OPTARG" ;;
-			f) COMPS_FORCE="$OPTARG" ;;
-			x) COMPS_EXCLUDE="$OPTARG" ;;
+			f) COMPS_FORCE="$(printf "$OPTARG" | sed -e 's/,/ /g')" ;;
+			x) COMPS_EXCLUDE="$(printf "$OPTARG" | sed -e 's/,/ /g')";;
 			c) COMPS="$OPTARG" ;;
 			j) JOBS="$OPTARG" ;;
 			q) QEMU_FLAGS="$OPTARG" ;;
