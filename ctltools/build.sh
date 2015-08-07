@@ -104,8 +104,9 @@ llvm_generic_patch()
 	case "$llvm_generic_prog" in
 		llvm|clang) llvm_generic_patchname=memorytracer ;;
 		compiler-rt) llvm_generic_patchname=asan4s2e ;;
-		*) die_internal 'llvm_generic_patch(): invalid program: %s' \
-		   "$llvm_generic_prog" ;;
+		*) internal_error 'llvm_generic_patch(): invalid program: %s' \
+		   "$llvm_generic_prog"
+		   return $INTERNAL ;;
 	esac
 	llvm_generic_patch="$llvm_generic_vprog-${llvm_generic_patchname}.patch"
 	patch -d "$SRCPATH" -p0 -i "$CHEFROOT_SRC/llvm/$llvm_generic_patch" \
@@ -207,7 +208,8 @@ llvm_configure()
 	case "$TARGET" in
 		release) llvm_configure_options='--enable-optimized' ;;
 		debug) llvm_configure_options='--disable-optimized' ;;
-		*) die_internal 'llvm_configure(): invalid target: %s' "$TARGET"
+		*) internal_error 'llvm_configure(): invalid target: %s' "$TARGET"
+		   return $INTERNAL ;;
 	esac
 	"$SRCPATH"/configure \
 		--prefix="$INSTALLPATH" \
@@ -225,7 +227,8 @@ llvm_compile()
 	case "$TARGET" in
 		release) llvm_make_options='ENABLE_OPTIMIZED=1' ;;
 		debug) llvm_make_options='ENABLE_OPTIMIZED=0' ;;
-		*) die_internal 'llvm_compile(): invalid target: %s' "$TARGET"
+		*) internal_error 'llvm_compile(): invalid target: %s' "$TARGET"
+		   return $INTERNAL ;;
 	esac
 	make $llvm_make_options REQUIRES_RTTI=1 -j$JOBS || return $FAILURE
 }
@@ -370,7 +373,8 @@ guest_compile()
 	case "$ARCH" in
 		i386) guest_cflags='-m32' ;;
 		x86_64) guest_cflags='-m64' ;;
-		*) die_internal 'guest_compile(): unknown architecture: %s' "$ARCH"
+		*) internal_error 'guest_compile(): unknown architecture: %s' "$ARCH"
+		   return $INTERNAL ;;
 	esac
 	make -j$JOBS CFLAGS="$guest_cflags" || return $FAILURE
 }
@@ -442,7 +446,8 @@ all_build()
 			case "$action" in
 				fetch|extract) cd "$BUILDPATH_BASE" ;;
 				configure|compile|install) cd "$BUILDPATH" ;;
-				*) die_internal 'Unknown action: %s' "$action"
+				*) internal_error 'Unknown action: %s' "$action"
+				   die_internal ;;
 			esac
 
 			handler="$(funcify "$component")_$action"

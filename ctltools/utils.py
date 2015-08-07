@@ -219,7 +219,7 @@ else:
 WARN = '[%sWARN%s]' % (ESC_WARNING, ESC_RESET)
 FAIL = '[%sFAIL%s]' % (ESC_ERROR, ESC_RESET)
 _OK_ = '[%s OK %s]' % (ESC_SUCCESS, ESC_RESET)
-SKIP = '[%sSKIP%s]' % (ESC_SUCCESS, ESC_RESET)
+SKIP = '[SKIP]'
 INFO = '[%sINFO%s]' % (ESC_MISC, ESC_RESET)
 ALRT = '[%s !! %s]' % (ESC_SPECIAL, ESC_RESET)
 ABRT = '[%sABORT%s]' % (ESC_ERROR, ESC_RESET)
