@@ -374,7 +374,7 @@ if __name__ == '__main__':
         VM.vm_init(utils.CHEFROOT_VM)
 
     # Parse command line arguments:
-    kwargs = VM.parse_args(argv)
+    kwargs = VM.parse_args(sys.argv)
     utils.parse_release(kwargs['release'])
 
     # Create VM and handle action:

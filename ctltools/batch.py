@@ -7,6 +7,7 @@ import yaml  # requires the PyYAML package
 import sys
 import os
 import subprocess
+import utils
 
 
 class Batch:
@@ -53,7 +54,8 @@ class Batch:
 
     def __init__(self, path_yaml: str):
         if not os.path.isfile(path_yaml):
-            raise Exception("%s: File not found" % path_yaml)
+            utils.fail("%s: file not found" % path_yaml)
+            exit(1)
         yaml = Batch.YAML(path_yaml)
         self.variables = yaml.tree['variables']
         self.commands = []
