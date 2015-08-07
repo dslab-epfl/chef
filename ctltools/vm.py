@@ -169,13 +169,13 @@ class VM:
 
     # ACTIONS ==================================================================
 
-    def create(self, size: int, force: bool, **kwargs: dict):
+    def create(self, size: str, force: bool, **kwargs: dict):
         self.initialise(force)
 
         # Raw image:
-        utils.pend("create %dMiB image" % size)
+        utils.pend("create %sB image" % size)
         if utils.execute(['%s/qemu-img' % self.path_executable,
-                          'create', self.path_raw, '%dM' % size],
+                          'create', self.path_raw, size],
                          msg="execute qemu-img") != 0:
             exit(1)
         self.size = size
@@ -315,8 +315,8 @@ class VM:
                              help="Force creation, even if VM already exists")
         pcreate.add_argument('name',
                              help="Machine name")
-        pcreate.add_argument('size', type=int, default=5120, nargs='?',
-                             help="VM size (in MB) [default=5120]")
+        pcreate.add_argument('size', default='5120M', nargs='?',
+                             help="VM size [default=5120M]")
 
         # install
         pinstall = pcmd.add_parser('install',
