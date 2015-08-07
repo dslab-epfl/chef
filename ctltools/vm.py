@@ -368,20 +368,15 @@ class VM:
         utils.ok()
 
 
-    @staticmethod
-    def main(argv: [str]):
-        # Check environment:
-        if not os.path.isdir(utils.CHEFROOT_VM):
-            VM.vm_init(utils.CHEFROOT_VM)
-
-        # Parse command line arguments:
-        kwargs = VM.parse_args(argv)
-        utils.parse_release(kwargs['release'])
-
-        # Create VM and handle action:
-        vm = VM(kwargs.get('name', None))
-        return kwargs['action'](vm, **kwargs)
-
-
 if __name__ == '__main__':
-    VM.main(sys.argv)
+    # Check environment:
+    if not os.path.isdir(utils.CHEFROOT_VM):
+        VM.vm_init(utils.CHEFROOT_VM)
+
+    # Parse command line arguments:
+    kwargs = VM.parse_args(argv)
+    utils.parse_release(kwargs['release'])
+
+    # Create VM and handle action:
+    vm = VM(kwargs.get('name', None))
+    exit(kwargs['action'](vm, **kwargs))
