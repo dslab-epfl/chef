@@ -1,0 +1,53 @@
+357406568148268f281ab9fa7ea790731a26dc24 S2E: Notifications on process creation and termination.
+ arch/x86/kernel/process.c    | 3 +++
+ arch/x86/kernel/process_32.c | 6 ++++++
+ 2 files changed, 9 insertions(+)
+
+diff --git a/arch/x86/kernel/process.c b/arch/x86/kernel/process.c
+index cc216a7..67c5670 100644
+--- a/arch/x86/kernel/process.c
++++ b/arch/x86/kernel/process.c
+@@ -23,6 +23,7 @@
+ #include <asm/uaccess.h>
+ #include <asm/i387.h>
+ #include <asm/debugreg.h>
++#include <asm/s2e/s2e.h>
+ 
+ struct kmem_cache *task_xstate_cachep;
+ EXPORT_SYMBOL_GPL(task_xstate_cachep);
+@@ -83,6 +84,8 @@ void exit_thread(void)
+ 		put_cpu();
+ 		kfree(bp);
+ 	}
++
++    s2e_notify_exit_thread(me);
+ }
+ 
+ void show_regs(struct pt_regs *regs)
+diff --git a/arch/x86/kernel/process_32.c b/arch/x86/kernel/process_32.c
+index 8598296..5213dda 100644
+--- a/arch/x86/kernel/process_32.c
++++ b/arch/x86/kernel/process_32.c
+@@ -58,6 +58,7 @@
+ #include <asm/syscalls.h>
+ #include <asm/debugreg.h>
+ #include <asm/nmi.h>
++#include <asm/s2e/s2e.h>
+ 
+ asmlinkage void ret_from_fork(void) __asm__("ret_from_fork");
+ 
+@@ -259,6 +260,11 @@ start_thread(struct pt_regs *regs, unsigned long new_ip, unsigned long new_sp)
+ 	 * Free the old FP and other extended state
+ 	 */
+ 	free_thread_xstate(current);
++	/* This is called after an exec, to set up the user context.
++	 * TODO: Might be worth calling after a fork too, and have some sort
++	 * of address space update event when exec kicks in.
++	 */
++	s2e_notify_start_thread(current);
+ }
+ EXPORT_SYMBOL_GPL(start_thread);
+ 
+-- 
+1.9.1
+

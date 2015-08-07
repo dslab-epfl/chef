@@ -1,0 +1,273 @@
+8a00b7fe4a2dace3a596e12980549d6b527cde68 S2E: Added code that extracts task_struct info and reports it to S2E.
+ arch/x86/include/asm/s2e/s2e.h |  69 +++++++++++++++++
+ arch/x86/kernel/Makefile       |   2 +
+ arch/x86/kernel/s2e.c          | 168 +++++++++++++++++++++++++++++++++++++++++
+ 3 files changed, 239 insertions(+)
+ create mode 100644 arch/x86/include/asm/s2e/s2e.h
+ create mode 100644 arch/x86/kernel/s2e.c
+
+diff --git a/arch/x86/include/asm/s2e/s2e.h b/arch/x86/include/asm/s2e/s2e.h
+new file mode 100644
+index 0000000..544119b
+--- /dev/null
++++ b/arch/x86/include/asm/s2e/s2e.h
+@@ -0,0 +1,69 @@
++#ifndef _S2E_H_
++#define _S2E_H_
++
++/* TODO: Move this in an architecture-specific place. */
++
++#ifdef S2E_DISPATCH_CUSTOM
++/* (Deprecated) We define our own custom instruction, using a previously
++ * unallocated opcode sequence. Therefore, this construct would cause a
++ * processor exception on real hardware or non-S2E virtual environments.
++ */
++#define S2E_INSTRUCTION_COMPLEX(val1, val2)             \
++    ".byte 0x0F, 0x3F\n"                                \
++    ".byte 0x00, 0x" #val1 ", 0x" #val2 ", 0x00\n"      \
++    ".byte 0x00, 0x00, 0x00, 0x00\n"
++
++#else
++/* We overload a multi-byte NOP instruction.  We reuse the 8-byte form
++ * NOP DWORD ptr [EAX + EAX*1 + 00000000H], corresponding to the sequence
++ * 0F 1F 84 00 00 00 00 00H
++ *
++ * The last five bytes can be changed arbitrarily, and we use them as follows:
++ *   Byte 3 - The S2E magic number 0x42
++ *   Byte 4-7 - A 32-bit S2E instruction payload.
++ */
++#define S2E_INSTRUCTION_COMPLEX(val1, val2)             \
++    ".byte 0x0F, 0x1F\n"                                \
++    ".byte 0x84, 0x42\n"                                \
++    ".byte 0x00, 0x" #val1 ", 0x" #val2 ", 0x00\n"
++#endif /* defined(S2E_DISPATCH_CUSTOM) */
++
++#define S2E_INSTRUCTION_SIMPLE(val)                     \
++    S2E_INSTRUCTION_COMPLEX(val, 00)
++
++
++#define S2E_INSTRUCTION_REGISTERS_COMPLEX(val1, val2)   \
++        "pushl %%ebx\n"                                 \
++        "movl %%edx, %%ebx\n"                           \
++        S2E_INSTRUCTION_COMPLEX(val1, val2)             \
++        "popl %%ebx\n"
++
++#define S2E_INSTRUCTION_REGISTERS_SIMPLE(val)           \
++        S2E_INSTRUCTION_REGISTERS_COMPLEX(val, 00)
++
++
++#define S2E_CONCRETE_PROLOGUE \
++        "push %%ebx\n"        \
++        "push %%esi\n"        \
++        "push %%edi\n"        \
++        "push %%ebp\n"        \
++        "xor %%ebx, %%ebx\n"  \
++        "xor %%ebp, %%ebp\n"  \
++        "xor %%esi, %%esi\n"  \
++        "xor %%edi, %%edi\n"
++
++#define S2E_CONCRETE_EPILOGUE \
++        "pop %%ebp\n"         \
++        "pop %%edi\n"         \
++        "pop %%esi\n"         \
++        "pop %%ebx\n"
++
++
++struct task_struct;
++void s2e_notify_start_thread(struct task_struct *task);
++void s2e_notify_exit_thread(struct task_struct *task);
++void s2e_notify_user_leave(struct task_struct *task);
++void s2e_notify_user_enter(struct task_struct *task);
++
++
++#endif /* _S2E_H_ */
+diff --git a/arch/x86/kernel/Makefile b/arch/x86/kernel/Makefile
+index 9ac56d1..f92e4e4 100644
+--- a/arch/x86/kernel/Makefile
++++ b/arch/x86/kernel/Makefile
+@@ -35,6 +35,8 @@ obj-y			+= tsc.o io_delay.o rtc.o
+ obj-y			+= pci-iommu_table.o
+ obj-y			+= resource.o
+ 
++obj-y           += s2e.o
++
+ obj-y				+= trampoline.o trampoline_$(BITS).o
+ obj-y				+= process.o
+ obj-y				+= i387.o xsave.o
+diff --git a/arch/x86/kernel/s2e.c b/arch/x86/kernel/s2e.c
+new file mode 100644
+index 0000000..0292f39
+--- /dev/null
++++ b/arch/x86/kernel/s2e.c
+@@ -0,0 +1,168 @@
++#include <linux/fs.h>
++#include <linux/mm.h>
++#include <linux/sched.h>
++#include <asm/s2e/s2e.h>
++
++static int s2e_active = 0;
++
++enum
++{
++    S2E_THREAD_START = 0xBEEF,
++    S2E_THREAD_EXIT,
++    S2E_VM_ALLOC
++};
++
++struct s2e_thread_struct
++{
++    int              pid;
++    const char       *name;
++    unsigned long    start, end;
++    unsigned long    stack_top;
++    unsigned long    address_space;
++} __attribute__((packed));
++
++struct s2e_vmmap_struct
++{
++    int pid;
++    unsigned long  start, end;
++    const char     *name;
++    int            writable;
++    int            executable;
++} __attribute__((packed));
++
++static inline int s2e_version(void)
++{
++    int version = 0;
++    __asm__ __volatile__(
++        S2E_INSTRUCTION_SIMPLE(00)
++        : "=a" (version)  : "a" (0)
++    );
++    return version;
++}
++
++static int s2e_system_call(unsigned int id, void *data, unsigned int size) {
++    int result = -1;
++
++    __asm__ __volatile__ (
++            S2E_INSTRUCTION_SIMPLE(B0)
++            : "=a" (result) : "a" (id), "c" (data), "d" (size) : "memory"
++    );
++
++    return result;
++}
++
++static inline void s2e_message(const char *message)
++{
++    __asm__ __volatile__(
++        S2E_INSTRUCTION_SIMPLE(10)
++        : : "a" (message)
++        );
++}
++
++static inline int s2e_printf(const char *format, ...)
++{
++    char buffer[512];
++    int ret;
++    va_list args;
++    va_start(args, format);
++    ret = vsnprintf(buffer, sizeof(buffer), format, args);
++    va_end(args);
++    s2e_message(buffer);
++    return ret;
++}
++
++static void s2e_notify_address_space(struct task_struct *task) {
++    struct vm_area_struct *vm;
++
++    if (!task->mm) {
++        return;
++    }
++
++    vm = task->mm->mmap;
++    while (vm)
++    {
++        struct s2e_vmmap_struct s2e_vmmap = { 0 };
++        s2e_vmmap.pid = task->pid;
++
++        if (vm->vm_file)
++            s2e_vmmap.name = vm->vm_file->f_path.dentry->d_name.name;
++        else if (!(s2e_vmmap.name = arch_vma_name(vm)))
++            s2e_vmmap.name = "[unknown]";
++
++        s2e_vmmap.start = vm->vm_start;
++        s2e_vmmap.end = vm->vm_end;
++        s2e_vmmap.writable = !!(vm->vm_flags & VM_WRITE);
++        s2e_vmmap.executable = !!(vm->vm_flags & VM_EXEC);
++
++        s2e_system_call(S2E_VM_ALLOC, &s2e_vmmap, sizeof(s2e_vmmap));
++
++        vm = vm->vm_next;
++    }
++}
++
++static void s2e_notify_thread(struct task_struct *task) {
++    struct s2e_thread_struct s2e_thread = { 0 };
++    char name[TASK_COMM_LEN];
++
++    get_task_comm(name, task);
++    s2e_thread.pid = task->pid;
++    s2e_thread.name = name;
++    if (task->mm) {
++        s2e_thread.start = task->mm->start_code;
++        s2e_thread.end = task->mm->end_code;
++        s2e_thread.stack_top = task->mm->start_stack;
++
++        /* The physical address of the page table is stored in the CR3 register
++         * when the task is active. */
++        s2e_thread.address_space = (unsigned long)__pa(task->mm->pgd);
++    }
++
++#if 0
++    s2e_printf("S2E: thread for %s[%d] (%d) [0x%lx-0x%lx] -- stack -- %p to %p\n", name,
++               task->pid, task->tgid,
++               s2e_thread.start, s2e_thread.end,
++               task_thread_info(task), end_of_stack(task));
++#endif
++
++    s2e_system_call(S2E_THREAD_START, &s2e_thread, sizeof(s2e_thread));
++
++    s2e_notify_address_space(task);
++}
++
++static void s2e_notify_initial_state(struct task_struct *task) {
++    struct task_struct *other_task;
++
++    if (s2e_active == s2e_version())
++        return;
++
++    s2e_active = s2e_version();
++
++    for_each_process(other_task)
++    {
++        if (other_task == task)
++            continue;
++        s2e_notify_start_thread(other_task);
++    }
++}
++
++void s2e_notify_start_thread(struct task_struct *task)
++{
++    s2e_notify_initial_state(task);
++    s2e_notify_thread(task);
++}
++
++void s2e_notify_exit_thread(struct task_struct *task) {
++    int pid = (int)task->pid;
++    char name[TASK_COMM_LEN];
++    get_task_comm(name, task);
++
++    s2e_notify_initial_state(NULL);
++
++#if 0
++    s2e_printf("S2E: exit thread %s[%d]\n", name, task->pid);
++#endif
++
++    s2e_system_call(S2E_THREAD_EXIT, &pid, sizeof(pid));
++}
++
++
+-- 
+1.9.1
+
