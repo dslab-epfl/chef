@@ -130,14 +130,16 @@ def async_send_command(command, host, port, timeout=TIMEOUT):
         now = datetime.now()
         if now < command_deadline:
             try:
+                utils.pend("sending command %s to %s:%d" % (command.args, host, port))
                 send_command(command, host, port)
             except CommandError as e:
-                print("** Could not send command (%s). Retrying for %d more seconds." % (
-                    e, (command_deadline - now).seconds), file=sys.stderr)
+                utils.pend(None, msg="%s, retrying for %d more seconds"
+                                 % (e, (command_deadline - now).seconds))
             else:
+                utils.ok()
                 break
         else:
-            print("** Command timeout. Aborting.", file=sys.stderr)
+            utils.abort("command timeout")
             break
     exit(0)
 
@@ -190,6 +192,16 @@ def execute(args, cmd_line):
                                         environ.get('LUA_PATH', '')])
         utils.debug("LUA_PATH=%s" % environ['LUA_PATH'])
 
+        # each experiment gets its own directory:
+        try:
+            utils.pend("Creating experiment directory %s" % args['exppath'])
+            os.makedirs(args['exppath'])
+            utils.ok()
+        except FileExistsError:
+            utils.fail("Experiment %s already exists. Please choose another name."
+                       % args['expname'])
+            exit(1)
+
         if args['timeout']:
             kill_me_later(args['timeout'])
 
@@ -204,11 +216,6 @@ def execute(args, cmd_line):
         if obj:
             async_send_command(obj, 'localhost', args['command_port'],
                                timeout=args['timeout'])
-
-        # each experiment gets its own directory:
-        utils.pend("creating experiment directory %s" % args['exppath'])
-        os.makedirs(args['exppath'])
-        utils.ok()
 
         # drop `s2e-last` symlink somewhere where it does not get in the way:
         os.chdir(utils.CHEFROOT_EXPDATA)
@@ -238,8 +245,6 @@ def parse_cmd_line():
                          help="Run under strace")
 
     # Communication:
-    parser.add_argument('-b','--background', action='store_true', default=False,
-                        help="Fork execution to background") # XXX internal option for batch execution
     parser.add_argument('-m','--monitor-port', type=int,
                         default=MONITOR_PORT,
                         help="Port on which the qemu monitor is accessible")
@@ -304,6 +309,7 @@ def parse_cmd_line():
     # Adapt a few options:
     kwargs['vnc_port'] = VNC_PORT_BASE + kwargs['vnc_display']
     if kwargs['mode'] == 'sym':
+        kwargs['config_file'] = os.path.abspath(kwargs['config_file'])
         kwargs['exppath'] = os.path.join(utils.CHEFROOT_EXPDATA, kwargs['expname'])
         kwargs['config_root'], kwargs['config_filename'] = os.path.split(kwargs['config_file'])
 
@@ -389,7 +395,7 @@ def build_qemu_cmd_line(args):
 
 
 def build_parallel_cmd_line(args: dict):
-    return ['parallel', '--delay', args['batch_delay']]
+    return ['parallel', '-u', '--line-buffer', '--delay', '%d' % args['batch_delay']]
 
 
 def build_cmd_line(args):
@@ -399,10 +405,10 @@ def build_cmd_line(args):
 
 # MAIN =========================================================================
 
-def batch_execute():
+def batch_execute(args: dict):
     # get list of commands from batch file:
     bare_cmd_lines = []
-    from ctltools.batch import Batch
+    from batch import Batch
     batch = Batch(args['batch_file'])
     batch_commands = batch.get_commands()
     for command in batch_commands:
@@ -410,38 +416,44 @@ def batch_execute():
 
     # assemble command lines and experiment data output directories:
     cmd_lines = []
-    expdata_paths = []
     batch_offset = 1
     for bare_cmd_line in bare_cmd_lines:
         # experiment data path:
-        expdata_dir = '%04d-%s' % (batch_offset, os.path.basename(c[0]))
-        expdata_path = os.path.join(args['exppath'], expdata_dir)
-        expdata_paths.append(expdata_path)
+        expname = '%s-%04d-%s' % (args['expname'],
+                                  batch_offset,
+                                  os.path.basename(bare_cmd_line[0]))
 
         # command:
-        cmd_line = sys.argv[0] # recursively call ourselves:
-        cmd_line.extend(['--background'])
-        cmd_line.extend(['--command-port', '%d'
-                        % (args['command_port'] + batch_offset)])
+        cmd_line = [sys.argv[0]] # recursively call ourselves:
+
+        if args['dry_run']:
+            cmd_line.extend(['--dry-run'])
         cmd_line.extend(['--monitor-port', '%d'
                         % (args['monitor_port'] + batch_offset)])
         cmd_line.extend(['--vnc-display', '%d'
                         % (args['vnc_display'] + batch_offset)])
+        cmd_line.extend(['--release', utils.RELEASE])
+        cmd_line.extend(['--network', args['network']])
+        cmd_line.extend([args['vm_name']])
         cmd_line.extend(['sym'])
+        cmd_line.extend(['--command-port', '%d'
+                        % (args['command_port'] + batch_offset)])
+        cmd_line.extend(['--expname', expname])
         cmd_line.extend(['--config-file', command.config])
         if args['timeout']:
             cmd_line.extend(['--timeout', '%d' % args['timeout']])
         if args['env_var']:
             cmd_line.extend(['--env-var', args['env_var']])
-        if args['dry_run']:
-            cmd_line.extend(['--dry-run'])
+        cmd_line.extend([args['snapshot']])
         cmd_line.extend(bare_cmd_line)
         cmd_lines.append(' '.join(cmd_line))
 
         # counter:
         batch_offset += 1
+        utils.debug('%s' % cmd_line)
 
-    p2 = subprocess.Popen(build_parallel_cmd_line(args), stdin=subprocess.PIPE)
+    parallel_cmd_line = build_parallel_cmd_line(args);
+    p2 = subprocess.Popen(parallel_cmd_line, stdin=subprocess.PIPE)
     p2.communicate(bytes('\n'.join(cmd_lines), 'utf-8'))
 
 

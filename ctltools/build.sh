@@ -55,9 +55,7 @@ protobuf_fetch()
 	protobuf_tarball="${protobuf_dirname}.tar.gz"
 	protobuf_url="https://protobuf.googlecode.com/svn/rc/$protobuf_tarball"
 
-	if [ -e "$protobuf_tarball" ]; then
-		return $SKIPPED
-	fi
+	test ! -e "$protobuf_tarball" || return $SKIPPED
 	if ! wget -O "$protobuf_tarball" "$protobuf_url"; then
 		rm -f "$protobuf_tarball"
 		return $FAILURE
@@ -86,9 +84,7 @@ llvm_generic_fetch()
 	llvm_generic_urlbase="http://llvm.org/releases/$LLVM_VERSION"
 	llvm_generic_url="$llvm_generic_urlbase/$llvm_generic_tarball"
 
-	if [ -e "$llvm_generic_tarball" ]; then
-		return $SKIPPED
-	fi
+	test ! -e "$llvm_generic_tarball" || return $SKIPPED
 	if ! wget -O "$llvm_generic_tarball" "$llvm_generic_url"; then
 		rm -f "$llvm_generic_tarball"
 		return $FAILURE
@@ -108,8 +104,9 @@ llvm_generic_patch()
 	case "$llvm_generic_prog" in
 		llvm|clang) llvm_generic_patchname=memorytracer ;;
 		compiler-rt) llvm_generic_patchname=asan4s2e ;;
-		*) die_internal 'llvm_generic_patch(): invalid program: %s' \
-		   "$llvm_generic_prog" ;;
+		*) internal_error 'llvm_generic_patch(): invalid program: %s' \
+		   "$llvm_generic_prog"
+		   return $INTERNAL ;;
 	esac
 	llvm_generic_patch="$llvm_generic_vprog-${llvm_generic_patchname}.patch"
 	patch -d "$SRCPATH" -p0 -i "$CHEFROOT_SRC/llvm/$llvm_generic_patch" \
@@ -187,8 +184,10 @@ llvm_prepare()
 	# This is a little less tricky than llvm-native:
 	# - Source in llvm-3.2.src
 	# - Build in llvm-3.2.build
+	# - Do not install
 	SRCPATH="$LLVM_SRC"
 	BUILDPATH="$LLVM_BUILD"
+	INSTALLPATH="$BUILDPATH"
 	echo
 	echo "LLVM:"
 	echo "  SRCPATH=$SRCPATH"
@@ -209,9 +208,11 @@ llvm_configure()
 	case "$TARGET" in
 		release) llvm_configure_options='--enable-optimized' ;;
 		debug) llvm_configure_options='--disable-optimized' ;;
-		*) die_internal 'llvm_configure(): invalid target: %s' "$TARGET"
+		*) internal_error 'llvm_configure(): invalid target: %s' "$TARGET"
+		   return $INTERNAL ;;
 	esac
 	"$SRCPATH"/configure \
+		--prefix="$INSTALLPATH" \
 		--enable-jit \
 		--target=x86_64 \
 		--enable-targets=x86 \
@@ -226,7 +227,8 @@ llvm_compile()
 	case "$TARGET" in
 		release) llvm_make_options='ENABLE_OPTIMIZED=1' ;;
 		debug) llvm_make_options='ENABLE_OPTIMIZED=0' ;;
-		*) die_internal 'llvm_compile(): invalid target: %s' "$TARGET"
+		*) internal_error 'llvm_compile(): invalid target: %s' "$TARGET"
+		   return $INTERNAL ;;
 	esac
 	make $llvm_make_options REQUIRES_RTTI=1 -j$JOBS || return $FAILURE
 }
@@ -239,9 +241,7 @@ lua_url="http://www.lua.org/ftp/$lua_tarball"
 
 lua_fetch()
 {
-	if [ -e "$lua_tarball" ]; then
-		return $SKIPPED
-	fi
+	test ! -e "$lua_tarball" || return $SKIPPED
 	if ! wget -O "$lua_tarball" "$lua_url"; then
 		rm -f "$lua_tarball"
 		return $FAILURE
@@ -264,11 +264,12 @@ lua_compile()
 stp_extract()
 {
 	cp -r "$SRCPATH" "$BUILDPATH" || return $FAILURE
+	SRCPATH="$BUILDPATH"
 }
 
 stp_configure()
 {
-	scripts/configure \
+	"$SRCPATH/scripts"/configure \
 		--with-prefix="$BUILDPATH" \
 		--with-fpic \
 		--with-gcc="$LLVM_NATIVE_CC" \
@@ -372,22 +373,16 @@ guest_compile()
 	case "$ARCH" in
 		i386) guest_cflags='-m32' ;;
 		x86_64) guest_cflags='-m64' ;;
-		*) die_internal 'guest_compile(): unknown architecture: %s' "$ARCH"
+		*) internal_error 'guest_compile(): unknown architecture: %s' "$ARCH"
+		   return $INTERNAL ;;
 	esac
 	make -j$JOBS CFLAGS="$guest_cflags" || return $FAILURE
 }
 
 # ALL/GENERIC ==================================================================
 
-generic_extract()
-{
-	mkdir -p "$BUILDPATH" || return $FAILURE
-}
-
-generic_compile()
-{
-	make -j$JOBS || return $FAILURE
-}
+generic_extract() { mkdir -p "$BUILDPATH" || return $FAILURE; }
+generic_compile() { make -j$JOBS || return $FAILURE; }
 
 all_build()
 {
@@ -451,7 +446,8 @@ all_build()
 			case "$action" in
 				fetch|extract) cd "$BUILDPATH_BASE" ;;
 				configure|compile|install) cd "$BUILDPATH" ;;
-				*) die_internal 'Unknown action: %s' "$action"
+				*) internal_error 'Unknown action: %s' "$action"
+				   die_internal ;;
 			esac
 
 			handler="$(funcify "$component")_$action"
@@ -481,10 +477,10 @@ help()
 
 	Options:
 	  -p PROC    Change procedure (see below for more information)
-	  -f COMPS   Force-rebuild components COMPS from scratch
-	             [default='$COMPS_FORCE']
-	  -x COMPS   Exclude components COMPS (-f overrides this)
-	             [default='$COMPS_EXCLUDE']
+	  -f COMPS   Comma-separated list of components to be force-compiled from scratch
+	             [default=$COMPS_FORCE]
+	  -x COMPS   Comma-separated list of components to be excluded (-f overrides this)
+	             [default=$COMPS_EXCLUDE]
 	  -c COMPS   Only build components COMPS (instead of all)
 	  -j N       Compile with N jobs [default=$JOBS]
 	  -q FLAGS   Additional flags passed to qemu's \`configure\` script
@@ -495,7 +491,7 @@ help()
 
 	Components:
 	  $COMPS
-	  You may specify 'all'
+	  For -f and -x, you may also specify \`all\`.
 
 	Architectures:
 	$(help_list_with_default "$DEFAULT_ARCH" $ARCHS)
@@ -561,8 +557,8 @@ get_options()
 	while getopts :p:f:x:c:j:q:slyh opt; do
 		case "$opt" in
 			p) PROCEDURE="$OPTARG" ;;
-			f) COMPS_FORCE="$OPTARG" ;;
-			x) COMPS_EXCLUDE="$OPTARG" ;;
+			f) COMPS_FORCE="$(printf "$OPTARG" | sed -e 's/,/ /g')" ;;
+			x) COMPS_EXCLUDE="$(printf "$OPTARG" | sed -e 's/,/ /g')";;
 			c) COMPS="$OPTARG" ;;
 			j) JOBS="$OPTARG" ;;
 			q) QEMU_FLAGS="$OPTARG" ;;
@@ -598,10 +594,8 @@ main()
 	LOGFILE="$CHEFROOT_BUILD/build.log"
 
 	# Command line arguments:
-	get_options "$@"
-	shift $ARGSHIFT
-	get_release "$@"
-	shift $ARGSHIFT
+	get_options "$@" && shift $ARGSHIFT
+	get_release "$@" && shift $ARGSHIFT
 	test $# -eq 0 || die_help "trailing arguments: $@"
 
 	# Procedure:

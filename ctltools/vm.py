@@ -68,7 +68,6 @@ class VM:
                 except ValueError as ve:
                     utils.warn(ve)
         self.path_tar_gz = meta.get('path_tar_gz', None)
-        self.path_iso = meta.get('path_iso', None)
         self.os_name = meta.get('os_name', None)
         self.description = meta.get('description', None)
 
@@ -77,7 +76,6 @@ class VM:
         utils.pend("store metadata")
         meta = {
             'path_tar_xz': self.path_tar_gz,
-            'path_iso': self.path_iso,
             'os_name': self.os_name,
             'description': self.description
         }
@@ -105,8 +103,6 @@ class VM:
             string += "\n  Size: %.1fMiB" % (self.size / utils.MEBI)
         if self.os_name:
             string += "\n  Operating System: %s" % self.os_name
-        if self.path_iso:
-            string += "\n  Based on: %s" % self.path_iso
         if self.snapshots:
             string += "\n  Snapshots:"
             for snapshot in self.snapshots:
@@ -200,23 +196,6 @@ class VM:
             utils.fail("%s: ISO file not found" % iso_path)
             exit(1)
 
-        # Copy ISO:
-        self.path_iso = '%s/%s' % (utils.CHEFROOT_VM,
-                                   os.path.basename(iso_path))
-        utils.pend("register ISO", msg="%s => %s" % (iso_path, self.path_iso))
-        if not os.path.exists(self.path_iso):
-            try:
-                shutil.copy(iso_path, self.path_iso)
-            except PermissionError as pe:
-                utils.fail(pe)
-                exit(1)
-            except OSError as ose:
-                utils.fail(ose)
-                exit(1)
-            utils.ok()
-        else:
-            utils.skip("%s already exists" % self.path_iso)
-
         # Launch qemu:
         qemu_cmd = ['%s/qemu-system-%s' % (self.path_executable, utils.ARCH),
                     '-enable-kvm',
@@ -226,7 +205,7 @@ class VM:
                     '-vga', 'std',
                     '-monitor', 'tcp::1234,server,nowait',
                     '-drive', 'file=%s,if=virtio,format=raw' % self.path_raw,
-                    '-drive', 'file=%s,media=cdrom,readonly' % self.path_iso,
+                    '-drive', 'file=%s,media=cdrom,readonly' % iso_path,
                     '-boot', 'order=d']
         utils.info("qemu: command line\n%s" % ' '.join(qemu_cmd))
         utils.pend("qemu", pending=False)
@@ -239,7 +218,7 @@ class VM:
         self.os_name = os_name
         self.description = REMOTES[os_name]['description']
         remote_iso = REMOTES[os_name]['iso']
-        self.path_iso = '%s/%s' % (utils.CHEFROOT_VM, remote_iso)
+        iso_path = '%s/%s' % (utils.CHEFROOT_VM, remote_iso)
         remote_qcow = os.path.basename(self.path_qcow)
         remote_tar_gz = '%s.tar.gz' % os_name
         self.path_tar_gz = '%s/%s' % (self.path, remote_tar_gz)
@@ -258,7 +237,7 @@ class VM:
         # Extract:
         utils.pend("extract bundle")
         mapping = {remote_qcow: self.path_qcow,
-                   remote_iso: self.path_iso}
+                   remote_iso: iso_path}
         for remote in mapping:
             local = mapping[remote]
             msg = '%s => %s' % (remote, local)
@@ -302,23 +281,20 @@ class VM:
         utils.ok()
 
 
-    def list(self, iso: bool, remote: bool, filter: str=None, **kwargs: dict):
+    def list(self, local: bool, remote: bool, filter: str=None, **kwargs: dict):
         if remote:
             for name in REMOTES:
                 print(name)
                 print("  %s" % REMOTES[name]['description'])
                 print("  Based on: %s" % REMOTES[name]['iso'])
-        else:
+        elif local:
             for name in os.listdir(utils.CHEFROOT_VM):
-                if iso:
-                    _, ext = os.path.splitext(name)
-                    if ext != '.iso':
-                        continue
-                    print(name)
-                else:
-                    if not os.path.isdir('%s/%s' % (utils.CHEFROOT_VM, name)):
-                        continue
-                    print(VM(name))
+                if not os.path.isdir('%s/%s' % (utils.CHEFROOT_VM, name)):
+                    continue
+                print(VM(name))
+        else:
+            internal_error("list(): neither local nor remote list chosen")
+            exit(127)
 
     # MAIN =====================================================================
 
@@ -373,9 +349,6 @@ class VM:
         plist_source.add_argument('-l', '--local', action='store_true',
                                   default=True,
                                   help="List locally available VMs [default]")
-        plist_source.add_argument('-i', '--iso', action='store_true',
-                                  default=False,
-                                  help="List locally registered ISOs")
         plist_source.add_argument('-r', '--remote', action='store_true',
                                   default=False,
                                   help="List remotely available VMs")
@@ -395,20 +368,15 @@ class VM:
         utils.ok()
 
 
-    @staticmethod
-    def main(argv: [str]):
-        # Check environment:
-        if not os.path.isdir(utils.CHEFROOT_VM):
-            VM.vm_init(utils.CHEFROOT_VM)
-
-        # Parse command line arguments:
-        kwargs = VM.parse_args(argv)
-        utils.parse_release(kwargs['release'])
-
-        # Create VM and handle action:
-        vm = VM(kwargs.get('name', None))
-        return kwargs['action'](vm, **kwargs)
-
-
 if __name__ == '__main__':
-    VM.main(sys.argv)
+    # Check environment:
+    if not os.path.isdir(utils.CHEFROOT_VM):
+        VM.vm_init(utils.CHEFROOT_VM)
+
+    # Parse command line arguments:
+    kwargs = VM.parse_args(sys.argv)
+    utils.parse_release(kwargs['release'])
+
+    # Create VM and handle action:
+    vm = VM(kwargs.get('name', None))
+    exit(kwargs['action'](vm, **kwargs))

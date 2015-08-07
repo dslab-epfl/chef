@@ -51,4 +51,4 @@ sudo ldconfig
 cd -
 
 # dependencies for ctl:
-sudo apt-get install -y coreutils python3 python3-netifaces python3-psutil python3-requests python3-yaml
+sudo apt-get install -y coreutils python3 python3-netifaces python3-psutil python3-requests python3-yaml parallel

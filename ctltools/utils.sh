@@ -16,6 +16,7 @@ FALSE=0
 SUCCESS=0
 FAILURE=1
 SKIPPED=42 # ... just to be sure
+INTERNAL=127
 
 # Test if a variable is purely (decimal) numeric
 is_numeric()
@@ -206,7 +207,7 @@ FATAL="[${ESC_ERROR}FATAL${ESC_RESET}]"
 FAIL="[${ESC_ERROR}FAIL${ESC_RESET}]"
 WARN="[${ESC_WARNING}WARN${ESC_RESET}]"
 _OK_="[${ESC_SUCCESS} OK ${ESC_RESET}]"
-SKIP="[${ESC_SUCCESS}SKIP${ESC_RESET}]"
+SKIP="[SKIP]"
 INFO="[${ESC_MISC}INFO${ESC_RESET}]"
 ALRT="[${ESC_SPECIAL} !! ${ESC_RESET}]"
 ABRT="[${ESC_ERROR}ABORT${ESC_RESET}]"
@@ -227,12 +228,17 @@ info()  { _print "$INFO " $TRUE "$@"; }
 warn()  { _print "$WARN " $TRUE "$@" >&2; }
 skip()  { _print "$SKIP " $TRUE "$@"; }
 fail()  { _print "$FAIL " $TRUE "$@" >&2; }
-pend()  { _print "$PEND " $TRUE "$@"; }
-pend_() { _print "$PEND " $FALSE "$@"; }
 alert() { _print "$ALRT " $TRUE "$@"; }
 abort() { _print "\n$ABRT " $TRUE "$@" >&2; }
 ok()    { _print "$_OK_ " $TRUE "$@"; }
 debug() { _print "$DEBUG " $TRUE "$@"; }
+pend()  { _print "$PEND " $TRUE "$@"; }
+pend_()
+{
+	printf "$ESC_SAVE"
+	_print "$PEND " $FALSE "$@"
+	printf "$ESC_RESTORE"
+}
 
 _print_emphasised()
 {
@@ -251,28 +257,22 @@ track()
 	track_msg="$1"
 	shift
 
+	track_retval=$SUCCESS
 	if [ $VERBOSE -eq $TRUE ]; then
-		track_status=$SUCCESS
-		"$@" || track_status=$?
-		test $track_status -ne $SKIPPED || track_status=$SUCCESS
-		return $track_status
+		pend '%s' "$track_msg"
+		"$@" || track_retval=$?
 	else
-		printf "$ESC_SAVE"; _print "$PEND " $FALSE '%s' "$track_msg"
-		track_status=$SUCCESS
-		{ "$@" || track_status=$?; } >>"$LOGFILE" 2>>"$LOGFILE"
-		case $track_status in
-			$SUCCESS) track_print=ok ;;
-			$SKIPPED) track_print=skip ;;
-			*) track_print=fail ;;
-		esac
-		printf "$ESC_RESTORE"; $track_print '%s' "$track_msg"
-
-		if [ $track_print != fail ]; then
-			return $SUCCESS
-		else
-			return $FAILURE
-		fi
+		pend_ '%s' "$track_msg"
+		{ "$@" || track_retval=$?; } >>"$LOGFILE" 2>>"$LOGFILE"
 	fi
+	case $track_retval in
+		$SUCCESS) track_print=ok ;;
+		$SKIPPED) track_print=skip; track_retval=$SUCCESS ;;
+		$INTERNAL) die_internal ;;
+		*) track_print=fail ;;
+	esac
+	$track_print '%s' "$track_msg"
+	return $track_retval
 }
 
 # USER INPUT ===================================================================
@@ -287,7 +287,8 @@ ask()
 		[Yy]*) ask_sel='[Y/n]' ;;
 		[Nn]*) ask_sel='[y/N]' ;;
 		'') ask_sel='[y/n]' ;;
-		*) die_internal "ask(): invalid default '%s'" "$ask_default" ;;
+		*) internal_error "ask(): invalid default '%s'" "$ask_default"
+		   die_internal ;;
 	esac
 	while true; do
 		_print_emphasised "$ask_colour" "$ask_format $ask_sel " "$@"
@@ -384,10 +385,14 @@ die_help()
 # Internal reasons to crash
 die_internal()
 {
-	die_internal_format="$1"
+	fail 'Internal error: %s' "$INTERNAL_ERROR"
+	die $INTERNAL
+}
+internal_error()
+{
+	internal_error_format="$1"
 	shift
-	fatal "Internal error: $die_internal_format" "$@"
-	die 127
+	INTERNAL_ERROR="$(printf "$internal_error_format" "$@")"
 }
 
 # LANGUAGE =====================================================================
@@ -445,6 +450,7 @@ parse_release()
 		debug)
 			ASSERTS='Debug+Asserts'
 			LLVM_BUILD="$LLVM_BUILD_DEBUG" ;;
-		*) die_internal 'parse_release(): unknown target %s' "$TARGET" ;;
+		*) internal_error 'parse_release(): unknown target %s' "$TARGET"
+		   die_internal ;;
 	esac
 }

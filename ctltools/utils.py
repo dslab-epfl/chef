@@ -219,12 +219,13 @@ else:
 WARN = '[%sWARN%s]' % (ESC_WARNING, ESC_RESET)
 FAIL = '[%sFAIL%s]' % (ESC_ERROR, ESC_RESET)
 _OK_ = '[%s OK %s]' % (ESC_SUCCESS, ESC_RESET)
-SKIP = '[%sSKIP%s]' % (ESC_SUCCESS, ESC_RESET)
+SKIP = '[SKIP]'
 INFO = '[%sINFO%s]' % (ESC_MISC, ESC_RESET)
 ALRT = '[%s !! %s]' % (ESC_SPECIAL, ESC_RESET)
 ABRT = '[%sABORT%s]' % (ESC_ERROR, ESC_RESET)
 DEBG = '[%sDEBUG%s]' % (ESC_SPECIAL, ESC_RESET)
 PEND = '[ .. ]'
+INTERNAL = '[%sINTERNAL%s]' % (ESC_ERROR, ESC_RESET)
 msg_prefix = None
 
 def set_msg_prefix(prefix: str):
@@ -245,25 +246,29 @@ def print_msg(status: str, msg: str, file=sys.stdout, eol: str='\n',
 
 # start ...
 def pend(prefix: str, msg: str=None, pending: bool=True):
-    set_msg_prefix(prefix)
+    if prefix:
+        set_msg_prefix(prefix)
     print_msg(PEND, msg, eol=('\n', ESC_RETURN)[pending], erase_prefix=False)
 
 # ... and end
-def info(msg: str):
-    print_msg(INFO, msg)
+def info(msg: str, erase_prefix: bool=True):
+    print_msg(INFO, msg, erase_prefix=erase_prefix)
 def skip(msg: str):
     print_msg(SKIP, msg)
 def ok(msg: str=None):
     print_msg(_OK_, msg)
 def fail(msg: str):
     print_msg(FAIL, msg, file=sys.stderr)
-def warn(msg: str):
-    print_msg(WARN, msg, file=sys.stderr)
+def warn(msg: str, erase_prefix: bool=True):
+    print_msg(WARN, msg, erase_prefix=erase_prefix, file=sys.stderr)
 def alert(msg: str):
     print_msg(ALRT, msg)
 def abort(msg: str):
     print()
     print_msg(ABRT, msg)
+def internal_error(msg: str):
+    print_msg(INTERNAL, msg, file=sys.stderr)
 
 def debug(msg: str):
     print_msg(DEBG, msg, file=sys.stderr, erase_prefix=False)
+
