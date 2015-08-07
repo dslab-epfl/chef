@@ -257,7 +257,7 @@ def parse_cmd_line():
                         help="Only display the runtime configuration and exit")
 
     # Positional: VM name:
-    parser.add_argument('vm_name',
+    parser.add_argument('VM[:snapshot]',
                         help="Name of the VM to use (see `ctl vm list`)")
 
     # Positional: Run mode:
@@ -275,8 +275,6 @@ def parse_cmd_line():
     #             Run mode: Preparation:
     prepare_mode = modes.add_parser('prep', help="Prepare mode")
     prepare_mode.set_defaults(mode='prep')
-    prepare_mode.add_argument('-s', '--snapshot', default=None,
-                              help="Snapshot to load from")
 
     #             Run mode: Symbolic:
     symbolic_mode = modes.add_parser('sym', help="Symbolic mode")
@@ -297,8 +295,6 @@ def parse_cmd_line():
                                help="Seconds to wait before executing next command")
     symbolic_mode.add_argument('--expname', default='auto_%s' % TIMESTAMP,
                                help="Name of the experiment")
-    symbolic_mode.add_argument('snapshot',
-                               help="Snapshot to resume from")
     symbolic_mode.add_argument('command', nargs=argparse.REMAINDER,
                                help="The command to execute")
 
@@ -307,6 +303,9 @@ def parse_cmd_line():
     kwargs = vars(args) # make it a dictionary, for easier use
 
     # Adapt a few options:
+    vm_snapshot = kwargs['VM[:snapshot]'].split(':')
+    kwargs['VM'] = vm_snapshot[0]
+    kwargs['snapshot'] = vm_snapshot[1] if len(vm_snapshot) > 1 else None
     kwargs['vnc_port'] = VNC_PORT_BASE + kwargs['vnc_display']
     if kwargs['mode'] == 'sym':
         kwargs['config_file'] = os.path.abspath(kwargs['config_file'])
@@ -320,12 +319,6 @@ def parse_cmd_line():
 
 def build_qemu_cmd_line(args):
     qemu_cmd_line = []
-
-    # VM:
-    vm = VM(args['vm_name'])
-    if not vm.exists():
-        utils.fail('%s: VM does not exist' % vm.name)
-        exit(1)
 
     # Debug:
     if args['gdb']:
@@ -346,6 +339,18 @@ def build_qemu_cmd_line(args):
 
     # Base command:
     qemu_cmd_line.append(qemu_path);
+
+    # VM:
+    vm = VM(args['VM'])
+    if not vm.exists():
+        utils.fail('%s: VM does not exist' % vm.name)
+        exit(1)
+
+    # Snapshots:
+    if args['snapshot']:
+        if args['snapshot'] not in vm.snapshots:
+            utils.fail("%s: no such snapshot" % args['snapshot'])
+        qemu_cmd_line.extend(['-loadvm', args['snapshot']])
 
     # General: VM image, CPU, qemu monitor, VNC:
     qemu_cmd_line.extend([
@@ -373,12 +378,6 @@ def build_qemu_cmd_line(args):
     # Mode-specific: KVM:
     if args['mode'] == 'kvm':
         qemu_cmd_line.extend(['-enable-kvm', '-smp', str(args['cores'])])
-
-    # Mode-specific: non-KVM:
-    elif args['snapshot']:
-        if args['snapshot'] not in vm.snapshots:
-            utils.fail("%s: no such snapshot" % args['snapshot'])
-        qemu_cmd_line.extend(['-loadvm', args['snapshot']])
 
     # Mode-specific: Symbolic:
     if args['mode'] == 'sym':
@@ -410,7 +409,7 @@ def batch_execute(args: dict):
     bare_cmd_lines = []
     from batch import Batch
     batch = Batch(args['batch_file'])
-    batch_commands = batch.get_commands()
+    batch_commands = batch.get_commands() # the not-yet-expanded commands
     for command in batch_commands:
         bare_cmd_lines.extend(command.get_cmd_lines())
 
@@ -434,7 +433,7 @@ def batch_execute(args: dict):
                         % (args['vnc_display'] + batch_offset)])
         cmd_line.extend(['--release', utils.RELEASE])
         cmd_line.extend(['--network', args['network']])
-        cmd_line.extend([args['vm_name']])
+        cmd_line.extend([args['VM']])
         cmd_line.extend(['sym'])
         cmd_line.extend(['--command-port', '%d'
                         % (args['command_port'] + batch_offset)])
@@ -452,8 +451,7 @@ def batch_execute(args: dict):
         batch_offset += 1
         utils.debug('%s' % cmd_line)
 
-    parallel_cmd_line = build_parallel_cmd_line(args);
-    p2 = subprocess.Popen(parallel_cmd_line, stdin=subprocess.PIPE)
+    p2 = subprocess.Popen(build_parallel_cmd_line(args), stdin=subprocess.PIPE)
     p2.communicate(bytes('\n'.join(cmd_lines), 'utf-8'))
 
 
@@ -461,8 +459,6 @@ def main():
     args = parse_cmd_line()
 
     if args['mode'] == 'sym' and args['batch_file']:
-        # FIXME this feature has not been tested in a loooooong time:
-        utils.warn("this feature has not been thoroughly tested yet!")
         batch_execute(args)
     else:
         execute(args, build_cmd_line(args))
