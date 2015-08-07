@@ -225,6 +225,7 @@ ALRT = '[%s !! %s]' % (ESC_SPECIAL, ESC_RESET)
 ABRT = '[%sABORT%s]' % (ESC_ERROR, ESC_RESET)
 DEBG = '[%sDEBUG%s]' % (ESC_SPECIAL, ESC_RESET)
 PEND = '[ .. ]'
+INTERNAL = '[%sINTERNAL%s]' % (ESC_ERROR, ESC_RESET)
 msg_prefix = None
 
 def set_msg_prefix(prefix: str):
@@ -264,6 +265,9 @@ def alert(msg: str):
 def abort(msg: str):
     print()
     print_msg(ABRT, msg)
+def internal_error(msg: str):
+    print_msg(INTERNAL, msg, file=sys.stderr)
 
 def debug(msg: str):
     print_msg(DEBG, msg, file=sys.stderr, erase_prefix=False)
+
