@@ -47,8 +47,7 @@ class VM:
         self.name = name
         self.path = '%s/%s' % (utils.CHEFROOT_VM, name)
         self.path_qcow = '%s/disk.qcow2' % self.path
-        self.path_raw = '%s/disk.raw' % self.path
-        self.path_s2e = '%s/disk.s2e' % self.path
+        self.path_raw = '%s/disk.s2e' % self.path
         self.path_meta = '%s/meta' % self.path
         self.path_defunct = '%s/defunct' % self.path
         self.defunct = os.path.exists(self.path_defunct)
@@ -89,7 +88,10 @@ class VM:
         if not os.path.isdir(self.path):
             return
         for name in os.listdir(self.path):
-            snapshot = re.search('(?<=disk.s2e.).+', name)
+            snapshot = re.search(
+                '(?<=%s\.).+' % os.path.basename(self.path_raw),
+                name
+            )
             if snapshot:
                 self.snapshots.append(snapshot.group(0))
 
@@ -114,8 +116,7 @@ class VM:
 
     def exists(self):
         return os.path.isdir(self.path) \
-           and os.path.exists(self.path_raw) \
-           and os.path.exists(self.path_s2e)
+           and os.path.exists(self.path_raw)
 
 
     def initialise(self, force: bool):
@@ -144,24 +145,6 @@ class VM:
                 exit(1)
 
 
-    def create_s2e(self):
-        utils.pend("symlink S²E image")
-        dest = os.path.basename(self.path_raw)
-        exists = os.path.exists(self.path_s2e)
-        if exists:
-            dest_real = os.path.readlink(self.path_s2e)
-        invalid = exists and dest != dest_real
-        if not exists or invalid:
-            if utils.execute(['ln', '-fs', dest, self.path_s2e],
-                             msg="symlink") != 0:
-                self.mark_defunct()
-                exit(1)
-            if invalid:
-                utils.note("fix invalid S²E image (pointed")
-            else:
-                utils.ok()
-
-
     def mark_defunct(self):
         self.defunct = True
         open(self.path_defunct, 'w').close()
@@ -180,9 +163,6 @@ class VM:
             exit(1)
         self.size = size
         utils.ok()
-
-        # S2E image:
-        self.create_s2e()
 
         # Metadata:
         self.store_meta()
@@ -260,9 +240,6 @@ class VM:
             self.mark_defunct()
             exit(1)
         utils.ok()
-
-        # S2E image:
-        self.create_s2e()
 
         # Metadata:
         self.store_meta()

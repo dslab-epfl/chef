@@ -346,6 +346,16 @@ def build_qemu_cmd_line(args):
         utils.fail('%s: VM does not exist' % vm.name)
         exit(1)
 
+    # VM image:
+    if args['mode'] == 'kvm':
+        qemu_drive_options = 'if=virtio,format=raw'
+    else:
+        qemu_drive_options = 'cache=writeback,format=s2e'
+    qemu_cmd_line.extend([
+        '-drive',
+        'file=%s,%s' % (vm.path_raw, qemu_drive_options)
+    ])
+
     # Snapshots:
     if args['snapshot']:
         if args['snapshot'] not in vm.snapshots:
@@ -386,9 +396,6 @@ def build_qemu_cmd_line(args):
             '-s2e-verbose'
         ])
         qemu_cmd_line.extend(['-s2e-output-dir', args['exppath']])
-
-    # VM path:
-    qemu_cmd_line.append((vm.path_s2e, vm.path_raw)[args['mode'] == 'kvm'])
 
     return qemu_cmd_line
 
