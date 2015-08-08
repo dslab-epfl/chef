@@ -59,6 +59,67 @@
 #define S2E_INSTRUCTION_REGISTERS_SIMPLE(val)           \
     S2E_INSTRUCTION_REGISTERS_COMPLEX(val, 00)
 
+#ifdef __x86_64__
+#define S2E_CONCRETE_PROLOGUE \
+        "push %%rbx\n"        \
+        "push %%rsi\n"        \
+        "push %%rdi\n"        \
+        "push %%r8\n"         \
+        "push %%r9\n"         \
+        "push %%r10\n"        \
+        "push %%r11\n"        \
+        "push %%r12\n"        \
+        "push %%r13\n"        \
+        "push %%r14\n"        \
+        "push %%r15\n"        \
+        "push %%rbp\n"        \
+                              \
+        "xor  %%rbx, %%rbx\n" \
+        "xor  %%rsi, %%rsi\n" \
+        "xor  %%rdi, %%rdi\n" \
+        "xor  %%rbp, %%rbp\n" \
+        "xor  %%r8, %%r8\n"   \
+        "xor  %%r9, %%r9\n"   \
+        "xor  %%r10, %%r10\n" \
+        "xor  %%r11, %%r11\n" \
+        "xor  %%r12, %%r12\n" \
+        "xor  %%r13, %%r13\n" \
+        "xor  %%r14, %%r14\n" \
+        "xor  %%r15, %%r15\n"
+
+#define S2E_CONCRETE_EPILOGUE \
+        "pop %%rbp\n"         \
+        "pop %%r15\n"         \
+        "pop %%r14\n"         \
+        "pop %%r13\n"         \
+        "pop %%r12\n"         \
+        "pop %%r11\n"         \
+        "pop %%r10\n"         \
+        "pop %%r9\n"          \
+        "pop %%r8\n"          \
+        "pop %%rdi\n"         \
+        "pop %%rsi\n"         \
+        "pop %%rbx\n"
+#else
+#define S2E_CONCRETE_PROLOGUE \
+        "push %%ebx\n"        \
+        "push %%esi\n"        \
+        "push %%edi\n"        \
+        "push %%ebp\n"        \
+        "xor %%ebx, %%ebx\n"  \
+        "xor %%ebp, %%ebp\n"  \
+        "xor %%esi, %%esi\n"  \
+        "xor %%edi, %%edi\n"
+
+#define S2E_CONCRETE_EPILOGUE \
+        "pop %%ebp\n"         \
+        "pop %%edi\n"         \
+        "pop %%esi\n"         \
+        "pop %%ebx\n"
+#endif
+
+
+
 /** Get S2E version or 0 when running without S2E. */
 static inline int s2e_version(void)
 {
@@ -428,21 +489,46 @@ static inline void s2e_moduleexec_add_module(const char *moduleId, const char *m
     );
 }
 
-/**
- *  Transmits a buffer of dataSize length to the plugin named in pluginName.
- *  eax contains the failure code upon return, 0 for success.
- */
-static inline int s2e_invoke_plugin(const char *pluginName, void *data, uint32_t dataSize)
-{
+static inline int __raw_invoke_plugin(const char *pluginName, void *data, uint32_t dataSize) {
     int result;
-    __s2e_touch_string(pluginName);
-    __s2e_touch_buffer(data, dataSize);
+
     __asm__ __volatile__(
         S2E_INSTRUCTION_SIMPLE(0B)
         : "=a" (result) : "a" (pluginName), "c" (data), "d" (dataSize) : "memory"
     );
 
     return result;
+}
+
+static inline int __raw_invoke_plugin_concrete(const char *pluginName, void *data, uint32_t dataSize) {
+    int result;
+
+    __asm__ __volatile__(
+        S2E_CONCRETE_PROLOGUE
+        S2E_INSTRUCTION_SIMPLE(53) /* Clear temp flags */
+
+        "jmp __sip1\n" /* Force concrete mode */
+        "__sip1:\n"
+
+        S2E_INSTRUCTION_SIMPLE(0B)
+        S2E_CONCRETE_EPILOGUE
+
+            : "=a" (result) : "a" (pluginName), "c" (data), "d" (dataSize) : "memory"
+    );
+
+    return result;
+}
+
+/**
+ *  Transmits a buffer of dataSize length to the plugin named in pluginName.
+ *  eax contains the failure code upon return, 0 for success.
+ */
+static inline int s2e_invoke_plugin(const char *pluginName, void *data, uint32_t dataSize)
+{
+    __s2e_touch_string(pluginName);
+    __s2e_touch_buffer((char*)data, dataSize);
+
+    return __raw_invoke_plugin(pluginName, data, dataSize);
 }
 
 /**
@@ -452,81 +538,13 @@ static inline int s2e_invoke_plugin(const char *pluginName, void *data, uint32_t
  */
 static inline int s2e_invoke_plugin_concrete(const char *pluginName, void *data, uint32_t dataSize)
 {
-    int result;
     __s2e_touch_string(pluginName);
-    __s2e_touch_buffer(data, dataSize);
+    __s2e_touch_buffer((char*)data, dataSize);
 
-    __asm__ __volatile__(
-
-        #ifdef __x86_64__
-        "push %%rbx\n"
-        "push %%rsi\n"
-        "push %%rdi\n"
-        "push %%rbp\n"
-        "push %%r8\n"
-        "push %%r9\n"
-        "push %%r10\n"
-        "push %%r11\n"
-        "push %%r12\n"
-        "push %%r13\n"
-        "push %%r14\n"
-        "push %%r15\n"
-
-        "xor  %%rbx, %%rbx\n"
-        "xor  %%rsi, %%rsi\n"
-        "xor  %%rdi, %%rdi\n"
-        "xor  %%rbp, %%rbp\n"
-        "xor  %%r8, %%r8\n"
-        "xor  %%r9, %%r9\n"
-        "xor  %%r10, %%r10\n"
-        "xor  %%r11, %%r11\n"
-        "xor  %%r12, %%r12\n"
-        "xor  %%r13, %%r13\n"
-        "xor  %%r14, %%r14\n"
-        "xor  %%r15, %%r15\n"
-        #else
-        "push %%ebx\n"
-        "push %%ebp\n"
-        "push %%esi\n"
-        "push %%edi\n"
-        "xor %%ebx, %%ebx\n"
-        "xor %%ebp, %%ebp\n"
-        "xor %%esi, %%esi\n"
-        "xor %%edi, %%edi\n"
-        #endif
-
-        S2E_INSTRUCTION_SIMPLE(53) /* Clear temp flags */
-
-        "jmp __sip1\n" /* Force concrete mode */
-        "__sip1:\n"
-
-        S2E_INSTRUCTION_SIMPLE(0B)
-
-#ifdef __x86_64__
-        "pop %%r15\n"
-        "pop %%r14\n"
-        "pop %%r13\n"
-        "pop %%r12\n"
-        "pop %%r11\n"
-        "pop %%r10\n"
-        "pop %%r9\n"
-        "pop %%r8\n"
-        "pop %%rbp\n"
-        "pop %%rdi\n"
-        "pop %%rsi\n"
-        "pop %%rbx\n"
-#else
-        "pop %%edi\n"
-        "pop %%esi\n"
-        "pop %%ebp\n"
-        "pop %%ebx\n"
-#endif
-
-            : "=a" (result) : "a" (pluginName), "c" (data), "d" (dataSize) : "memory"
-    );
-
-    return result;
+    return __raw_invoke_plugin_concrete(pluginName, data, dataSize);
 }
+
+
 
 typedef struct _merge_desc_t {
     uint64_t start;
