@@ -2225,6 +2225,10 @@ bool S2EExecutor::merge(klee::ExecutionState &_base, klee::ExecutionState &_othe
         doStateSwitch(NULL, &other);
     }
 
+    eventLogger->logStateEvent((s1 ? &base : &other),
+            (s1 ? &other : &base),
+            (result ? EVENT_KLEE_MERGE : EVENT_KLEE_FAILED_MERGE), 1);
+
     return result;
 }
 
