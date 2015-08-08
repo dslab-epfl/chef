@@ -87,9 +87,9 @@ static inline void __s2e_touch_buffer(volatile void *buffer, unsigned size)
 
 
 #if defined(__i386__) || defined (__amd64__)
-#include "s2e-x86.h"
+#include "bits/s2e-x86.h"
 #elif defined (__arm__)
-#include "s2e-arm.h"
+#include "bits/s2e-arm.h"
 #endif
 
 
