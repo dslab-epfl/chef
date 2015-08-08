@@ -211,8 +211,8 @@ bool MergingSearcher::mergeEnd(S2EExecutionState *state, bool skipOpcode, bool c
 #ifdef TARGET_I386
     // Skip the opcode
     if (skipOpcode) {
-        target_long val = state->getPc() + 10;
-        state->writeCpuRegisterConcrete(CPU_OFFSET(eip), &val, sizeof(val));
+        state->writeCpuState(offsetof(CPUX86State, eip), state->getPc() + 10,
+                sizeof(target_long)*8);
     }
 
     // Clear temp flags.
