@@ -564,3 +564,40 @@ static inline void s2e_merge_group_end()
     s2e_invoke_plugin_concrete("MergingSearcher", &desc, sizeof(desc));
 }
 
+typedef struct {
+    uint32_t id;
+    uint32_t data;
+    uint32_t dataSize;
+} __attribute__((packed)) syscall_t;
+
+
+static inline int s2e_system_call(const char *pluginName,
+        uint32_t id, volatile void *data, uint32_t dataSize) {
+    syscall_t syscall;
+    syscall.id = id;
+    syscall.data = (uint32_t)(uintptr_t)data;
+    syscall.dataSize = dataSize;
+
+    __s2e_touch_string(pluginName);
+    if (data) {
+        __s2e_touch_buffer((char*)data, dataSize);
+    }
+
+    return __raw_invoke_plugin(pluginName, &syscall, sizeof(syscall));
+}
+
+static inline int s2e_system_call_concrete(const char *pluginName,
+        uint32_t id, volatile void *data, uint32_t dataSize) {
+    syscall_t syscall;
+    syscall.id = id;
+    syscall.data = (uint32_t)(uintptr_t)data;
+    syscall.dataSize = dataSize;
+
+    __s2e_touch_string(pluginName);
+    if (data) {
+        __s2e_touch_buffer((char*)data, dataSize);
+    }
+
+    return __raw_invoke_plugin_concrete(pluginName, &syscall, sizeof(syscall));
+}
+
