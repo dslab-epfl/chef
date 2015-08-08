@@ -6,6 +6,7 @@ s2e = {
     "--use-dfs-search=true",
     "--enable-speculative-forking=false",
     "--end-solver=stp",
+    "--debug-log-state-merge=true"
 --    "--use-cache=false",
 --    "--use-query-pc-log=true"
   }
@@ -13,6 +14,7 @@ s2e = {
 
 plugins = {
   "BaseInstructions",
+  "MergingSearcher"
   --"ExecutionTracer",
   --"MemoryTracer",
   --"InterpreterMonitor",
@@ -20,16 +22,3 @@ plugins = {
 }
 
 pluginsConfig = {}
-
-pluginsConfig.ConcolicSession = {
-    stopOnError = false,
-    useRandomPending = false,
-    usePredictorService = false,
-    stateTimeOut = 3600 -- 180,
-    --seedsFile = "/home/stefan/nice-0.7.2-svn/sym_exec/nice_seeds_2.dat"
-}
-
-pluginsConfig.MemoryTracer = {
-   debugObjectStates = true,
-   monitorMemory = false
-}
