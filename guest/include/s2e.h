@@ -51,23 +51,6 @@ typedef struct _s2e_opcode_module_config_t {
 } __attribute__((packed)) s2e_opcode_module_config_t;
 
 
-#ifdef __x86_64__
-#define S2E_INSTRUCTION_REGISTERS_COMPLEX(val1, val2)   \
-        "push %%rbx\n"                                  \
-        "mov %%rdx, %%rbx\n"                            \
-        S2E_INSTRUCTION_COMPLEX(val1, val2)             \
-        "pop %%rbx\n"
-#else
-#define S2E_INSTRUCTION_REGISTERS_COMPLEX(val1, val2)   \
-        "pushl %%ebx\n"                                 \
-        "movl %%edx, %%ebx\n"                           \
-        S2E_INSTRUCTION_COMPLEX(val1, val2)             \
-        "popl %%ebx\n"
-#endif
-
-#define S2E_INSTRUCTION_REGISTERS_SIMPLE(val)           \
-    S2E_INSTRUCTION_REGISTERS_COMPLEX(val, 00)
-
 /** Forces the read of every byte of the specified string.
   * This makes sure the memory pages occupied by the string are paged in
   * before passing them to S2E, which can't page in memory by itself. */

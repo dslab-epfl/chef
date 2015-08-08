@@ -42,6 +42,22 @@
     S2E_INSTRUCTION_COMPLEX(val, 00)
 
 
+#ifdef __x86_64__
+#define S2E_INSTRUCTION_REGISTERS_COMPLEX(val1, val2)   \
+        "push %%rbx\n"                                  \
+        "mov %%rdx, %%rbx\n"                            \
+        S2E_INSTRUCTION_COMPLEX(val1, val2)             \
+        "pop %%rbx\n"
+#else
+#define S2E_INSTRUCTION_REGISTERS_COMPLEX(val1, val2)   \
+        "pushl %%ebx\n"                                 \
+        "movl %%edx, %%ebx\n"                           \
+        S2E_INSTRUCTION_COMPLEX(val1, val2)             \
+        "popl %%ebx\n"
+#endif
+
+#define S2E_INSTRUCTION_REGISTERS_SIMPLE(val)           \
+    S2E_INSTRUCTION_REGISTERS_COMPLEX(val, 00)
 
 /** Get S2E version or 0 when running without S2E. */
 static inline int s2e_version(void)
@@ -139,21 +155,9 @@ static inline unsigned s2e_get_path_id(void)
 static inline void s2e_make_symbolic(void *buf, int size, const char *name)
 {
     __s2e_touch_string(name);
-    __s2e_touch_buffer(buf, size);
+    __s2e_touch_buffer((char*)buf, size);
     __asm__ __volatile__(
-#ifdef __x86_64__
-        "push %%rbx\n"
-        "mov %%rdx, %%rbx\n"
-#else
-        "pushl %%ebx\n"
-        "movl %%edx, %%ebx\n"
-#endif
-        S2E_INSTRUCTION_SIMPLE(03)
-#ifdef __x86_64__
-        "pop %%rbx\n"
-#else
-        "popl %%ebx\n"
-#endif
+        S2E_INSTRUCTION_REGISTERS_SIMPLE(03)
         : : "a" (buf), "d" (size), "c" (name) : "memory"
     );
 }
@@ -162,21 +166,9 @@ static inline void s2e_make_symbolic(void *buf, int size, const char *name)
 static inline void s2e_make_concolic(void *buf, int size, const char *name)
 {
     __s2e_touch_string(name);
-    __s2e_touch_buffer(buf, size);
+    __s2e_touch_buffer((char*)buf, size);
     __asm__ __volatile__(
-#ifdef __x86_64__
-        "push %%rbx\n"
-        "mov %%rdx, %%rbx\n"
-#else
-        "pushl %%ebx\n"
-        "movl %%edx, %%ebx\n"
-#endif
-        S2E_INSTRUCTION_SIMPLE(11)
-#ifdef __x86_64__
-        "pop %%rbx\n"
-#else
-        "popl %%ebx\n"
-#endif
+        S2E_INSTRUCTION_REGISTERS_SIMPLE(11)
         : : "a" (buf), "d" (size), "c" (name) : "memory"
     );
 }
@@ -207,21 +199,9 @@ static inline int s2e_is_symbolic(void *ptr, size_t size)
 /** Concretize the expression. */
 static inline void s2e_concretize(void *buf, int size)
 {
-    __s2e_touch_buffer(buf, size);
+    __s2e_touch_buffer((char*)buf, size);
     __asm__ __volatile__(
-#ifdef __x86_64__
-        "push %%rbx\n"
-        "mov %%rdx, %%rbx\n"
-#else
-        "pushl %%ebx\n"
-        "movl %%edx, %%ebx\n"
-#endif
-        S2E_INSTRUCTION_SIMPLE(20)
-#ifdef __x86_64__
-        "pop %%rbx\n"
-#else
-        "popl %%ebx\n"
-#endif
+        S2E_INSTRUCTION_REGISTERS_SIMPLE(20)
         : : "a" (buf), "d" (size) : "memory"
     );
 }
@@ -229,21 +209,9 @@ static inline void s2e_concretize(void *buf, int size)
 /** Get example value for expression (without adding state constraints). */
 static inline void s2e_get_example(void *buf, int size)
 {
-    __s2e_touch_buffer(buf, size);
+    __s2e_touch_buffer((char*)buf, size);
     __asm__ __volatile__(
-#ifdef __x86_64__
-        "push %%rbx\n"
-        "mov %%rdx, %%rbx\n"
-#else
-        "pushl %%ebx\n"
-        "movl %%edx, %%ebx\n"
-#endif
-        S2E_INSTRUCTION_SIMPLE(21)
-#ifdef __x86_64__
-        "pop %%rbx\n"
-#else
-        "popl %%ebx\n"
-#endif
+        S2E_INSTRUCTION_REGISTERS_SIMPLE(21)
         : : "a" (buf), "d" (size) : "memory"
     );
 }
@@ -254,19 +222,7 @@ static inline unsigned s2e_get_example_uint(unsigned val)
 {
     unsigned buf = val;
     __asm__ __volatile__(
-#ifdef __x86_64__
-        "push %%rbx\n"
-        "mov %%rdx, %%rbx\n"
-#else
-        "pushl %%ebx\n"
-        "movl %%edx, %%ebx\n"
-#endif
-        S2E_INSTRUCTION_SIMPLE(21)
-#ifdef __x86_64__
-        "pop %%rbx\n"
-#else
-        "popl %%ebx\n"
-#endif
+        S2E_INSTRUCTION_REGISTERS_SIMPLE(21)
         : : "a" (&buf), "d" (sizeof(buf)) : "memory"
     );
     return buf;
@@ -277,19 +233,7 @@ static inline void s2e_kill_state(int status, const char *message)
 {
     __s2e_touch_string(message);
     __asm__ __volatile__(
-#ifdef __x86_64__
-        "push %%rbx\n"
-        "mov %%rdx, %%rbx\n"
-#else
-        "pushl %%ebx\n"
-        "movl %%edx, %%ebx\n"
-#endif
-        S2E_INSTRUCTION_SIMPLE(06)
-#ifdef __x86_64__
-        "pop %%rbx\n"
-#else
-        "popl %%ebx\n"
-#endif
+        S2E_INSTRUCTION_REGISTERS_SIMPLE(06)
         : : "a" (status), "d" (message)
     );
 }
@@ -413,19 +357,7 @@ static inline void s2e_rawmon_loadmodule(const char *name, unsigned loadbase, un
 {
     __s2e_touch_string(name);
     __asm__ __volatile__(
-#ifdef __x86_64__
-        "push %%rbx\n"
-        "mov %%rdx, %%rbx\n"
-#else
-        "pushl %%ebx\n"
-        "movl %%edx, %%ebx\n"
-#endif
-        S2E_INSTRUCTION_SIMPLE(AA)
-#ifdef __x86_64__
-        "pop %%rbx\n"
-#else
-        "popl %%ebx\n"
-#endif
+        S2E_INSTRUCTION_REGISTERS_SIMPLE(AA)
         : : "a" (name), "d" (loadbase), "c" (size)
     );
 }
