@@ -601,3 +601,130 @@ static inline int s2e_system_call_concrete(const char *pluginName,
     return __raw_invoke_plugin_concrete(pluginName, &syscall, sizeof(syscall));
 }
 
+
+/* Chef support */
+
+static inline void __chef_fn_begin(const char *fnName, uint32_t fnNameLen,
+        uintptr_t address) {
+    if (fnName) {
+        __s2e_touch_buffer((char*)fnName, fnNameLen);
+    }
+    __asm__ __volatile__(
+        S2E_INSTRUCTION_COMPLEX(BB, 00)
+        : : "c" (fnName), "a" (fnNameLen), "d" (address)
+    );
+}
+
+static inline void __chef_fn_end(void) {
+    __asm__ __volatile__(
+        S2E_INSTRUCTION_COMPLEX(BB, 01)
+    );
+}
+
+
+static inline void __chef_bb(uint32_t bb) {
+    __asm__ __volatile__(
+/* We don't use registers A and D, so make sure they're not symbolic... */
+#ifdef __x86_64__
+        "push %%rax\n"
+        "push %%rdx\n"
+
+        "xor %%rax, %%rax\n"
+        "xor %%rdx, %%rdx\n"
+#else
+        "push %%eax\n"
+        "push %%edx\n"
+
+        "xor %%eax, %%eax\n"
+        "xor %%edx, %%edx\n"
+#endif
+
+        S2E_CONCRETE_PROLOGUE
+
+        S2E_INSTRUCTION_SIMPLE(53) /* Clear temp flags */
+
+        "jmp __sip1\n" /* Force concrete mode */
+        "__sip1:\n"
+
+        S2E_INSTRUCTION_COMPLEX(BB, 02)
+
+        S2E_CONCRETE_EPILOGUE
+
+#ifdef __x86_64__
+        "pop %%rdx\n"
+        "pop %%rax\n"
+#else
+        "pop %%edx\n"
+        "pop %%eax\n"
+#endif
+        : : "c" (bb)
+    );
+}
+
+
+static inline int __chef_hlpc(uint32_t opcode, uint32_t *hlpc,
+        uint32_t hlpcLen) {
+    int result = 0;
+
+    __s2e_touch_buffer((char*)hlpc, hlpcLen*sizeof(uint32_t));
+
+    __asm__ __volatile__(
+        S2E_CONCRETE_PROLOGUE
+        S2E_INSTRUCTION_SIMPLE(53) /* Clear temp flags */
+
+        "jmp __sip1\n" /* Force concrete mode */
+        "__sip1:\n"
+
+        S2E_INSTRUCTION_COMPLEX(BB, 03)
+        S2E_CONCRETE_EPILOGUE
+
+        : "=a" (result) : "a" (opcode), "c" (hlpc), "d" (hlpcLen) : "memory"
+    );
+    return result;
+}
+
+
+typedef enum {
+    CHEF_TRACE_CALL = 0,
+    CHEF_TRACE_EXCEPTION = 1,
+    CHEF_TRACE_LINE = 2,
+    CHEF_TRACE_RETURN = 3,
+    CHEF_TRACE_C_CALL = 4,
+    CHEF_TRACE_C_EXCEPTION = 5,
+    CHEF_TRACE_C_RETURN = 6,
+    CHEF_TRACE_INIT = 7
+} hl_trace_reason;
+
+
+typedef struct {
+    /* Identification */
+    int32_t last_inst;
+    uintptr_t function;
+
+    /* Debug info */
+    int32_t line_no;
+    uintptr_t fn_name;
+    uintptr_t file_name;
+} __attribute__((packed)) hl_frame_t;
+
+
+static inline void __chef_hl_trace(hl_trace_reason reason, hl_frame_t *frame,
+        uint32_t frameCount) {
+    int i;
+    __s2e_touch_buffer((char*)frame, frameCount*sizeof(hl_frame_t));
+
+    for (i = 0; i < frameCount; ++i) {
+        if (frame[i].fn_name) {
+            __s2e_touch_string((char*)frame[i].fn_name);
+        }
+        if (frame[i].file_name) {
+            __s2e_touch_string((char*)frame[i].file_name);
+        }
+    }
+
+    __asm__ __volatile__(
+        S2E_INSTRUCTION_COMPLEX(BB, 04)
+
+        : : "c" (reason), "a" (frame), "d" (frameCount)
+    );
+}
