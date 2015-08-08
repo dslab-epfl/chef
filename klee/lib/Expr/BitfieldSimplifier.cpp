@@ -80,12 +80,15 @@ BitfieldSimplifier::ExprBitsInfo BitfieldSimplifier::doSimplifyBits(
 {
     ExprHashMap<BitsInfo>::iterator it = m_bitsInfoCache.find(e);
     if(it != m_bitsInfoCache.end()) {
+#if 0
         /* This expression was already visited before */
         if((ignoredBits & ~it->second.ignoredBits) == 0) {
             /* ignoredBits is not more restrictive then before,
                there is no point in reoptimizing the expression */
             return *it;
         }
+#endif
+        return *it;
     }
 
     ref<Expr> kids[8];
@@ -380,7 +383,24 @@ ref<Expr> BitfieldSimplifier::simplify(ref<Expr> e,
         return e;
     }
 
+    ExprHashMap<ExprBitsInfo >::iterator it = m_simplifiedExpressions.find(e);
+    if (it != m_simplifiedExpressions.end()) {
+        ++m_cacheHits;
+        if (knownZeroBits) {
+            *knownZeroBits = (*it).second.second.knownZeroBits;
+        }
+        if (knownOneBits) {
+            *knownOneBits = (*it).second.second.knownOneBits;
+        }
+        return (*it).second.first;
+    }
+
+    ++m_cacheMisses;
+
     ExprBitsInfo ret = doSimplifyBits(e, 0);
+
+    m_simplifiedExpressions[e] = ret;
+
 
     if (PrintSimplifier && !cste && klee_message_stream)
         *klee_message_stream << "AFTER  SIMPL: " << ret.first << '\n';

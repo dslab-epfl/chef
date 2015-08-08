@@ -55,13 +55,23 @@ protected:
     /// XXX: this cache will probably grow too large with time
     ExprHashMap<BitsInfo> m_bitsInfoCache;
 
+    ExprHashMap<ExprBitsInfo> m_simplifiedExpressions;
+
     ref<Expr> replaceWithConstant(ref<Expr> e, uint64_t value);
 
     ExprBitsInfo doSimplifyBits(ref<Expr> e, uint64_t ignoredBits);
 
 public:
+    uint64_t m_cacheHits, m_cacheMisses;
+
     ref<Expr> simplify(ref<Expr> e, uint64_t *knownZeroBits = NULL,
             uint64_t *knownOneBits = NULL);
+
+
+    BitfieldSimplifier() {
+        m_cacheHits = 0;
+        m_cacheMisses = 0;
+    }
 };
 
 } // namespace klee
