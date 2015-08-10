@@ -154,6 +154,8 @@ class VM:
         os.unlink(tar)
         utils.ok()
 
+        self.scan_snapshots()
+
 
     def _import(self, targz: str, force: bool, **kwargs: dict):
         if not os.path.exists(targz):
@@ -212,24 +214,15 @@ class VM:
         new = VM(clone)
         new.initialise(force)
 
+        # http://bugs.python.org/issue10016
         utils.pend("copy disk image", msg="may take some time")
-        try:
-            shutil.copy(self.path_raw, new.path_raw)
-            utils.ok()
-        except KeyboardInterrupt as ki:
-            utils.abort("%s" % ki)
-            exit(127)
+        utils.execute(['cp', self.path_raw, new.path_raw])
+        utils.ok()
 
         for s in self.snapshots:
             utils.pend("copy snapshot: %s" % s)
-            try:
-                shutil.copy('%s/%s.%s'
-                            % (self.path, os.path.basename(self.path_raw), s),
-                            new.path)
-                utils.ok()
-            except KeyboardInterrupt as ki:
-                utils.abort("%s" % ki)
-                exit(127)
+            utils.execute(['cp', '%s.%s' % (self.path_raw, s), new.path])
+            utils.ok()
         new.scan_snapshots()
 
 
