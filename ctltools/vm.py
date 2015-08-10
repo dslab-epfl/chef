@@ -15,77 +15,30 @@ import argparse
 import sys
 import psutil
 import utils
-import tempfile
-import subprocess
-import signal
 import shutil
-import json
 import re
-
-FETCH_URL_BASE = 'http://localhost/~ayekat' # TODO real host
-
-# TODO split "repository" from script
-REMOTES = {
-    'Debian': {
-        'iso': 'debian-7.8.0-i386-netinst.iso',
-        'description': "Debian 7.8 (Wheezy) with a custom kernel, prepared " +
-                       "for being used with Chef"
-    },
-    'Ubuntu': {
-        'iso': 'ubuntu-14.04-desktop-i386.iso',
-        'description': "Ubuntu 14.04 (Trusty Tahr)"
-    },
-}
-
 
 class VM:
     cores = os.cpu_count()
     memory = min(max(psutil.virtual_memory().total / 4, 2 * 1024), 4 * 1024)
 
 
-    def __init__(self, name: str):
+    def __init__(self, name: str, must_exist: bool):
         self.name = name
         self.path = '%s/%s' % (utils.CHEFROOT_VM, name)
-        self.path_qcow = '%s/disk.qcow2' % self.path
         self.path_raw = '%s/disk.s2e' % self.path
-        self.path_meta = '%s/meta' % self.path
-        self.path_defunct = '%s/defunct' % self.path
-        self.defunct = os.path.exists(self.path_defunct)
+        self.scan_snapshots()
         self.path_executable = '%s/%s-%s-%s/qemu' \
                   % (utils.CHEFROOT_BUILD, utils.ARCH, utils.TARGET, utils.MODE)
-        self.load_meta()
-        self.scan_snapshots()
         self.size = os.stat(self.path_raw).st_size if self.exists() else 0
-
-
-    def load_meta(self):
-        meta = {}
-        if os.path.exists(self.path_meta):
-            with open(self.path_meta, 'r') as f:
-                try:
-                    meta = json.load(f)
-                except ValueError as ve:
-                    utils.warn(ve)
-        self.path_tar_gz = meta.get('path_tar_gz', None)
-        self.os_name = meta.get('os_name', None)
-        self.description = meta.get('description', None)
-
-
-    def store_meta(self):
-        utils.pend("store metadata")
-        meta = {
-            'path_tar_xz': self.path_tar_gz,
-            'os_name': self.os_name,
-            'description': self.description
-        }
-        with open(self.path_meta, 'w') as f:
-            json.dump(meta, f)
-        utils.ok()
+        if not self.exists() and must_exist:
+            fail("%s: VM does not exist" % name)
+            exit(1)
 
 
     def scan_snapshots(self):
         self.snapshots = []
-        if not os.path.isdir(self.path):
+        if not self.exists():
             return
         for name in os.listdir(self.path):
             snapshot = re.search(
@@ -97,14 +50,9 @@ class VM:
 
 
     def __str__(self):
-        string = "%s" % self.name
-        if self.defunct:
-            string += "\n  %s<defunct>%s" % (utils.ESC_ERROR, utils.ESC_RESET)
-            return string
+        string = "%s%s%s" % (utils.ESC_BOLD, self.name, utils.ESC_RESET)
         if self.size > 0:
             string += "\n  Size: %.1fMiB" % (self.size / utils.MEBI)
-        if self.os_name:
-            string += "\n  Operating System: %s" % self.os_name
         if self.snapshots:
             string += "\n  Snapshots:"
             for snapshot in self.snapshots:
@@ -115,8 +63,7 @@ class VM:
     # UTILITIES ================================================================
 
     def exists(self):
-        return os.path.isdir(self.path) \
-           and os.path.exists(self.path_raw)
+        return os.path.exists(self.path_raw)
 
 
     def initialise(self, force: bool):
@@ -144,12 +91,6 @@ class VM:
                 utils.info(msg)
                 exit(1)
 
-
-    def mark_defunct(self):
-        self.defunct = True
-        open(self.path_defunct, 'w').close()
-
-
     # ACTIONS ==================================================================
 
     def create(self, size: str, force: bool, **kwargs: dict):
@@ -157,92 +98,78 @@ class VM:
 
         # Raw image:
         utils.pend("create %sB image" % size)
-        if utils.execute(['%s/qemu-img' % self.path_executable,
-                          'create', self.path_raw, size],
-                         msg="execute qemu-img") != 0:
-            exit(1)
+        utils.execute(['%s/qemu-img' % self.path_executable,
+                       'create', self.path_raw, size],
+                      msg="execute qemu-img")
         self.size = size
         utils.ok()
 
-        # Metadata:
-        self.store_meta()
 
+    def export(self, targz: str, **kwargs: dict):
+        if not targz:
+            targz = '%s.tar.gz' % self.name
+        targz = '%s/%s' % (os.path.dirname(targz) or os.getcwd(), os.path.basename(targz))
+        tar, _ = os.path.splitext(targz)
+        if os.path.exists(tar):
+            utils.fail("%s: tarball already exists" % tar)
+            exit(1)
+        if os.path.exists(targz):
+            utils.fail("%s: gzipped tarball already exists" % targz)
+            exit(1)
 
-    def install(self, iso_path: str, **kwargs: dict):
-        if not self.exists():
-            utils.fail("%s: VM does not exist" % self.name)
-            exit(1)
-        if not os.path.exists(iso_path):
-            utils.fail("%s: ISO file not found" % iso_path)
-            exit(1)
+        os.chdir(self.path)  # create intermediate files in VM's path
 
-        # Launch qemu:
-        qemu_cmd = ['%s/qemu-system-%s' % (self.path_executable, utils.ARCH),
-                    '-enable-kvm',
-                    '-cpu', 'host',
-                    '-smp', '%d' % VM.cores,
-                    '-m', '%d' % VM.memory,
-                    '-vga', 'std',
-                    '-monitor', 'tcp::1234,server,nowait',
-                    '-drive', 'file=%s,if=virtio,format=raw' % self.path_raw,
-                    '-drive', 'file=%s,media=cdrom,readonly' % iso_path,
-                    '-boot', 'order=d']
-        utils.info("qemu: command line\n%s" % ' '.join(qemu_cmd))
-        utils.pend("qemu", pending=False)
-        if utils.execute(qemu_cmd, msg="run qemu", stdout=True, stderr=True) != 0:
-            exit(1)
+        utils.pend("convert disk image")
+        local_qcow = '%s/disk.qcow2' % self.path
+        utils.execute(['%s/qemu-img' % self.path_executable, 'convert',
+                       self.path_raw, '-f', 'raw', '-O', 'qcow2', local_qcow])
+        utils.ok()
+
+        utils.pend("package disk image")
+        utils.execute(['tar', 'cf', tar, local_qcow])
+        utils.ok()
+
+        for s in self.snapshots:
+            utils.pend("package snapshot: %s" % s)
+            utils.execute(['tar', 'rf', tar, '%s.%s' % (self.path_raw, s)])
+            utils.ok()
+
+        utils.pend("clean up")
+        os.unlink(local_qcow)
+        utils.ok()
+
+        utils.pend("compress tarball", msg="(may take some time)")
+        utils.execute(['gzip', tar])
         utils.ok()
 
 
-    def fetch(self, os_name: str, force: bool, **kwargs: dict):
-        self.os_name = os_name
-        self.description = REMOTES[os_name]['description']
-        remote_iso = REMOTES[os_name]['iso']
-        iso_path = '%s/%s' % (utils.CHEFROOT_VM, remote_iso)
-        remote_qcow = os.path.basename(self.path_qcow)
-        remote_tar_gz = '%s.tar.gz' % os_name
-        self.path_tar_gz = '%s/%s' % (self.path, remote_tar_gz)
+    def clone(self, clone: str, force: bool, **kwargs: dict):
+        if self.name == clone:
+            utils.fail("%s: please specify a different name" % clone)
+            exit(2)
 
-        # Initialise:
-        self.initialise(force)
+        new = VM(clone, must_exist=False)
+        new.initialise(force)
 
-        # Fetch:
-        url = '%s/%s' % (FETCH_URL_BASE, remote_tar_gz)
-        utils.info("URL: %s" % url)
-        if utils.fetch(url, self.path_tar_gz, unit=utils.MEBI,
-                       msg="fetch image bundle") != 0:
-            self.mark_defunct()
-            exit(1)
+        utils.pend("copy disk image", msg="(may take some time)")
+        try:
+            shutil.copy(self.path_raw, new.path_raw)
+            utils.ok()
+        except KeyboardInterrupt as ki:
+            utils.abort("%s" % ki)
+            exit(127)
 
-        # Extract:
-        utils.pend("extract bundle")
-        mapping = {remote_qcow: self.path_qcow,
-                   remote_iso: iso_path}
-        for remote in mapping:
-            local = mapping[remote]
-            msg = '%s => %s' % (remote, local)
-            utils.pend(msg)
-            if os.path.exists(local):
-                utils.skip("%s: already extracted" % local)
-            else:
-                if utils.execute(['tar', '-z', '-f', self.path_tar_gz,
-                                  '-x', remote, '-O'],
-                                 msg="extract", outfile=local) != 0:
-                    self.mark_defunct()
-                    exit(1)
-                utils.ok(msg)
-
-        # Raw image:
-        utils.pend("expand raw image")
-        if utils.execute(['qemu-img', 'convert', '-f', 'qcow2',
-                          '-O', 'raw', self.path_qcow, self.path_raw],
-                          msg="expand qemu image") != 0:
-            self.mark_defunct()
-            exit(1)
-        utils.ok()
-
-        # Metadata:
-        self.store_meta()
+        for s in self.snapshots:
+            utils.pend("copy snapshot: %s" % s)
+            try:
+                shutil.copy('%s/%s.%s'
+                            % (self.path, os.path.basename(self.path_raw), s),
+                            new.path)
+                utils.ok()
+            except KeyboardInterrupt as ki:
+                utils.abort("%s" % ki)
+                exit(127)
+        new.scan_snapshots()
 
 
     def delete(self, **kwargs: dict):
@@ -258,20 +185,11 @@ class VM:
         utils.ok()
 
 
-    def list(self, local: bool, remote: bool, filter: str=None, **kwargs: dict):
-        if remote:
-            for name in REMOTES:
-                print(name)
-                print("  %s" % REMOTES[name]['description'])
-                print("  Based on: %s" % REMOTES[name]['iso'])
-        elif local:
-            for name in os.listdir(utils.CHEFROOT_VM):
-                if not os.path.isdir('%s/%s' % (utils.CHEFROOT_VM, name)):
-                    continue
-                print(VM(name))
-        else:
-            internal_error("list(): neither local nor remote list chosen")
-            exit(127)
+    def list(self, **kwargs: dict):
+        for name in os.listdir(utils.CHEFROOT_VM):
+            if not os.path.isdir('%s/%s' % (utils.CHEFROOT_VM, name)):
+                continue
+            print(VM(name=name, must_exist=True))
 
     # MAIN =====================================================================
 
@@ -288,6 +206,7 @@ class VM:
         # create
         pcreate = pcmd.add_parser('create', help="Create a new VM")
         pcreate.set_defaults(action=VM.create)
+        pcreate.set_defaults(must_exist=False)
         pcreate.add_argument('-f','--force', action='store_true', default=False,
                              help="Force creation, even if VM already exists")
         pcreate.add_argument('name',
@@ -295,40 +214,38 @@ class VM:
         pcreate.add_argument('size', default='5120M', nargs='?',
                              help="VM size [default=5120M]")
 
-        # install
-        pinstall = pcmd.add_parser('install',
-                                   help="Install an OS from an ISO to a VM")
-        pinstall.set_defaults(action=VM.install)
-        pinstall.add_argument('iso_path',
-                              help="Path to ISO file containing the OS")
-        pinstall.add_argument('name',
-                              help="Machine name")
+        # export
+        pexport = pcmd.add_parser('export',
+                                  help="Export VM as a gzipped Tarball")
+        pexport.set_defaults(action=VM.export)
+        pexport.set_defaults(must_exist=True)
+        pexport.add_argument('name',
+                             help="Machine name")
+        pexport.add_argument('targz', default=None, nargs='?',
+                             help="Tarball name [default=./[Machine name].tar.gz]")
 
-        # fetch
-        pfetch = pcmd.add_parser('fetch', help="Download a prepared VM")
-        pfetch.set_defaults(action=VM.fetch)
-        pfetch.add_argument('-f','--force', action='store_true', default=False,
-                            help="Overwrite existing OS image")
-        pfetch.add_argument('os_name', choices=list(REMOTES),
-                            help="Operating System name")
-        pfetch.add_argument('name',
-                            help="Machine name")
+        # clone
+        pclone = pcmd.add_parser('clone',
+                                 help="Create an exact copy of an existing VM")
+        pclone.set_defaults(action=VM.clone)
+        pclone.set_defaults(must_exist=True)
+        pclone.add_argument('-f','--force', action='store_true', default=False,
+                            help="Force cloning, even if VM already exists")
+        pclone.add_argument('name',
+                            help="Machine name (original)")
+        pclone.add_argument('clone',
+                            help="Machine name (clone)")
 
         # delete
         pdelete = pcmd.add_parser('delete', help="Delete an existing VM")
         pdelete.set_defaults(action=VM.delete)
+        pdelete.set_defaults(must_exist=True)
         pdelete.add_argument('name', help="Machine name")
 
         # list
-        plist = pcmd.add_parser('list', help="List VMs and ISOs")
+        plist = pcmd.add_parser('list', help="List VMs")
         plist.set_defaults(action=VM.list)
-        plist_source = plist.add_mutually_exclusive_group()
-        plist_source.add_argument('-l', '--local', action='store_true',
-                                  default=True,
-                                  help="List locally available VMs [default]")
-        plist_source.add_argument('-r', '--remote', action='store_true',
-                                  default=False,
-                                  help="List remotely available VMs")
+        plist.set_defaults(must_exist=False)
 
         args = p.parse_args(argv[1:])
         return vars(args) # make it a dictionary, for easier use
@@ -346,14 +263,14 @@ class VM:
 
 
 if __name__ == '__main__':
+    # Parse command line arguments:
+    args = VM.parse_args(sys.argv)
+    utils.parse_release(args['release'])
+
     # Check environment:
     if not os.path.isdir(utils.CHEFROOT_VM):
         VM.vm_init(utils.CHEFROOT_VM)
 
-    # Parse command line arguments:
-    kwargs = VM.parse_args(sys.argv)
-    utils.parse_release(kwargs['release'])
-
     # Create VM and handle action:
-    vm = VM(kwargs.get('name', None))
-    exit(kwargs['action'](vm, **kwargs))
+    vm = VM(name=args.get('name', None), must_exist=args['must_exist'])
+    exit(args['action'](vm, **args))
