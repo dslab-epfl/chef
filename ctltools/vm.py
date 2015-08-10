@@ -94,7 +94,6 @@ class VM:
     def create(self, size: str, force: bool, **kwargs: dict):
         self.initialise(force)
 
-        # Raw image:
         utils.pend("create %sB image" % size)
         utils.execute(['%s/qemu-img' % self.path_executable,
                        'create', self.path_raw, size],
@@ -117,13 +116,14 @@ class VM:
 
 
     def export(self, targz: str, **kwargs: dict):
+        if not os.path.isdir(self.path):
+            utils.fail("%s: VM does not exist" % self.name)
+            exit(1)
         if not targz:
             targz = '%s.tar.gz' % self.name
         targz = os.path.abspath(targz)
-        tar, _ = os.path.splitext(targz)
-        if os.path.exists(tar):
-            utils.fail("%s: tarball already exists" % tar)
-            exit(1)
+        utils.info("exporting to %s" % targz)
+        tar = '%s/%s' % (self.path, os.path.basename(os.path.splitext(targz)[0]))
         if os.path.exists(targz):
             utils.fail("%s: gzipped tarball already exists" % targz)
             exit(1)
@@ -145,12 +145,13 @@ class VM:
             utils.execute(['tar', '-rf', tar, local_snapshot])
             utils.ok()
 
-        utils.pend("clean up")
-        os.unlink(self.path_qcow)
+        utils.pend("compress tarball", msg="may take some time")
+        utils.execute(['gzip', '-c', tar], outfile=targz)
         utils.ok()
 
-        utils.pend("compress tarball", msg="may take some time")
-        utils.execute(['gzip', tar])
+        utils.pend("clean up")
+        os.unlink(self.path_qcow)
+        os.unlink(tar)
         utils.ok()
 
 
@@ -201,6 +202,9 @@ class VM:
 
 
     def clone(self, clone: str, force: bool, **kwargs: dict):
+        if not os.path.isdir(self.path):
+            utils.fail("%s: VM does not exist" % self.name)
+            exit(1)
         if self.name == clone:
             utils.fail("%s: please specify a different name" % clone)
             exit(2)
