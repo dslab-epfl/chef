@@ -102,17 +102,31 @@ class VM:
         utils.ok()
 
 
-    def delete(self, **kwargs: dict):
-        utils.pend("delete %s" % self.name)
-        try:
-            shutil.rmtree(self.path)
-        except PermissionError:
-            utils.fail("Permission denied")
-            exit(1)
-        except FileNotFoundError:
-            utils.fail("VM does not exist")
-            exit(1)
-        utils.ok()
+    def delete(self, snapshot: str=None, **kwargs: dict):
+        if snapshot:
+            utils.pend("delete snapshot %s" % kwargs['name[:snapshot]'])
+            if snapshot not in self.snapshots:
+                utils.fail("%s: snapshot does not exist" % kwargs['name[:snapshot]'])
+                exit(1)
+            try:
+                os.unlink('%s.%s' % (self.path_raw, snapshot))
+                utils.ok()
+            except PermissionError:
+                utils.fail("Permission denied")
+                exit(1)
+        else:
+            if not os.path.isdir(self.path):
+                utils.fail("%s: VM does not exist" % self.name)
+                exit(1)
+            if not utils.ask("Delete VM %s?" % self.name, default=False):
+                exit(1)
+            utils.pend("delete %s" % self.name)
+            try:
+                shutil.rmtree(self.path)
+                utils.ok()
+            except PermissionError:
+                utils.fail("Permission denied")
+                exit(1)
 
 
     def export(self, targz: str, **kwargs: dict):
@@ -256,7 +270,7 @@ class VM:
         # delete
         pdelete = pcmd.add_parser('delete', help="Delete an existing VM")
         pdelete.set_defaults(action=VM.delete)
-        pdelete.add_argument('name', help="Machine name")
+        pdelete.add_argument('name[:snapshot]', help="Machine/Snapshot name")
 
         # export
         pexport = pcmd.add_parser('export',
@@ -289,7 +303,15 @@ class VM:
         plist.set_defaults(action=VM.list)
 
         args = p.parse_args(argv[1:])
-        return vars(args) # make it a dictionary, for easier use
+        kwargs = vars(args) # make it a dictionary, for easier use
+
+        # Post-parsing:
+        if 'name[:snapshot]' in kwargs:
+            vm_snapshot = kwargs['name[:snapshot]'].split(':')
+            kwargs['name'] = vm_snapshot[0]
+            kwargs['snapshot'] = vm_snapshot[1] if len(vm_snapshot) > 1 else None
+
+        return kwargs
 
 
     @staticmethod
