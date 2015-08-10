@@ -173,10 +173,11 @@ def kill_me_later(timeout, extra_time=60):
 def execute(args, cmd_line):
     # Informative:
     ip = utils.get_default_ip()
-    utils.info("VNC: port %d (connect with `$vncclient %s:%d`"
-               % (args['vnc_port'], ip, args['vnc_display']))
     utils.info("Qemu monitor: port %d (connect with `{nc,telnet} %s %d"
                % (args['monitor_port'], ip, args['monitor_port']))
+    if args['headless']:
+        utils.info("VNC: port %d (connect with `$vncclient %s:%d`"
+                   % (args['vnc_port'], ip, args['vnc_display']))
     if args['mode'] == 'sym':
         utils.info("Watchdog: port %d" % args['command_port'])
     utils.debug("Command line:\n%s" % ' '.join(cmd_line))
@@ -243,6 +244,8 @@ def parse_cmd_line():
     parser.add_argument('-v','--vnc-display', type=int,
                         default=VNC_DISPLAY,
                         help="VNC display number on which the VM is accessible")
+    parser.add_argument('--headless', action='store_true', default=False,
+                        help="Run qemu without graphical output")
 
     # Debug:
     exe_env = parser.add_mutually_exclusive_group()
@@ -368,8 +371,9 @@ def build_qemu_cmd_line(args):
         # Non-Pentium instructions cause spurious concretizations
         '-cpu', 'pentium',
         '-monitor', 'tcp::%d,server,nowait' % args['monitor_port'],
-        '-vnc', ':%d' % (args['vnc_display'])
     ])
+    if args['headless']:
+        qemu_cmd_line.extend(['-vnc', ':%d' % args['vnc_display']])
 
     # Network:
     if args['network'] == 'none':
@@ -441,7 +445,7 @@ def batch_execute(args: dict):
                         % (args['vnc_display'] + batch_offset)])
         cmd_line.extend(['--release', utils.RELEASE])
         cmd_line.extend(['--network', args['network']])
-        cmd_line.extend([args['VM']])
+        cmd_line.extend([args['VM[:snapshot]']])
         cmd_line.extend(['sym'])
         cmd_line.extend(['--command-port', '%d'
                         % (args['command_port'] + batch_offset)])
