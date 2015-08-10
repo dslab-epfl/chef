@@ -38,7 +38,6 @@ import sys
 import pipes
 import time
 import subprocess
-import shutil
 import utils
 from datetime import datetime
 from vm import VM
@@ -233,18 +232,11 @@ def parse_cmd_line():
     parser.add_argument('-r', '--release', default=utils.RELEASE,
                         help="Tuple (architecture:target:mode) describing the Chef binary release")
 
-    # Network:
+    # Qemu:
+    parser.add_argument('-q', '--qemu-opts', type=str, action='append',
+                        help="Additional arguments passed to qemu (may be passed multiple times)")
     parser.add_argument('-n','--network', default='user', choices=['none','user','tap'],
                         help="Network mode [default=user]")
-
-    # Debug:
-    exe_env = parser.add_mutually_exclusive_group()
-    exe_env.add_argument('--gdb', action='store_true', default=False,
-                         help="Run under gdb")
-    exe_env.add_argument('--strace', action='store_true', default=False,
-                         help="Run under strace")
-
-    # Communication:
     parser.add_argument('-m','--monitor-port', type=int,
                         default=MONITOR_PORT,
                         help="Port on which the qemu monitor is accessible")
@@ -252,7 +244,12 @@ def parse_cmd_line():
                         default=VNC_DISPLAY,
                         help="VNC display number on which the VM is accessible")
 
-    # Dry run:
+    # Debug:
+    exe_env = parser.add_mutually_exclusive_group()
+    exe_env.add_argument('--gdb', action='store_true', default=False,
+                         help="Run under gdb")
+    exe_env.add_argument('--strace', action='store_true', default=False,
+                         help="Run under strace")
     parser.add_argument('-y','--dry-run', action='store_true', default=False,
                         help="Only display the runtime configuration and exit")
 
@@ -340,9 +337,13 @@ def build_qemu_cmd_line(args):
     # Base command:
     qemu_cmd_line.append(qemu_path);
 
+    # User-defined qemu options:
+    if args['qemu_opts']:
+        qemu_cmd_line.extend(args['qemu_opts'])
+
     # VM:
     vm = VM(args['VM'])
-    if not vm.exists():
+    if not os.path.exists(vm.path_raw):
         utils.fail('%s: VM does not exist' % vm.name)
         exit(1)
 
@@ -458,8 +459,7 @@ def batch_execute(args: dict):
         batch_offset += 1
         utils.debug('%s' % cmd_line)
 
-    p2 = subprocess.Popen(build_parallel_cmd_line(args), stdin=subprocess.PIPE)
-    p2.communicate(bytes('\n'.join(cmd_lines), 'utf-8'))
+    utils.execute(build_parallel_cmd_line(args), stdin='\n'.join(cmd_lines))
 
 
 def main():
