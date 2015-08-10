@@ -11,8 +11,18 @@ import stat
 
 # EXECUTION ====================================================================
 
+# cmd: command to be executed
+# stdin: the string to be sent to the process on stdin
+# stdout: whether to display stdout on the terminal
+# stderr: whether to display stderr on the terminal
+# msg: elliptic description of what the process is doing (used in case it fails)
+# iowrap: whether to return a tuple (retval, stdout, stderr)
+# outfile: file to which stdout is redirected
+# env: environment to be used for the process
+# exit_on_fail: whether to exit (instead of returning) if there is a failure
 def execute(cmd:[str], stdin:str=None, stdout:bool=False, stderr:bool=False,
-            msg:str=None, iowrap:bool=False, outfile:str=None, env:dict=None):
+            msg:str=None, iowrap:bool=False, outfile:str=None, env:dict=None,
+            exit_on_fail:int=1):
     interrupted = False
     environ = dict(os.environ)
     if env:
@@ -44,8 +54,10 @@ def execute(cmd:[str], stdin:str=None, stdout:bool=False, stderr:bool=False,
         except KeyboardInterrupt:
             abort("second keyboard interrupt")
         exit(127) # XXX does not allow cleanup
+    if sp.returncode != 0 and exit_on_fail:
+        exit(exit_on_fail)
     if iowrap:
-        return out.decode(), err.decode(), sp.returncode
+        return sp.returncode, out.decode(), err.decode()
     else:
         return sp.returncode
 
@@ -63,7 +75,6 @@ def which(cmd:str):
         if os.path.exists(fullpath):
             return fullpath
     return None
-
 
 # S2E/CHEF =====================================================================
 
@@ -206,6 +217,7 @@ if sys.stdout.isatty() and sys.stderr.isatty():
     ESC_RESET = '\033[0m'
     ESC_ERASE = '\033[K'
     ESC_RETURN = '\r'
+    ESC_BOLD = '\033[1m'
 else:
     ESC_ERROR = ''
     ESC_SUCCESS = ''
@@ -215,6 +227,7 @@ else:
     ESC_RESET = ''
     ESC_ERASE = ''
     ESC_RETURN = '\n'
+    ESC_BOLD = ''
 
 WARN = '[%sWARN%s]' % (ESC_WARNING, ESC_RESET)
 FAIL = '[%sFAIL%s]' % (ESC_ERROR, ESC_RESET)

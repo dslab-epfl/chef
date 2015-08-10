@@ -38,7 +38,6 @@ import sys
 import pipes
 import time
 import subprocess
-import shutil
 import utils
 from datetime import datetime
 from vm import VM
@@ -174,10 +173,11 @@ def kill_me_later(timeout, extra_time=60):
 def execute(args, cmd_line):
     # Informative:
     ip = utils.get_default_ip()
-    utils.info("VNC: port %d (connect with `$vncclient %s:%d`"
-               % (args['vnc_port'], ip, args['vnc_display']))
     utils.info("Qemu monitor: port %d (connect with `{nc,telnet} %s %d"
                % (args['monitor_port'], ip, args['monitor_port']))
+    if args['headless']:
+        utils.info("VNC: port %d (connect with `$vncclient %s:%d`"
+                   % (args['vnc_port'], ip, args['vnc_display']))
     if args['mode'] == 'sym':
         utils.info("Watchdog: port %d" % args['command_port'])
     utils.debug("Command line:\n%s" % ' '.join(cmd_line))
@@ -233,9 +233,19 @@ def parse_cmd_line():
     parser.add_argument('-r', '--release', default=utils.RELEASE,
                         help="Tuple (architecture:target:mode) describing the Chef binary release")
 
-    # Network:
+    # Qemu:
+    parser.add_argument('-q', '--qemu-opts', type=str, action='append',
+                        help="Additional arguments passed to qemu (may be passed multiple times)")
     parser.add_argument('-n','--network', default='user', choices=['none','user','tap'],
                         help="Network mode [default=user]")
+    parser.add_argument('-m','--monitor-port', type=int,
+                        default=MONITOR_PORT,
+                        help="Port on which the qemu monitor is accessible")
+    parser.add_argument('-v','--vnc-display', type=int,
+                        default=VNC_DISPLAY,
+                        help="VNC display number on which the VM is accessible")
+    parser.add_argument('--headless', action='store_true', default=False,
+                        help="Run qemu without graphical output")
 
     # Debug:
     exe_env = parser.add_mutually_exclusive_group()
@@ -243,16 +253,6 @@ def parse_cmd_line():
                          help="Run under gdb")
     exe_env.add_argument('--strace', action='store_true', default=False,
                          help="Run under strace")
-
-    # Communication:
-    parser.add_argument('-m','--monitor-port', type=int,
-                        default=MONITOR_PORT,
-                        help="Port on which the qemu monitor is accessible")
-    parser.add_argument('-v','--vnc-display', type=int,
-                        default=VNC_DISPLAY,
-                        help="VNC display number on which the VM is accessible")
-
-    # Dry run:
     parser.add_argument('-y','--dry-run', action='store_true', default=False,
                         help="Only display the runtime configuration and exit")
 
@@ -342,9 +342,19 @@ def build_qemu_cmd_line(args):
 
     # VM:
     vm = VM(args['VM'])
-    if not vm.exists():
+    if not os.path.exists(vm.path_raw):
         utils.fail('%s: VM does not exist' % vm.name)
         exit(1)
+
+    # VM image:
+    if args['mode'] == 'kvm':
+        qemu_drive_options = 'if=virtio,format=raw'
+    else:
+        qemu_drive_options = 'cache=writeback,format=s2e'
+    qemu_cmd_line.extend([
+        '-drive',
+        'file=%s,%s' % (vm.path_raw, qemu_drive_options)
+    ])
 
     # Snapshots:
     if args['snapshot']:
@@ -357,8 +367,9 @@ def build_qemu_cmd_line(args):
         # Non-Pentium instructions cause spurious concretizations
         '-cpu', 'pentium',
         '-monitor', 'tcp::%d,server,nowait' % args['monitor_port'],
-        '-vnc', ':%d' % (args['vnc_display'])
     ])
+    if args['headless']:
+        qemu_cmd_line.extend(['-vnc', ':%d' % args['vnc_display']])
 
     # Network:
     if args['network'] == 'none':
@@ -387,8 +398,9 @@ def build_qemu_cmd_line(args):
         ])
         qemu_cmd_line.extend(['-s2e-output-dir', args['exppath']])
 
-    # VM path:
-    qemu_cmd_line.append((vm.path_s2e, vm.path_raw)[args['mode'] == 'kvm'])
+    # User-defined qemu options:
+    if args['qemu_opts']:
+        qemu_cmd_line.extend(args['qemu_opts'])
 
     return qemu_cmd_line
 
@@ -433,7 +445,7 @@ def batch_execute(args: dict):
                         % (args['vnc_display'] + batch_offset)])
         cmd_line.extend(['--release', utils.RELEASE])
         cmd_line.extend(['--network', args['network']])
-        cmd_line.extend([args['VM']])
+        cmd_line.extend([args['VM[:snapshot]']])
         cmd_line.extend(['sym'])
         cmd_line.extend(['--command-port', '%d'
                         % (args['command_port'] + batch_offset)])
@@ -451,8 +463,7 @@ def batch_execute(args: dict):
         batch_offset += 1
         utils.debug('%s' % cmd_line)
 
-    p2 = subprocess.Popen(build_parallel_cmd_line(args), stdin=subprocess.PIPE)
-    p2.communicate(bytes('\n'.join(cmd_lines), 'utf-8'))
+    utils.execute(build_parallel_cmd_line(args), stdin='\n'.join(cmd_lines))
 
 
 def main():
