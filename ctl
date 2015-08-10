@@ -68,7 +68,7 @@ def help():
     print("\n%s: Command Line Tools for Chef\n" % INVOKENAME)
     print("Commands:")
     for c in ['build', 'run', 'vm']:
-        print("  {:<15}: {}".format(c, COMMANDS[c]['description']))
+        print("  {:<6}  {}".format(c, COMMANDS[c]['description']))
     print("\nEach command can be run with `-h` for more information")
     exit(1)
 
