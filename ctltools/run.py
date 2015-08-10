@@ -340,10 +340,6 @@ def build_qemu_cmd_line(args):
     # Base command:
     qemu_cmd_line.append(qemu_path);
 
-    # User-defined qemu options:
-    if args['qemu_opts']:
-        qemu_cmd_line.extend(args['qemu_opts'])
-
     # VM:
     vm = VM(args['VM'])
     if not os.path.exists(vm.path_raw):
@@ -401,6 +397,10 @@ def build_qemu_cmd_line(args):
             '-s2e-verbose'
         ])
         qemu_cmd_line.extend(['-s2e-output-dir', args['exppath']])
+
+    # User-defined qemu options:
+    if args['qemu_opts']:
+        qemu_cmd_line.extend(args['qemu_opts'])
 
     return qemu_cmd_line
 
