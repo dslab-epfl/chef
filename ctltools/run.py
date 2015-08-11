@@ -173,10 +173,10 @@ def kill_me_later(timeout, extra_time=60):
 def execute(args, cmd_line):
     # Informative:
     ip = utils.get_default_ip()
-    utils.info("Qemu monitor: port %d (connect with `{nc,telnet} %s %d"
+    utils.info("Qemu monitor: port %d (connect with `{nc,telnet} %s %d)"
                % (args['monitor_port'], ip, args['monitor_port']))
     if args['headless']:
-        utils.info("VNC: port %d (connect with `$vncclient %s:%d`"
+        utils.info("VNC: port %d (connect with `$vncclient %s:%d`)"
                    % (args['vnc_port'], ip, args['vnc_display']))
     if args['mode'] == 'sym':
         utils.info("Watchdog: port %d" % args['command_port'])
