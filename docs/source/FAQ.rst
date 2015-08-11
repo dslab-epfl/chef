@@ -3,7 +3,6 @@ Frequently Asked Questions (FAQ)
 ======================================
 
 .. contents::
-.. sectnum::
 
 S2E
 ===

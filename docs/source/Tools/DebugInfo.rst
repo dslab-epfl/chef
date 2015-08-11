@@ -7,22 +7,22 @@ Debug information can come from different sources: the execution trace itself, t
 You need to use the ``-moddir`` command line option to specify the path to the directory that contains the binary modules with
 debug information, or text files. You can use ``-moddir`` multiple times if you have multiple directories.
 
-The execution trace contains entries specifying what, where, and when modules are loaded or unloaded. 
-The ``ModuleTracer`` plugin records this information whenever an ``Interceptor`` plugin detects module 
-loads or unloads. The recorded information is the name, the size, the load address of the module, 
-and its native base. 
+The execution trace contains entries specifying what, where, and when modules are loaded or unloaded.
+The ``ModuleTracer`` plugin records this information whenever an ``Interceptor`` plugin detects module
+loads or unloads. The recorded information is the name, the size, the load address of the module,
+and its native base.
 
-This information is sufficient to print module names and display module-relative addresses, 
-that can be used to look through disassembly from ``objdump`` or IDAPro. 
-If the ``ModuleTracer`` plugin is not enabled, no debug information can be retrieved at all, 
+This information is sufficient to print module names and display module-relative addresses,
+that can be used to look through disassembly from ``objdump`` or IDAPro.
+If the ``ModuleTracer`` plugin is not enabled, no debug information can be retrieved at all,
 since it becomes impossible to know which module the absolute program counters belong to.
 
-The second source of information is the binary itself. As soon as the tools read module information from the trace, 
-they attempt to open the corresponding binary, using the recorded name. The paths to the binaries are specified on the 
+The second source of information is the binary itself. As soon as the tools read module information from the trace,
+they attempt to open the corresponding binary, using the recorded name. The paths to the binaries are specified on the
 command line. The S2E tools support any binary that can be parsed by the BFD library.
 
-The third source of information are custom function files. These files describe the binary and list all 
-the functions (with their addresses). This file has the same name as the original binary, but suffixed with ".fcn". 
+The third source of information are custom function files. These files describe the binary and list all
+the functions (with their addresses). This file has the same name as the original binary, but suffixed with ".fcn".
 The S2E tools attempt to use it when the original binary cannot be opened.
 
 Below is an example of such a custom file. It can be produced with the ``extractFunctions.py`` script (for IDAPro).

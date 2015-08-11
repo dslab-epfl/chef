@@ -1,3 +1,4 @@
+===============
 Getting Started
 ===============
 
@@ -10,7 +11,7 @@ through `docker.io`_).
 
 
 Getting the Source
-------------------
+==================
 
 ::
 
@@ -23,7 +24,7 @@ Chef-specific files in one place.
 
 
 Preparing the Environment
--------------------------
+=========================
 
 Setting up the dependencies for Chef is a rather tedious task. Therefore, Chef
 provides a ``setup.sh`` script that does all that setup work automatically. If
@@ -55,7 +56,7 @@ the end of the setup, which makes a difference of about 2.5 GiB.
 
 
 Building Chef
--------------
+=============
 
 If the setup above works fine, we should now have an LLVM build in
 ``chef/build/deps/llvm``, and we can build Chef in its default configuration::
@@ -74,7 +75,7 @@ everytime. The build command above would thus become ::
 
 
 Managing VMs
-------------
+============
 
 The virtual machines for Chef can be managed through the ``vm`` subcommand. They
 are distributed and shared as gzipped tarballs, and can be imported to and
@@ -96,7 +97,7 @@ There is also no magic behind this (try ``tar tf Debian.tar.gz`` and
 
 
 Workflow
---------
+========
 
 In S²E (and consequently in Chef, too) the workflow is as follows:
 
@@ -111,9 +112,8 @@ In S²E (and consequently in Chef, too) the workflow is as follows:
 mode is remarkably slow, so it is recommended to use non-symbolic mode for
 preparing an experiment)*
 
-----
-
-**KVM mode**
+KVM mode
+--------
 
 First, let's launch our machine in KVM mode::
 
@@ -124,9 +124,8 @@ make persistent changes that remain between different experiments, we must do
 them here (mostly steps like installing packages). Once we're done, we shut down
 the VM and proceed to the next step.
 
-----
-
-**Preparation mode**
+Preparation mode
+----------------
 
 ::
 
@@ -172,9 +171,8 @@ from the qemu monitor::
 
 *(of course we could also just ^C in the main process terminal)*
 
-----
-
-**Symbolic mode**
+Symbolic mode
+-------------
 
 We can now resume from the snapshot in symbolic mode, and we may launch any
 experiments we like::

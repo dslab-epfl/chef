@@ -1,4 +1,3 @@
-===============================================
 The Selective Symbolic Execution (S²E) Platform
 ===============================================
 
@@ -9,46 +8,77 @@ Do not forget the `FAQ <FAQ.rst>`_ if you have questions.
 S²E Documentation
 =================
 
-* Getting Started
+Getting Started
+---------------
 
-  1. `Building S2E <BuildingS2E.rst>`_
-  2. `Preparing a VM image for S2E <ImageInstallation.rst>`_
-  3. `Quickly uploading programs to the guest with s2eget <UsingS2EGet.rst>`_
+.. toctree::
+   :maxdepth: 1
+   :numbered:
 
-  4. `Testing a simple program <TestingMinimalProgram.rst>`_
-  5. `Testing Linux binaries <Howtos/init_env.rst>`_
-  6. `Analyzing large programs using concolic execution <Howtos/Concolic.rst>`_
-  7. `Equivalence testing <EquivalenceTesting.rst>`_
-  
-* Analyzing Windows Device Drivers
+   GettingStarted
+   BuildingS2E
+   ImageInstallation
+   UsingS2EGet
+   TestingMinimalProgram
+   Howtos/init_env
+   Howtos/Concolic
+   EquivalenceTesting
 
-  1. `Step-by-step tutorial <Windows/DriverTutorial.rst>`_
-  2. `Setting up the checked build of Windows <Windows/CheckedBuild.rst>`_  
-  
-* Analyzing the Linux Kernel
+Analyzing Windows Device Drivers
+--------------------------------
 
-  1. `Building the Linux kernel <BuildingLinux.rst>`_
-  2. `Using SystemTap with S2E <SystemTap.rst>`_
+.. toctree::
+   :maxdepth: 1
+   :numbered:
 
-* Howtos
+   Windows/DriverTutorial
+   Windows/CheckedBuild
 
-  1. `How to use execution tracers? <Howtos/ExecutionTracers.rst>`_
-  2. `How to write an S2E plugin? <Howtos/WritingPlugins.rst>`_
-  3. `How to run S2E on multiple cores? <Howtos/Parallel.rst>`_
-  4. `How to debug guest code? <Howtos/Debugging.rst>`_
+Analyzing the Linux Kernel
+--------------------------
 
-* S2E Tools
-  
-  1. Available Tools
-     
-     1. `Fork profiler <Tools/ForkProfiler.rst>`_
-     2. `Trace printer <Tools/TbPrinter.rst>`_
-     3. `Execution profiler <Tools/ExecutionProfiler.rst>`_
-     4. `Coverage generator <Tools/CoverageGenerator.rst>`_
-   
-  2. `Supported debug information <Tools/DebugInfo.rst>`_
-  
-* `Frequently Asked Questions <FAQ.rst>`_
+.. toctree::
+   :maxdepth: 1
+   :numbered:
+
+   BuildingLinux
+   SystemTap
+
+Howtos
+------
+
+.. toctree::
+   :maxdepth: 1
+   :numbered:
+
+   Howtos/ExecutionTracers
+   Howtos/WritingPlugins
+   Howtos/Parallel
+   Howtos/Debugging
+
+S2E Tools
+---------
+
+1. Available Tools
+
+   .. toctree::
+     :maxdepth: 1
+     :numbered:
+
+     Tools/ForkProfiler
+     Tools/TbPrinter
+     Tools/ExecutionProfiler
+     Tools/CoverageGenerator
+
+2. :doc:`Tools/DebugInfo`
+
+FAQ
+---
+
+.. toctree::
+   :numbered:
+
+   FAQ
 
 S²E Plugin Reference
 ====================
@@ -60,9 +90,9 @@ OS Event Monitors
 To implement selectivity, S2E relies on several OS-specific plugins to detect
 module loads/unloads and execution of modules of interest.
 
-* `WindowsMonitor <Plugins/WindowsInterceptor/WindowsMonitor.rst>`_
-* `RawMonitor <Plugins/RawMonitor.rst>`_
-* `ModuleExecutionDetector <Plugins/ModuleExecutionDetector.rst>`_
+* :doc:`Plugins/WindowsInterceptor/WindowsMonitor`
+* :doc:`Plugins/RawMonitor`
+* :doc:`Plugins/ModuleExecutionDetector`
 
 Execution Tracers
 -----------------
@@ -72,23 +102,23 @@ This information can be processed by offline analysis tools. Refer to
 the `How to use execution tracers? <Howtos/ExecutionTracers.rst>`_ tutorial to understand
 how to combine these tracers.
 
-* `ExecutionTracer <Plugins/Tracers/ExecutionTracer.rst>`_
-* `ModuleTracer <Plugins/Tracers/ModuleTracer.rst>`_
-* `TestCaseGenerator <Plugins/Tracers/TestCaseGenerator.rst>`_
-* `TranslationBlockTracer <Plugins/Tracers/TranslationBlockTracer.rst>`_
-* `InstructionCounter <Plugins/Tracers/InstructionCounter.rst>`_
+* :doc:`Plugins/Tracers/ExecutionTracer`
+* :doc:`Plugins/Tracers/ModuleTracer`
+* :doc:`Plugins/Tracers/TestCaseGenerator`
+* :doc:`Plugins/Tracers/TranslationBlockTracer`
+* :doc:`Plugins/Tracers/InstructionCounter`
 
 Selection Plugins
 -----------------
 
 These plugins allow you to specify which paths to execute and where to inject symbolic values
 
-* `StateManager <Plugins/StateManager.rst>`_ helps exploring library entry points more efficiently.
-* `EdgeKiller <Plugins/EdgeKiller.rst>`_ kills execution paths that execute some sequence of instructions (e.g., polling loops).
-* `BaseInstructions <Plugins/BaseInstructions.rst>`_ implements various custom instructions to control symbolic execution from the guest.
-* *SymbolicHardware* implements symbolic PCI and ISA devices as well as symbolic interrupts and DMA. Refer to the `Windows driver testing <Windows/DriverTutorial.rst>`_ tutorial for usage instructions.
+* :doc:`Plugins/StateManager` helps exploring library entry points more efficiently.
+* :doc:`Plugins/EdgeKiller` kills execution paths that execute some sequence of instructions (e.g., polling loops).
+* :doc:`Plugins/BaseInstructions` implements various custom instructions to control symbolic execution from the guest.
+* *SymbolicHardware* implements symbolic PCI and ISA devices as well as symbolic interrupts and DMA. Refer to the :doc:`Windows driver testing <Windows/DriverTutorial>` tutorial for usage instructions.
 * *CodeSelector* disables forking outside of the modules of interest
-* `Annotation <Plugins/Annotation.rst>`_ plugin lets you intercept arbitrary instructions and function calls/returns and write Lua scripts to manipulate the execution state, kill paths, etc.
+* :doc:`Plugins/Annotation` plugin lets you intercept arbitrary instructions and function calls/returns and write Lua scripts to manipulate the execution state, kill paths, etc.
 
 Analysis Plugins
 ----------------
@@ -99,14 +129,14 @@ Analysis Plugins
 Miscellaneous Plugins
 ---------------------
 
-* `FunctionMonitor <Plugins/FunctionMonitor.rst>`_ provides client plugins with events triggered when the guest code invokes specified functions.
-* `HostFiles <UsingS2EGet.rst>`_ allows to quickly upload files to the guest.
+* :doc:`FunctionMonitor <Plugins/FunctionMonitor>` provides client plugins with events triggered when the guest code invokes specified functions.
+* :doc:`HostFiles <UsingS2EGet>` allows to quickly upload files to the guest.
 
 S²E Development
 ===============
 
-* `Contributing to S2E <Contribute.rst>`_
-* `Profiling S2E <ProfilingS2E.rst>`_
+* :doc:`Contributing to S2E <Contribute>`
+* :doc:`Profiling S2E <ProfilingS2E>`
 
 
 S²E Publications

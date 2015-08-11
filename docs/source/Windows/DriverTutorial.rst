@@ -7,7 +7,6 @@ We discuss the preparation of the RAW image in vanilla QEMU, how to write an S2E
 file for this purpose, how to launch symbolic execution, and finally how to interpret the results.
 
 .. contents::
-.. sectnum::
 
 Preparing the QEMU image
 ========================
