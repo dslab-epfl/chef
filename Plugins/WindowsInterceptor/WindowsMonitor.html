@@ -1,0 +1,157 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>WindowsMonitor &mdash; Chef 0.9 documentation</title>
+    
+    <link rel="stylesheet" href="../../_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../',
+        VERSION:     '0.9',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../_static/doctools.js"></script>
+    <link rel="top" title="Chef 0.9 documentation" href="../../index.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li><a href="../../index.html">Chef 0.9 documentation</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <div class="section" id="windowsmonitor">
+<h1>WindowsMonitor<a class="headerlink" href="#windowsmonitor" title="Permalink to this headline">¶</a></h1>
+<p>The WindowsMonitor plugin implements the detection of module and process loads/unloads on the Windows operating system.
+It can be referred to as &#8220;Interceptor&#8221; by other plugins.
+The plugin catches the invocation of specific kernel functions to detect these events.</p>
+<div class="section" id="options">
+<h2>Options<a class="headerlink" href="#options" title="Permalink to this headline">¶</a></h2>
+<div class="section" id="version-sp2-sp3">
+<h3>version=[&#8220;sp2&#8221;|&#8221;sp3&#8221;]<a class="headerlink" href="#version-sp2-sp3" title="Permalink to this headline">¶</a></h3>
+<p>Indicates the version of the Windows kernel to monitor.
+These functions have different locations in different versions.
+Specifying a wrong version will prevent the plugin from detecting the events.</p>
+</div>
+<div class="section" id="usermode-true-false">
+<h3>userMode=[true|false]<a class="headerlink" href="#usermode-true-false" title="Permalink to this headline">¶</a></h3>
+<p>Specifies whether the plugin should track user-mode events like DLL load and unload.
+If you do not analyze user-mode applications, assigning false to this setting will reduce the
+amount of instrumentation.</p>
+</div>
+<div class="section" id="kernelmode-true-false">
+<h3>kernelMode=[true|false]<a class="headerlink" href="#kernelmode-true-false" title="Permalink to this headline">¶</a></h3>
+<p>Specifies whether the plugin should track driver load and unload.
+If you do not analyze kernel-mode drivers, assigning false to this setting will reduce the
+amount of instrumentation.</p>
+<p>If not specified, the default value is false.</p>
+</div>
+<div class="section" id="monitormoduleload-true-false">
+<h3>monitorModuleLoad=[true|false]<a class="headerlink" href="#monitormoduleload-true-false" title="Permalink to this headline">¶</a></h3>
+<p>For debugging only. In normal operation must be set to true.</p>
+</div>
+<div class="section" id="monitormoduleunload-true-false">
+<h3>monitorModuleUnload=[true|false]<a class="headerlink" href="#monitormoduleunload-true-false" title="Permalink to this headline">¶</a></h3>
+<p>For debugging only. In normal operation must be set to true.</p>
+</div>
+<div class="section" id="monitorprocessunload-true-false">
+<h3>monitorProcessUnload=[true|false]<a class="headerlink" href="#monitorprocessunload-true-false" title="Permalink to this headline">¶</a></h3>
+<p>For debugging only. In normal operation must be set to true.</p>
+</div>
+</div>
+<div class="section" id="configuration-sample">
+<h2>Configuration Sample<a class="headerlink" href="#configuration-sample" title="Permalink to this headline">¶</a></h2>
+<div class="highlight-python"><div class="highlight"><pre>pluginsConfig.WindowsMonitor = {
+  version=&quot;XPSP3&quot;,
+  userMode=true,
+  kernelMode=true,
+  monitorModuleLoad=true,
+  monitorModuleUnload=true,
+  monitorProcessUnload=true
+  }
+</pre></div>
+</div>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+  <h3><a href="../../index.html">Table Of Contents</a></h3>
+  <ul>
+<li><a class="reference internal" href="#">WindowsMonitor</a><ul>
+<li><a class="reference internal" href="#options">Options</a><ul>
+<li><a class="reference internal" href="#version-sp2-sp3">version=[&#8220;sp2&#8221;|&#8221;sp3&#8221;]</a></li>
+<li><a class="reference internal" href="#usermode-true-false">userMode=[true|false]</a></li>
+<li><a class="reference internal" href="#kernelmode-true-false">kernelMode=[true|false]</a></li>
+<li><a class="reference internal" href="#monitormoduleload-true-false">monitorModuleLoad=[true|false]</a></li>
+<li><a class="reference internal" href="#monitormoduleunload-true-false">monitorModuleUnload=[true|false]</a></li>
+<li><a class="reference internal" href="#monitorprocessunload-true-false">monitorProcessUnload=[true|false]</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#configuration-sample">Configuration Sample</a></li>
+</ul>
+</li>
+</ul>
+
+  <h3>This Page</h3>
+  <ul class="this-page-menu">
+    <li><a href="../../_sources/Plugins/WindowsInterceptor/WindowsMonitor.txt"
+           rel="nofollow">Show Source</a></li>
+  </ul>
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             >index</a></li>
+        <li><a href="../../index.html">Chef 0.9 documentation</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2015, Stefan Bucur.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.2.2.
+    </div>
+  </body>
+</html>

@@ -1,0 +1,145 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>ModuleExecutionDetector &mdash; Chef 0.9 documentation</title>
+    
+    <link rel="stylesheet" href="../_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../',
+        VERSION:     '0.9',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../_static/jquery.js"></script>
+    <script type="text/javascript" src="../_static/underscore.js"></script>
+    <script type="text/javascript" src="../_static/doctools.js"></script>
+    <link rel="top" title="Chef 0.9 documentation" href="../index.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li><a href="../index.html">Chef 0.9 documentation</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <div class="section" id="moduleexecutiondetector">
+<h1>ModuleExecutionDetector<a class="headerlink" href="#moduleexecutiondetector" title="Permalink to this headline">¶</a></h1>
+<p>The ModuleExecutionDetector plugin signals other plugins when execution enters or leaves a module of interest.
+It relies on an OS monitor to get the location of the modules in memory.</p>
+<div class="section" id="options">
+<h2>Options<a class="headerlink" href="#options" title="Permalink to this headline">¶</a></h2>
+<p>ModuleExecutionDetector accepts global options and an arbitrary number of per-module sections.
+Per-module options are prefixed with &#8220;module.&#8221; in the documentation. Refer to the
+example below for details.</p>
+<div class="section" id="trackallmodules-true-false">
+<h3>trackAllModules=[true|false]<a class="headerlink" href="#trackallmodules-true-false" title="Permalink to this headline">¶</a></h3>
+<p>When true, pass events about <em>all</em> module loads and unloads to client plugins but do <em>not</em>
+notify them about the execution. This is useful for execution tracers to record modules loads to
+provide debug information offline without actually recording any trace. This option is false by default.</p>
+</div>
+<div class="section" id="configureallmodules-true-false">
+<h3>configureAllModules=[true|false]<a class="headerlink" href="#configureallmodules-true-false" title="Permalink to this headline">¶</a></h3>
+<p>When true, consider all modules of the system to be of interest, regardless of per-module
+configuration. This option is false by default.</p>
+</div>
+<div class="section" id="module-modulename-string">
+<h3>module.moduleName=[&#8220;string&#8221;]<a class="headerlink" href="#module-modulename-string" title="Permalink to this headline">¶</a></h3>
+<p>The name of the module. This must match the name returned by the OS monitoring plugin.</p>
+</div>
+<div class="section" id="module-kernelmode-true-false">
+<h3>module.kernelMode=[true|false]<a class="headerlink" href="#module-kernelmode-true-false" title="Permalink to this headline">¶</a></h3>
+<p>Whether the module lies above or below the kernel-mode threshold.
+Assumes that the module is mapped in all address space at the same location above
+the kernel/user-space boundary.</p>
+</div>
+</div>
+<div class="section" id="configuration-sample">
+<h2>Configuration Sample<a class="headerlink" href="#configuration-sample" title="Permalink to this headline">¶</a></h2>
+<div class="highlight-python"><div class="highlight"><pre>pluginsConfig.ModuleExecutionDetector = {
+    myprog_id = {
+        moduleName = &quot;myprogram&quot;,
+        kernelMode = false
+    },
+}
+</pre></div>
+</div>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+  <h3><a href="../index.html">Table Of Contents</a></h3>
+  <ul>
+<li><a class="reference internal" href="#">ModuleExecutionDetector</a><ul>
+<li><a class="reference internal" href="#options">Options</a><ul>
+<li><a class="reference internal" href="#trackallmodules-true-false">trackAllModules=[true|false]</a></li>
+<li><a class="reference internal" href="#configureallmodules-true-false">configureAllModules=[true|false]</a></li>
+<li><a class="reference internal" href="#module-modulename-string">module.moduleName=[&#8220;string&#8221;]</a></li>
+<li><a class="reference internal" href="#module-kernelmode-true-false">module.kernelMode=[true|false]</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#configuration-sample">Configuration Sample</a></li>
+</ul>
+</li>
+</ul>
+
+  <h3>This Page</h3>
+  <ul class="this-page-menu">
+    <li><a href="../_sources/Plugins/ModuleExecutionDetector.txt"
+           rel="nofollow">Show Source</a></li>
+  </ul>
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             >index</a></li>
+        <li><a href="../index.html">Chef 0.9 documentation</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2015, Stefan Bucur.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.2.2.
+    </div>
+  </body>
+</html>

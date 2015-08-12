@@ -1,0 +1,186 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>RawMonitor &mdash; Chef 0.9 documentation</title>
+    
+    <link rel="stylesheet" href="../_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../',
+        VERSION:     '0.9',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../_static/jquery.js"></script>
+    <script type="text/javascript" src="../_static/underscore.js"></script>
+    <script type="text/javascript" src="../_static/doctools.js"></script>
+    <link rel="top" title="Chef 0.9 documentation" href="../index.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li><a href="../index.html">Chef 0.9 documentation</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <div class="section" id="rawmonitor">
+<h1>RawMonitor<a class="headerlink" href="#rawmonitor" title="Permalink to this headline">¶</a></h1>
+<p>The RawMonitor plugin lets users specify via a custom instruction whenever a module of interest is loaded or unloaded.
+It is useful when using S2E on a new OS for which there is no plugin that automatically extracts this information.
+RawMonitor can also be used to analyze raw pieces of code, such as the BIOS, firmware, etc.</p>
+<div class="section" id="custom-instruction">
+<h2>Custom Instruction<a class="headerlink" href="#custom-instruction" title="Permalink to this headline">¶</a></h2>
+<p>Raw monitor defines the following custom instruction (in the <tt class="docutils literal"><span class="pre">s2e.h</span></tt> header):</p>
+<div class="highlight-c"><div class="highlight"><pre><span class="kt">void</span> <span class="nf">s2e_rawmon_loadmodule</span><span class="p">(</span><span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">name</span><span class="p">,</span> <span class="kt">unsigned</span> <span class="n">loadbase</span><span class="p">,</span> <span class="kt">unsigned</span> <span class="n">size</span><span class="p">);</span>
+</pre></div>
+</div>
+<p>It takes as parameters the name of the module, where it is loaded in memory, and its size.
+Use this function in your code to manually specify module boundaries, like this:</p>
+<div class="highlight-c"><div class="highlight"><pre><span class="kt">int</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span>
+  <span class="p">...</span>
+  <span class="n">s2e_rawmon_loadmodule</span><span class="p">(</span><span class="s">&quot;myprogram&quot;</span><span class="p">,</span> <span class="n">loadbase</span><span class="p">,</span> <span class="n">size</span><span class="p">);</span>
+  <span class="p">...</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</div>
+<div class="section" id="options">
+<h2>Options<a class="headerlink" href="#options" title="Permalink to this headline">¶</a></h2>
+<p>RawMonitor accepts global options and an arbitrary number of per-module sections.
+Per-module options are prefixed with &#8220;module.&#8221; in the documentation. Refer to the
+example below for details.</p>
+<div class="section" id="kernelstart-address">
+<h3>kernelStart=[address]<a class="headerlink" href="#kernelstart-address" title="Permalink to this headline">¶</a></h3>
+<p>Indicates the boundary between the memory mapped in all address spaces
+and process-specific memory. On Linux, this value is typically 0xC0000000, while
+one Windows it is 0x80000000. Set the value to zero if this distinction
+does not make sense (e.g., there are no address spaces).</p>
+</div>
+<div class="section" id="module-name-string">
+<h3>module.name=[&#8220;string&#8221;]<a class="headerlink" href="#module-name-string" title="Permalink to this headline">¶</a></h3>
+<p>The name of the module. This must match the name passed to <tt class="docutils literal"><span class="pre">s2e_rawmon_loadmodule</span></tt>.</p>
+</div>
+<div class="section" id="module-delay-true-false">
+<h3>module.delay=[true|false]<a class="headerlink" href="#module-delay-true-false" title="Permalink to this headline">¶</a></h3>
+<p>Set to true when the <tt class="docutils literal"><span class="pre">s2e_rawmon_loadmodule</span></tt> custom instruction is used.
+When set to false, RawMonitor considers the module to be loaded when S2E starts. In this
+case, it uses the <tt class="docutils literal"><span class="pre">module.start</span></tt> parameter to determine the runtime address.</p>
+</div>
+<div class="section" id="module-start-address">
+<h3>module.start=[address]<a class="headerlink" href="#module-start-address" title="Permalink to this headline">¶</a></h3>
+<p>The run-time address of the module. Set to zero if the runtime address is determined
+by the custom instruction.</p>
+</div>
+<div class="section" id="module-size-integer">
+<h3>module.size=[integer]<a class="headerlink" href="#module-size-integer" title="Permalink to this headline">¶</a></h3>
+<p>The size of the module binary.</p>
+</div>
+<div class="section" id="module-nativebase-address">
+<h3>module.nativebase=[address]<a class="headerlink" href="#module-nativebase-address" title="Permalink to this headline">¶</a></h3>
+<p>The default base address of the binary set by the linker.</p>
+</div>
+<div class="section" id="module-kernel-true-false">
+<h3>module.kernel=[true|false]<a class="headerlink" href="#module-kernel-true-false" title="Permalink to this headline">¶</a></h3>
+<p>Whether the module lies above or below the kernel-mode threshold.
+Assumes that the module is mapped in all address space at the same location above
+the kernel/user-space boundary.</p>
+</div>
+</div>
+<div class="section" id="configuration-sample">
+<h2>Configuration Sample<a class="headerlink" href="#configuration-sample" title="Permalink to this headline">¶</a></h2>
+<div class="highlight-python"><div class="highlight"><pre>pluginsConfig.RawMonitor = {
+    kernelStart = 0xc0000000,
+    myprog_id = {
+        delay = true,
+        name = &quot;myprogram&quot;,
+        start = 0x0,
+        size = 52505,
+        nativebase = 0x8048000,
+        kernelmode = false
+    }
+}
+</pre></div>
+</div>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+  <h3><a href="../index.html">Table Of Contents</a></h3>
+  <ul>
+<li><a class="reference internal" href="#">RawMonitor</a><ul>
+<li><a class="reference internal" href="#custom-instruction">Custom Instruction</a></li>
+<li><a class="reference internal" href="#options">Options</a><ul>
+<li><a class="reference internal" href="#kernelstart-address">kernelStart=[address]</a></li>
+<li><a class="reference internal" href="#module-name-string">module.name=[&#8220;string&#8221;]</a></li>
+<li><a class="reference internal" href="#module-delay-true-false">module.delay=[true|false]</a></li>
+<li><a class="reference internal" href="#module-start-address">module.start=[address]</a></li>
+<li><a class="reference internal" href="#module-size-integer">module.size=[integer]</a></li>
+<li><a class="reference internal" href="#module-nativebase-address">module.nativebase=[address]</a></li>
+<li><a class="reference internal" href="#module-kernel-true-false">module.kernel=[true|false]</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#configuration-sample">Configuration Sample</a></li>
+</ul>
+</li>
+</ul>
+
+  <h3>This Page</h3>
+  <ul class="this-page-menu">
+    <li><a href="../_sources/Plugins/RawMonitor.txt"
+           rel="nofollow">Show Source</a></li>
+  </ul>
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             >index</a></li>
+        <li><a href="../index.html">Chef 0.9 documentation</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2015, Stefan Bucur.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.2.2.
+    </div>
+  </body>
+</html>

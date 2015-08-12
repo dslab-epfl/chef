@@ -1,0 +1,387 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>2. Using SystemTap with S2E &mdash; Chef 0.9 documentation</title>
+    
+    <link rel="stylesheet" href="_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    './',
+        VERSION:     '0.9',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <link rel="top" title="Chef 0.9 documentation" href="index.html" />
+    <link rel="next" title="1. How to Use Execution Tracers?" href="Howtos/ExecutionTracers.html" />
+    <link rel="prev" title="1. Compiling the Linux Kernel" href="BuildingLinux.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="Howtos/ExecutionTracers.html" title="1. How to Use Execution Tracers?"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="BuildingLinux.html" title="1. Compiling the Linux Kernel"
+             accesskey="P">previous</a> |</li>
+        <li><a href="index.html">Chef 0.9 documentation</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <div class="section" id="using-systemtap-with-s2e">
+<h1><a class="toc-backref" href="#id1">2. Using SystemTap with S2E</a><a class="headerlink" href="#using-systemtap-with-s2e" title="Permalink to this headline">¶</a></h1>
+<p>SystemTap is a powerful tracing framework on Linux. It can intercept any function calls or instructions
+in the kernel and invoke custom scripts. Such scripts have full access to the system state, can leverage
+debugging information, etc.</p>
+<p>SystemTap provides S2E users a flexible way of controlling symbolic execution.
+The user writes a SystemTap script with embedded calls to S2E custom instructions.
+This allows to inject symbolic values in any place, kill states based on complex
+conditions, etc.</p>
+<p>In this tutorial, we describe how to build and run SystemTap. We also give several
+examples of useful in-vivo analysis that can be achieved.</p>
+<div class="contents topic" id="contents">
+<p class="topic-title first">Contents</p>
+<ul class="simple">
+<li><a class="reference internal" href="#using-systemtap-with-s2e" id="id1">Using SystemTap with S2E</a><ul>
+<li><a class="reference internal" href="#building-the-linux-kernel" id="id2">Building the Linux kernel</a></li>
+<li><a class="reference internal" href="#building-systemtap-in-the-chroot-environment-of-the-host" id="id3">Building SystemTap in the <tt class="docutils literal"><span class="pre">chroot</span></tt> environment of the host</a></li>
+<li><a class="reference internal" href="#building-systemtap-on-the-guest" id="id4">Building SystemTap on the guest</a></li>
+<li><a class="reference internal" href="#creating-a-simple-s2e-enabled-systemtap-script" id="id5">Creating a simple S2E-enabled SystemTap script</a></li>
+<li><a class="reference internal" href="#running-the-script-in-s2e" id="id6">Running the script in S2E</a></li>
+</ul>
+</li>
+</ul>
+</div>
+<div class="section" id="building-the-linux-kernel">
+<h2><a class="toc-backref" href="#id2">2.1. Building the Linux kernel</a><a class="headerlink" href="#building-the-linux-kernel" title="Permalink to this headline">¶</a></h2>
+<p>SystemTap requires a kernel built with the following settings:</p>
+<ul class="simple">
+<li>CONFIG_DEBUG_INFO=y</li>
+<li>CONFIG_RELAY=y</li>
+<li>CONFIG_KPROBES=y</li>
+<li>CONFIG_DEBUG_FS=y</li>
+</ul>
+<p>For the purpose of this tutorial, also enable the following options:</p>
+<ul class="simple">
+<li>CONFIG_PCNET32=m (To enable this option, issue &#8220;make menuconfig&#8221;, then select Device Drivers &#8212;&gt; Network device support &#8212;&gt; Ethernet (10 or 100Mbit) &#8212;&gt; AMD PCnet32 PCI support)</li>
+<li>For other additional options, please refer to the <a class="reference external" href="config.s2e.i686">config.s2e.i686</a> file.</li>
+</ul>
+<p>Refer to the <a class="reference external" href="BuildingLinux.html">Building Linux</a> tutorial
+for a list of detailed steps.</p>
+<p>Install the resulting kernel in the guest OS.</p>
+</div>
+<div class="section" id="building-systemtap-in-the-chroot-environment-of-the-host">
+<h2><a class="toc-backref" href="#id3">2.2. Building SystemTap in the <tt class="docutils literal"><span class="pre">chroot</span></tt> environment of the host</a><a class="headerlink" href="#building-systemtap-in-the-chroot-environment-of-the-host" title="Permalink to this headline">¶</a></h2>
+<p>We will compile SystemTap and the scripts in the <em>chrooted</em> environment, upload
+the scripts to the VM, and run them there. The <tt class="docutils literal"><span class="pre">chroot</span></tt> environment isolates
+your production environment from mistakes.</p>
+<p>We could also compile the scripts directly inside
+the VM, but it is much slower.</p>
+<p>In the <tt class="docutils literal"><span class="pre">chroot</span></tt> environment you use to compile your kernel, do the following:</p>
+<div class="highlight-python"><div class="highlight"><pre># Install the compiled kernel, headers, and debug information.
+# You must ensure that kernel-package = 11.015 is installed, later versions (&gt;=12)
+# strip the debug information from the kernel image/modules.
+
+# Install initramfs-tools and its dependencies
+$ apt-get install initramfs-tools klibc-utils libklibc udev libvolume-id0
+
+# Set up the Linux image (an initrd image will be created in /boot/ as well).
+# Adapt all the filenames accordingly.
+$ dpkg -i linux-image-2.6.26.8-s2e.deb linux-headers-2.6.26.8-s2e.deb
+
+# Install packages on which SystemTap depends:
+$ apt-get install libdw-dev libebl-dev
+
+# Get SystemTap, configure, compile, and install:
+$ wget http://sourceware.org/systemtap/ftp/releases/systemtap-1.3.tar.gz
+$ tar xzvf systemtap-1.3.tar.gz
+$ cd systemtap-1.3
+$ ./configure
+$ make --jobs=8 # Replace 8 with your number of cores
+$ make install
+</pre></div>
+</div>
+</div>
+<div class="section" id="building-systemtap-on-the-guest">
+<h2><a class="toc-backref" href="#id4">2.3. Building SystemTap on the guest</a><a class="headerlink" href="#building-systemtap-on-the-guest" title="Permalink to this headline">¶</a></h2>
+<p>Build SystemTap dependencies and fetch SystemTap source:</p>
+<div class="highlight-python"><div class="highlight"><pre># Boot the OS image in the vanilla QEMU and login as root.
+$ $S2EBUILD/qemu-release/i386-softmmu/qemu-system-i386 s2e_disk.raw
+
+# Get packages on which SystemTap depends and install them:
+$ wget http://ftp.au.debian.org/debian/pool/main/e/elfutils/libelf1_0.131-4_i386.deb
+$ wget http://ftp.au.debian.org/debian/pool/main/e/elfutils/libelf-dev_0.131-4_i386.deb
+$ wget http://ftp.au.debian.org/debian/pool/main/e/elfutils/libdw-dev_0.131-4_i386.deb
+$ wget http://ftp.au.debian.org/debian/pool/main/e/elfutils/libebl-dev_0.131-4_i386.deb
+$ dpkg -i *.deb
+
+# Get SystemTap:
+$ wget http://sourceware.org/systemtap/ftp/releases/systemtap-1.3.tar.gz
+$ tar xzf systemtap-1.3.tar.gz
+</pre></div>
+</div>
+<p>Install and boot your new kernel on the guest:</p>
+<div class="highlight-python"><div class="highlight"><pre># Upload the kernel packages to the guest OS, install them (adapt all
+# the filenames accordingly)
+$ dpkg -i linux-image-2.6.26.8-s2e.deb linux-headers-2.6.26.8-s2e.deb
+# Reboot your QEMU machine, choose your 2.6.26.8-s2e kernel from the
+# grub menu and login as root.
+$ reboot
+
+# Verify that the new version of your kernel rebooted.
+$ uname -a
+
+# Note: If this is a re-install of a kernel package that you have already
+# installed (i.e. the same 2.6.26.8-s2e flag as an installed kernel
+# package), you need to first remove the old package(s), before you do
+# the dpkg -i of the new ones:
+$ dpkg -r linux-image-2.6.26.8-s2e.deb
+
+# You can use the -I option of dpkg to list info about the package file,
+# including its name (used in the -r option).
+</pre></div>
+</div>
+<p>Install SystemTap with the following steps:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ cd systemtap-1.3
+$ ./configure
+$ make
+$ make install
+</pre></div>
+</div>
+<p>Shut down the QEMU machine:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ halt
+</pre></div>
+</div>
+</div>
+<div class="section" id="creating-a-simple-s2e-enabled-systemtap-script">
+<h2><a class="toc-backref" href="#id5">2.4. Creating a simple S2E-enabled SystemTap script</a><a class="headerlink" href="#creating-a-simple-s2e-enabled-systemtap-script" title="Permalink to this headline">¶</a></h2>
+<p>In this section, we show how to intercept the network packets received by the <tt class="docutils literal"><span class="pre">pcnet32</span></tt> driver
+and replace the content of the IP header field with symbolic values.</p>
+<p>Create (on the host machine) a <tt class="docutils literal"><span class="pre">pcnet32.stp</span></tt> file with the following content:</p>
+<div class="highlight-c"><div class="highlight"><pre># We use the embedded C support of SystemTap to access the S2E
+# custom instructions. A comprehensive set of such instructions can
+# be found in s2e.h. You can adapt them to SystemTap, in case
+# you need them.
+
+# Terminate current state.
+# This is a SystemTap function that can be called from SystemTap code.
+function s2e_kill_state(status:long, message: string) %{
+  __asm__ __volatile__(
+    &quot;.byte 0x0f, 0x3f\n&quot;
+    &quot;.byte 0x00, 0x06, 0x00, 0x00\n&quot;
+    &quot;.byte 0x00, 0x00, 0x00, 0x00\n&quot;
+    : : &quot;a&quot; ((uint32_t)THIS-&gt;status), &quot;b&quot; (THIS-&gt;message)
+  );
+%}
+
+# Print message to the S2E log.
+# This is a SystemTap function that can be called from SystemTap code.
+function s2e_message(message:string) %{
+  __asm__ __volatile__(
+    &quot;.byte 0x0f, 0x3f\n&quot;
+    &quot;.byte 0x00, 0x10, 0x00, 0x00\n&quot;
+    &quot;.byte 0x00, 0x00, 0x00, 0x00\n&quot;
+    : : &quot;a&quot; (THIS-&gt;message)
+  );
+%}
+
+# SystemTap also allows to paste arbitrary C code.
+# This is useful when calling other C functions.
+
+%{
+// Make the specified buffer symbolic and assign a name to it.
+static inline void s2e_make_symbolic(void *buf, int size, const char *name)
+{
+  __asm__ __volatile__(
+    &quot;.byte 0x0f, 0x3f\n&quot;
+    &quot;.byte 0x00, 0x03, 0x00, 0x00\n&quot;
+    &quot;.byte 0x00, 0x00, 0x00, 0x00\n&quot;
+    : : &quot;a&quot; (buf), &quot;b&quot; (size), &quot;c&quot; (name)
+  );
+}
+%}
+
+#### Now comes the real stuff ####
+
+# Take a pointer to the IP header, and make the options length field symbolic.
+function s2e_inject_symbolic_ip_optionlength(ipheader: long) %{
+  uint8_t *data = (uint8_t*)((uintptr_t)(THIS-&gt;ipheader + 0));
+
+  uint8_t len;
+  s2e_make_symbolic(&amp;len, 1, &quot;ip_headerlength&quot;);
+  *data = *data &amp; 0xF0;
+  *data = *data | ((len) &amp; 0xF);
+%}
+
+
+# Instruct SystemTap to intercept the netif_receive_skb kernel function.
+# NIC drivers call this function when they are ready to give the received packet
+# to the kernel.
+probe kernel.function(&quot;netif_receive_skb&quot;) {
+  msg = sprintf(&quot;%s: len=%d datalen=%d\n&quot;, probefunc(), $skb-&gt;len, $skb-&gt;data_len)
+  s2e_message(msg)
+  s2e_inject_symbolic_ip_optionlength($skb-&gt;data)
+}
+
+
+# Instruct SystemTap to intercept the pcnet32_start_xmit in the pcnet32 driver.
+# We also tell S2E to kill the current state.
+# Intercepting this function can be useful to analyze the reaction of the kernel
+# to the reception of a (symbolic) packet.
+probe module(&quot;pcnet32&quot;).function(&quot;pcnet32_start_xmit&quot;) {
+  msg = sprintf(&quot;%s: len=%d datalen=%d\n&quot;, probefunc(), $skb-&gt;len, $skb-&gt;data_len)
+  s2e_message(msg)
+  s2e_kill_state(0, &quot;pcnet32_start_xmit&quot;)
+}
+</pre></div>
+</div>
+<p>Compile the script with SystemTap in the <tt class="docutils literal"><span class="pre">chroot</span></tt> environment, adjusting the kernel version to suit your needs.</p>
+<div class="highlight-python"><div class="highlight"><pre>$ stap -r 2.6.26.8-s2e -g -m pcnet_probe pcnet32.stp
+WARNING: kernel release/architecture mismatch with host forces last-pass 4.
+pcnet_probe.ko
+</pre></div>
+</div>
+<p>This will result in a module called <tt class="docutils literal"><span class="pre">pcnet_probe.ko</span></tt> that we will upload to the VM.
+Refer to <a class="reference external" href="ImageInstallation.html">how to prepare an OS image</a> to learn how to do
+it efficiently.</p>
+</div>
+<div class="section" id="running-the-script-in-s2e">
+<h2><a class="toc-backref" href="#id6">2.5. Running the script in S2E</a><a class="headerlink" href="#running-the-script-in-s2e" title="Permalink to this headline">¶</a></h2>
+<p>Create the <tt class="docutils literal"><span class="pre">tcpip.lua</span></tt> configuration file with the following content:</p>
+<div class="highlight-python"><div class="highlight"><pre>s2e = {
+  kleeArgs = {
+     &quot;--use-batching-search&quot;,
+     &quot;--use-random-path&quot;,
+  }
+}
+
+
+plugins = {
+  --This is required for s2e_make_symbolic
+  &quot;BaseInstructions&quot;,
+}
+
+pluginsConfig = {}
+</pre></div>
+</div>
+<p>To prepare a snapshot for S2E: start the vanilla QEMU with port forwarding enabled
+by adding <tt class="docutils literal"><span class="pre">-net</span> <span class="pre">user,hostfwd=tcp::2222-:22,hostfwd=udp::2222-:22</span></tt> to the QEMU command line.
+This will redirect port 2222 from <tt class="docutils literal"><span class="pre">localhost</span></tt> to guest port 22. Adapt the
+name of the disk image to suit your needs.</p>
+<div class="highlight-python"><div class="highlight"><pre>$ $S2EBUILD/qemu-release/i386-softmmu/qemu-system-i386 -rtc clock=vm \
+    -net nic,model=pcnet -net user,hostfwd=tcp::2222-:22,hostfwd=udp::2222-:22 \
+    -hda s2e_disk.raw.s2e
+# Press Ctrl-Alt-2 to reach the QEMU monitor, then save the snapshot with a tag (e.g., ready)
+$ savevm ready
+# Press Ctrl-Alt-1 to return to the emulation screen, then shut down the QEMU machine
+$ su -c halt
+</pre></div>
+</div>
+<p>Start the S2E-enabled QEMU with port forwarding enabled:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ $S2EBUILD/qemu-release/i386-s2e-softmmu/qemu-system-i386 -rtc clock=vm \
+    -net nic,model=pcnet -net user,hostfwd=tcp::2222-:22,hostfwd=udp::2222-:22 \
+    -hda s2e_disk.raw.s2e -s2e-config-file tcpip.lua -loadvm ready
+</pre></div>
+</div>
+<p>Once you uploaded the <tt class="docutils literal"><span class="pre">pcnet_probe.ko</span></tt> module to the guest OS, run the following command in the guest:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ staprun pcnet_probe.ko &amp;
+</pre></div>
+</div>
+<p>This will load the probe into the kernel. Symbolic execution will start when the network card
+receives the first packet. To send a packet, use <tt class="docutils literal"><span class="pre">netcat</span></tt> (in the guest) to send a UDP
+packet:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ nc -u localhost 2222
+</pre></div>
+</div>
+<p>Type some characters, and press enter.</p>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+  <h3><a href="index.html">Table Of Contents</a></h3>
+  <ul>
+<li><a class="reference internal" href="#">2. Using SystemTap with S2E</a><ul>
+<li><a class="reference internal" href="#building-the-linux-kernel">2.1. Building the Linux kernel</a></li>
+<li><a class="reference internal" href="#building-systemtap-in-the-chroot-environment-of-the-host">2.2. Building SystemTap in the <tt class="docutils literal"><span class="pre">chroot</span></tt> environment of the host</a></li>
+<li><a class="reference internal" href="#building-systemtap-on-the-guest">2.3. Building SystemTap on the guest</a></li>
+<li><a class="reference internal" href="#creating-a-simple-s2e-enabled-systemtap-script">2.4. Creating a simple S2E-enabled SystemTap script</a></li>
+<li><a class="reference internal" href="#running-the-script-in-s2e">2.5. Running the script in S2E</a></li>
+</ul>
+</li>
+</ul>
+
+  <h4>Previous topic</h4>
+  <p class="topless"><a href="BuildingLinux.html"
+                        title="previous chapter">1. Compiling the Linux Kernel</a></p>
+  <h4>Next topic</h4>
+  <p class="topless"><a href="Howtos/ExecutionTracers.html"
+                        title="next chapter">1. How to Use Execution Tracers?</a></p>
+  <h3>This Page</h3>
+  <ul class="this-page-menu">
+    <li><a href="_sources/SystemTap.txt"
+           rel="nofollow">Show Source</a></li>
+  </ul>
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="Howtos/ExecutionTracers.html" title="1. How to Use Execution Tracers?"
+             >next</a> |</li>
+        <li class="right" >
+          <a href="BuildingLinux.html" title="1. Compiling the Linux Kernel"
+             >previous</a> |</li>
+        <li><a href="index.html">Chef 0.9 documentation</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2015, Stefan Bucur.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.2.2.
+    </div>
+  </body>
+</html>

@@ -1,0 +1,151 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>3. Parallel S2E &mdash; Chef 0.9 documentation</title>
+    
+    <link rel="stylesheet" href="../_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../',
+        VERSION:     '0.9',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../_static/jquery.js"></script>
+    <script type="text/javascript" src="../_static/underscore.js"></script>
+    <script type="text/javascript" src="../_static/doctools.js"></script>
+    <link rel="top" title="Chef 0.9 documentation" href="../index.html" />
+    <link rel="next" title="4. Debugging Guest Code" href="Debugging.html" />
+    <link rel="prev" title="2. How to Write an S2E plugin?" href="WritingPlugins.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="Debugging.html" title="4. Debugging Guest Code"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="WritingPlugins.html" title="2. How to Write an S2E plugin?"
+             accesskey="P">previous</a> |</li>
+        <li><a href="../index.html">Chef 0.9 documentation</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <div class="section" id="parallel-s2e">
+<h1>3. Parallel S2E<a class="headerlink" href="#parallel-s2e" title="Permalink to this headline">¶</a></h1>
+<p>S2E can be run in multi-process mode in order to speed up path exploration.
+Each process is called a worker. Each worker periodically checks whether there
+are processor cores available, and if yes, forks itself. The child worker inherits half of the states of the parent.</p>
+<p>To enable multi-process mode, append <tt class="docutils literal"><span class="pre">-s2e-max-processes</span> <span class="pre">XX</span></tt> to the command line,
+where <tt class="docutils literal"><span class="pre">XX</span></tt> is the maximum number of S2E instances you would like to have.</p>
+<p>Add the <tt class="docutils literal"><span class="pre">-nographic</span></tt> option as it is not possible to fork a new S2E window for now.</p>
+<div class="section" id="how-do-i-process-generated-traces">
+<h2>3.1. How do I process generated traces?<a class="headerlink" href="#how-do-i-process-generated-traces" title="Permalink to this headline">¶</a></h2>
+<p>In multi-process mode, S2E outputs traces in the <tt class="docutils literal"><span class="pre">s2e-last/XX</span></tt> folders, where <tt class="docutils literal"><span class="pre">XX</span></tt> is the sequence number of the S2E instance.
+S2E increments this number each time it launches a new instance. Note that instances can also terminate, e.g., when they
+finish exploring their respective state subtree.</p>
+<p>Each trace file contains a subtree of the global execution tree. Therefore, analysis tools must process the traces in the relative order
+of their creation. The relative order is defined by the sequence number of the instance. This can be done by specifying
+multiple <tt class="docutils literal"><span class="pre">-trace</span></tt> arguments to the offline analysis tools. For example, generating the fork profile of a multi-core run can be done
+as follows:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ /home/s2e/tools/Release/bin/forkprofiler -outputdir=s2e-last/ \
+-trace=s2e-last/0/ExecutionTracer.dat -trace=s2e-last/1/ExecutionTracer.dat \
+-trace=s2e-last/2/ExecutionTracer.dat -trace=s2e-last/3/ExecutionTracer.dat
+</pre></div>
+</div>
+</div>
+<div class="section" id="limitations">
+<h2>3.2. Limitations<a class="headerlink" href="#limitations" title="Permalink to this headline">¶</a></h2>
+<ul class="simple">
+<li>S2E can only run on a shared-memory architecture. S2E cannot start on one machine and fork new instances on other machines for now.
+This limitation will be removed soon.</li>
+<li>It is not possible to have a separate S2E window for each process for now. If you start with <tt class="docutils literal"><span class="pre">-nographic</span></tt>, you will not be able
+to manipulate the console. To start the program that you want to symbolically execute in the guest, use the <a class="reference external" href="../UsingS2EGet.html">HostFiles</a> plugin or
+the <tt class="docutils literal"><span class="pre">-vnc</span> <span class="pre">:1</span></tt> option.</li>
+<li>Because S2E uses the <tt class="docutils literal"><span class="pre">fork</span></tt> system call, S2E cannot run on Windows in multi-core mode.</li>
+</ul>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+  <h3><a href="../index.html">Table Of Contents</a></h3>
+  <ul>
+<li><a class="reference internal" href="#">3. Parallel S2E</a><ul>
+<li><a class="reference internal" href="#how-do-i-process-generated-traces">3.1. How do I process generated traces?</a></li>
+<li><a class="reference internal" href="#limitations">3.2. Limitations</a></li>
+</ul>
+</li>
+</ul>
+
+  <h4>Previous topic</h4>
+  <p class="topless"><a href="WritingPlugins.html"
+                        title="previous chapter">2. How to Write an S2E plugin?</a></p>
+  <h4>Next topic</h4>
+  <p class="topless"><a href="Debugging.html"
+                        title="next chapter">4. Debugging Guest Code</a></p>
+  <h3>This Page</h3>
+  <ul class="this-page-menu">
+    <li><a href="../_sources/Howtos/Parallel.txt"
+           rel="nofollow">Show Source</a></li>
+  </ul>
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="Debugging.html" title="4. Debugging Guest Code"
+             >next</a> |</li>
+        <li class="right" >
+          <a href="WritingPlugins.html" title="2. How to Write an S2E plugin?"
+             >previous</a> |</li>
+        <li><a href="../index.html">Chef 0.9 documentation</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2015, Stefan Bucur.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.2.2.
+    </div>
+  </body>
+</html>

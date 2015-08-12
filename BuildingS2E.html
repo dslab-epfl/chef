@@ -1,0 +1,204 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>2. Building the S2E Platform &mdash; Chef 0.9 documentation</title>
+    
+    <link rel="stylesheet" href="_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    './',
+        VERSION:     '0.9',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <link rel="top" title="Chef 0.9 documentation" href="index.html" />
+    <link rel="next" title="3. Preparing VM Images for S2E" href="ImageInstallation.html" />
+    <link rel="prev" title="1. Getting Started" href="GettingStarted.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="ImageInstallation.html" title="3. Preparing VM Images for S2E"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="GettingStarted.html" title="1. Getting Started"
+             accesskey="P">previous</a> |</li>
+        <li><a href="index.html">Chef 0.9 documentation</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <div class="section" id="building-the-s2e-platform">
+<h1><a class="toc-backref" href="#id1">2. Building the S2E Platform</a><a class="headerlink" href="#building-the-s2e-platform" title="Permalink to this headline">¶</a></h1>
+<p>The following steps describe the installation process in detail. We assume the installation
+is performed on an Ubuntu 12.04 64-bit host system (S2E also works on 64-bit Mac systems).</p>
+<div class="contents topic" id="contents">
+<p class="topic-title first">Contents</p>
+<ul class="simple">
+<li><a class="reference internal" href="#building-the-s2e-platform" id="id1">Building the S2E Platform</a><ul>
+<li><a class="reference internal" href="#required-packages" id="id2">Required Packages</a></li>
+<li><a class="reference internal" href="#checking-out-s2e" id="id3">Checking out S2E</a></li>
+<li><a class="reference internal" href="#building-s2e" id="id4">Building S2E</a></li>
+<li><a class="reference internal" href="#updating-s2e" id="id5">Updating S2E</a></li>
+<li><a class="reference internal" href="#rebuilding-s2e-documentation" id="id6">Rebuilding S2E Documentation</a></li>
+</ul>
+</li>
+</ul>
+</div>
+<div class="section" id="required-packages">
+<h2><a class="toc-backref" href="#id2">2.1. Required Packages</a><a class="headerlink" href="#required-packages" title="Permalink to this headline">¶</a></h2>
+<div class="highlight-python"><div class="highlight"><pre>$ sudo apt-get install build-essential subversion git gettext \
+      liblua5.1-0-dev libsdl1.2-dev libsigc++-2.0-dev binutils-dev \
+      python-docutils python-pygments nasm libiberty-dev libc6-dev-i386
+</pre></div>
+</div>
+<p>The following commands ask <tt class="docutils literal"><span class="pre">apt-get</span></tt> to install build dependencies for llvm-3.0
+and qemu.</p>
+<div class="highlight-python"><div class="highlight"><pre>$ sudo apt-get build-dep llvm-3.3
+$ sudo apt-get build-dep qemu
+</pre></div>
+</div>
+</div>
+<div class="section" id="checking-out-s2e">
+<h2><a class="toc-backref" href="#id3">2.2. Checking out S2E</a><a class="headerlink" href="#checking-out-s2e" title="Permalink to this headline">¶</a></h2>
+<p>S2E source code can be obtained from the S2E GIT repository using the
+following commands:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ cd $S2EDIR
+$ git clone https://github.com/dslab-epfl/s2e.git
+</pre></div>
+</div>
+<p>This will clone the S2E repository into <tt class="docutils literal"><span class="pre">$S2EDIR/s2e</span></tt>.</p>
+<p>You can also clone S2E via SSH:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ cd $S2EDIR
+$ git clone git@github.com:dslab-epfl/s2e.git
+</pre></div>
+</div>
+<p>In order to report bugs, please use GitHub&#8217;s <a class="reference external" href="https://github.com/dslab-epfl/s2e/issues">issue tracker</a>. If you would like
+to contribute to S2E, please create your own personal clone of S2E on GitHub, push your changes to it and then send us a
+pull request.</p>
+<p>You can find more information about using git on <a class="reference external" href="http://gitref.org/">http://gitref.org/</a> or on
+<a class="reference external" href="http://progit.org/">http://progit.org/</a>.</p>
+</div>
+<div class="section" id="building-s2e">
+<h2><a class="toc-backref" href="#id4">2.3. Building S2E</a><a class="headerlink" href="#building-s2e" title="Permalink to this headline">¶</a></h2>
+<p>The recommended method of building S2E is using the S2E Makefile:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ mkdir $S2EDIR/build
+$ cd $S2EDIR/build
+$ make -f ../s2e/Makefile
+
+&gt; Go make some coffee, this will take a lot of time
+</pre></div>
+</div>
+<p>By default, the <tt class="docutils literal"><span class="pre">make</span></tt> command compiles S2E in release mode. The resulting
+binary is placed in <tt class="docutils literal"><span class="pre">$S2EDIR/build/qemu-release/i386-s2e-softmmu/qemu-system-i386</span></tt>.
+To compile in Debug mode, use <tt class="docutils literal"><span class="pre">make</span> <span class="pre">all-debug</span></tt>. The Makefile automatically
+uses the maximum number of available processors in order to speed up compilation.</p>
+<p>You can also build each component of S2E manually. Refer to the Makefile for
+the commands required to build all inidividual components.</p>
+</div>
+<div class="section" id="updating-s2e">
+<h2><a class="toc-backref" href="#id5">2.4. Updating S2E</a><a class="headerlink" href="#updating-s2e" title="Permalink to this headline">¶</a></h2>
+<p>You can use the same Makefile to recompile S2E either when changing it
+yourself or when pulling new versions through <tt class="docutils literal"><span class="pre">git</span></tt>. Note that the Makefile
+will not automatically reconfigure the packages; for deep changes you might need
+to either start from scratch by issuing <tt class="docutils literal"><span class="pre">make</span> <span class="pre">clean</span></tt> or to force
+the reconfiguration of specific modules by deleting  the corresponding files from
+the <tt class="docutils literal"><span class="pre">stamps</span></tt> subdirectory.</p>
+</div>
+<div class="section" id="rebuilding-s2e-documentation">
+<h2><a class="toc-backref" href="#id6">2.5. Rebuilding S2E Documentation</a><a class="headerlink" href="#rebuilding-s2e-documentation" title="Permalink to this headline">¶</a></h2>
+<p>The S2E documentation is written in <a class="reference external" href="http://docutils.sourceforge.net/rst.html">reStructuredText</a> format. For convenience, we also
+keep generated HTML files in the repository. Never change HTML files
+manually and always recompile them (by invoking <tt class="docutils literal"><span class="pre">make</span></tt> in the docs folder)
+after changing any <tt class="docutils literal"><span class="pre">RST</span></tt> files.</p>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+  <h3><a href="index.html">Table Of Contents</a></h3>
+  <ul>
+<li><a class="reference internal" href="#">2. Building the S2E Platform</a><ul>
+<li><a class="reference internal" href="#required-packages">2.1. Required Packages</a></li>
+<li><a class="reference internal" href="#checking-out-s2e">2.2. Checking out S2E</a></li>
+<li><a class="reference internal" href="#building-s2e">2.3. Building S2E</a></li>
+<li><a class="reference internal" href="#updating-s2e">2.4. Updating S2E</a></li>
+<li><a class="reference internal" href="#rebuilding-s2e-documentation">2.5. Rebuilding S2E Documentation</a></li>
+</ul>
+</li>
+</ul>
+
+  <h4>Previous topic</h4>
+  <p class="topless"><a href="GettingStarted.html"
+                        title="previous chapter">1. Getting Started</a></p>
+  <h4>Next topic</h4>
+  <p class="topless"><a href="ImageInstallation.html"
+                        title="next chapter">3. Preparing VM Images for S2E</a></p>
+  <h3>This Page</h3>
+  <ul class="this-page-menu">
+    <li><a href="_sources/BuildingS2E.txt"
+           rel="nofollow">Show Source</a></li>
+  </ul>
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="ImageInstallation.html" title="3. Preparing VM Images for S2E"
+             >next</a> |</li>
+        <li class="right" >
+          <a href="GettingStarted.html" title="1. Getting Started"
+             >previous</a> |</li>
+        <li><a href="index.html">Chef 0.9 documentation</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2015, Stefan Bucur.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.2.2.
+    </div>
+  </body>
+</html>

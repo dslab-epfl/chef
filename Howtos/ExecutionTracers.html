@@ -1,0 +1,219 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>1. How to Use Execution Tracers? &mdash; Chef 0.9 documentation</title>
+    
+    <link rel="stylesheet" href="../_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../',
+        VERSION:     '0.9',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../_static/jquery.js"></script>
+    <script type="text/javascript" src="../_static/underscore.js"></script>
+    <script type="text/javascript" src="../_static/doctools.js"></script>
+    <link rel="top" title="Chef 0.9 documentation" href="../index.html" />
+    <link rel="next" title="2. How to Write an S2E plugin?" href="WritingPlugins.html" />
+    <link rel="prev" title="2. Using SystemTap with S2E" href="../SystemTap.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="WritingPlugins.html" title="2. How to Write an S2E plugin?"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="../SystemTap.html" title="2. Using SystemTap with S2E"
+             accesskey="P">previous</a> |</li>
+        <li><a href="../index.html">Chef 0.9 documentation</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <div class="section" id="how-to-use-execution-tracers">
+<h1><a class="toc-backref" href="#id2">1. How to Use Execution Tracers?</a><a class="headerlink" href="#how-to-use-execution-tracers" title="Permalink to this headline">¶</a></h1>
+<div class="contents topic" id="contents">
+<p class="topic-title first">Contents</p>
+<ul class="simple">
+<li><a class="reference internal" href="#how-to-use-execution-tracers" id="id2">How to Use Execution Tracers?</a><ul>
+<li><a class="reference internal" href="#minimal-configuration-file" id="id3">1. Minimal Configuration File</a></li>
+<li><a class="reference internal" href="#guest-configuration" id="id4">2. Guest Configuration</a></li>
+<li><a class="reference internal" href="#viewing-the-traces" id="id5">3. Viewing the Traces</a></li>
+<li><a class="reference internal" href="#mini-faq" id="id6">Mini-FAQ</a></li>
+</ul>
+</li>
+</ul>
+</div>
+<p>Execution tracers are S2E analysis plugins that record various information along the execution of each path.
+Here is a list of currently available plugins:</p>
+<ul class="simple">
+<li><strong>ExecutionTracer</strong>: Base plugin upon which all tracers depend. This plugin records fork points so that offline
+analysis tools can reconstruct the execution tree. This plugin is useful by itself to obtain a fork profile
+of the system and answer questions such as: Which branch forks the most? What is causing path explosion?</li>
+<li><strong>ModuleTracer</strong>: Records when and where the guest OS loads modules, programs, or libraries. Offline analysis tools
+rely on this plugin to display debug information such as which line of code corresponds to which program counter.
+If ModuleTracer is disabled, no debug information will be displayed.</li>
+<li><strong>TestCaseGenerator</strong>: Outputs a test case whenever a path terminates. The test case consists of concrete input values
+that would exercise the given path.</li>
+<li><strong>TranslationBlockTracer</strong>: Records information about the executed translation blocks, including the program counter of
+each executed block and the content of registers before and after execution. This plugin is useful to obtain basic block
+coverage.</li>
+<li><strong>InstructionCounter</strong>: Counts the number of instructions executed on each path in the modules of interest.</li>
+</ul>
+<p>Most of the tracers record information only for the configured modules (except ExecutionTracer, which records forks
+anywhere in the system). For this, tracers need to know when execution enters and leaves the modules of interest.
+Tracers rely on the ModuleExecutionDetector plugin to obtain this information. ModuleExecutionDetector relies itself
+on OS monitor plugins to be notified whenever the OS loads or unloads the modules.</p>
+<p>Here is an end-to-end example of how to generate an execution trace for the <tt class="docutils literal"><span class="pre">echo</span></tt> utility using the <a class="reference external" href="../Howtos/init_env.html">init_env.so</a> library.
+The trace will contain all memory accesses done by <tt class="docutils literal"><span class="pre">echo</span></tt>, as well as the list of executed translation blocks and test cases.</p>
+<div class="section" id="minimal-configuration-file">
+<h2><a class="toc-backref" href="#id3">1.1. 1. Minimal Configuration File</a><a class="headerlink" href="#minimal-configuration-file" title="Permalink to this headline">¶</a></h2>
+<blockquote>
+<div><div class="highlight-python"><div class="highlight"><pre>s2e = {
+  kleeArgs = {}
+}
+
+plugins = {
+  &quot;BaseInstructions&quot;,
+  &quot;ExecutionTracer&quot;,
+  &quot;ModuleTracer&quot;,
+
+  &quot;RawMonitor&quot;,
+  &quot;ModuleExecutionDetector&quot;,
+
+  --The following plugins can be enabled as needed
+  &quot;MemoryTracer&quot;,
+  &quot;TestCaseGenerator&quot;,
+  &quot;TranslationBlockTracer&quot;
+}
+
+pluginsConfig = {}
+
+pluginsConfig.MemoryTracer = {
+  monitorMemory = true,
+  monitorModules = true,
+}
+</pre></div>
+</div>
+</div></blockquote>
+</div>
+<div class="section" id="guest-configuration">
+<h2><a class="toc-backref" href="#id4">1.2. 2. Guest Configuration</a><a class="headerlink" href="#guest-configuration" title="Permalink to this headline">¶</a></h2>
+<p>Preparing the guest program for tracing is easy. The <a class="reference external" href="../Howtos/init_env.html">init_env.so</a> library will instruct
+S2E to trace the program as specified in the configuration file.</p>
+<blockquote>
+<div><div class="highlight-python"><div class="highlight"><pre>$ LD_PRELOAD=/home/s2e/init_env.so /bin/echo abc ab &gt; /dev/null
+</pre></div>
+</div>
+</div></blockquote>
+</div>
+<div class="section" id="viewing-the-traces">
+<h2><a class="toc-backref" href="#id5">1.3. 3. Viewing the Traces</a><a class="headerlink" href="#viewing-the-traces" title="Permalink to this headline">¶</a></h2>
+<p>S2E comes with several tools that parse and display the execution traces.
+They are located in the <cite>tools</cite>  folder of the source distribution.
+You can find the documentation for them on the <a class="reference external" href="../index.html">main page</a>.</p>
+<p>Here is an example that prints the list of executed translation blocks and all memory accesses performed in paths #0 and #34.</p>
+<blockquote>
+<div><div class="highlight-python"><div class="highlight"><pre>$ $S2EDIR/build/tools/Release+Asserts/bin/tbtrace -trace=s2e-last/ExecutionTracer.dat \
+  -outputdir=s2e-last/traces -pathId=0 -pathId=34 -printMemory
+</pre></div>
+</div>
+</div></blockquote>
+</div>
+<div class="section" id="mini-faq">
+<h2><a class="toc-backref" href="#id6">1.4. Mini-FAQ</a><a class="headerlink" href="#mini-faq" title="Permalink to this headline">¶</a></h2>
+<ul class="simple">
+<li>You followed all steps and no debug information is displayed by the offline tools.<ul>
+<li>Some programs might be relocated by the OS and their load base will differ from their native base. Try to disable ASLR.</li>
+<li>Check that your binutils library understands the debug information in the binaries.</li>
+</ul>
+</li>
+</ul>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+  <h3><a href="../index.html">Table Of Contents</a></h3>
+  <ul>
+<li><a class="reference internal" href="#">1. How to Use Execution Tracers?</a><ul>
+<li><a class="reference internal" href="#minimal-configuration-file">1.1. 1. Minimal Configuration File</a></li>
+<li><a class="reference internal" href="#guest-configuration">1.2. 2. Guest Configuration</a></li>
+<li><a class="reference internal" href="#viewing-the-traces">1.3. 3. Viewing the Traces</a></li>
+<li><a class="reference internal" href="#mini-faq">1.4. Mini-FAQ</a></li>
+</ul>
+</li>
+</ul>
+
+  <h4>Previous topic</h4>
+  <p class="topless"><a href="../SystemTap.html"
+                        title="previous chapter">2. Using SystemTap with S2E</a></p>
+  <h4>Next topic</h4>
+  <p class="topless"><a href="WritingPlugins.html"
+                        title="next chapter">2. How to Write an S2E plugin?</a></p>
+  <h3>This Page</h3>
+  <ul class="this-page-menu">
+    <li><a href="../_sources/Howtos/ExecutionTracers.txt"
+           rel="nofollow">Show Source</a></li>
+  </ul>
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="WritingPlugins.html" title="2. How to Write an S2E plugin?"
+             >next</a> |</li>
+        <li class="right" >
+          <a href="../SystemTap.html" title="2. Using SystemTap with S2E"
+             >previous</a> |</li>
+        <li><a href="../index.html">Chef 0.9 documentation</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2015, Stefan Bucur.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.2.2.
+    </div>
+  </body>
+</html>

@@ -1,0 +1,282 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>1. Getting Started &mdash; Chef 0.9 documentation</title>
+    
+    <link rel="stylesheet" href="_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    './',
+        VERSION:     '0.9',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <link rel="top" title="Chef 0.9 documentation" href="index.html" />
+    <link rel="next" title="2. Building the S2E Platform" href="BuildingS2E.html" />
+    <link rel="prev" title="The Selective Symbolic Execution (S²E) Platform" href="index.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="BuildingS2E.html" title="2. Building the S2E Platform"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="index.html" title="The Selective Symbolic Execution (S²E) Platform"
+             accesskey="P">previous</a> |</li>
+        <li><a href="index.html">Chef 0.9 documentation</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <div class="section" id="getting-started">
+<h1>1. Getting Started<a class="headerlink" href="#getting-started" title="Permalink to this headline">¶</a></h1>
+<p>This is a short guide on how to get, build, and use Chef. It assumes that you
+are running Ubuntu 14.04, <em>Trusty Tahr</em> (for different distributions/versions,
+you may be interested in using Linux containers, e.g. by using LXC directly or
+through <a class="reference external" href="https://docker.com/">docker.io</a>).</p>
+<div class="section" id="getting-the-source">
+<h2>1.1. Getting the Source<a class="headerlink" href="#getting-the-source" title="Permalink to this headline">¶</a></h2>
+<div class="highlight-python"><div class="highlight"><pre>$ mkdir chef
+$ git clone https://github.com/dslab-epfl/chef chef/src
+</pre></div>
+</div>
+<p>This will place the project&#8217;s git repository in the <tt class="docutils literal"><span class="pre">chef/src</span></tt> subfolder.
+Since Chef will put generated files directly in <tt class="docutils literal"><span class="pre">chef</span></tt>, this allows us to keep
+Chef-specific files in one place.</p>
+</div>
+<div class="section" id="preparing-the-environment">
+<h2>1.2. Preparing the Environment<a class="headerlink" href="#preparing-the-environment" title="Permalink to this headline">¶</a></h2>
+<p>Setting up the dependencies for Chef is a rather tedious task. Therefore, Chef
+provides a <tt class="docutils literal"><span class="pre">setup.sh</span></tt> script that does all that setup work automatically. If
+we take a look it, we can see that it will essentially</p>
+<ul class="simple">
+<li>update the package repository,</li>
+<li>install runtime dependencies for <a class="reference external" href="http://dslab.epfl.ch/s2e/">S²E</a> and Chef,</li>
+<li>install buildtime dependencies for S²E, and</li>
+<li>add our user to the <tt class="docutils literal"><span class="pre">kvm</span></tt> group.</li>
+</ul>
+<p>Some of the steps will require us to be in the <tt class="docutils literal"><span class="pre">sudo</span></tt> group in order to be
+able to install packages to your system. We can check that with</p>
+<div class="highlight-python"><div class="highlight"><pre>$ id                                                  ↓↓↓↓↓↓↓↓
+uid=1000(mrbean) gid=1000(mrbean) groups=1000(mrbean),27(sudo),...
+</pre></div>
+</div>
+<p>If we&#8217;re in the <tt class="docutils literal"><span class="pre">sudo</span></tt> group, we can then launch</p>
+<div class="highlight-python"><div class="highlight"><pre>$ chef/src/setup.sh --no-keep
+</pre></div>
+</div>
+<p>The script will also compile LLVM, which takes a considerable time. So after
+launching the script, we can go make ourselves a cup of tea and read the latest
+<em>What If</em> (or get other important things done).</p>
+<p>The <tt class="docutils literal"><span class="pre">--no-keep</span></tt> option tells the script to remove the intermediate files at
+the end of the setup, which makes a difference of about 2.5 GiB.</p>
+</div>
+<div class="section" id="building-chef">
+<h2>1.3. Building Chef<a class="headerlink" href="#building-chef" title="Permalink to this headline">¶</a></h2>
+<p>If the setup above works fine, we should now have an LLVM build in
+<tt class="docutils literal"><span class="pre">chef/build/deps/llvm</span></tt>, and we can build Chef in its default configuration:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ chef/src/ctl build
+</pre></div>
+</div>
+<p>Since that <tt class="docutils literal"><span class="pre">ctl</span></tt> script is going to be used a lot, we may want to</p>
+<div class="highlight-python"><div class="highlight"><pre>$ alias ctl=/path/to/chef/src/ctl
+</pre></div>
+</div>
+<p>or add a symlink somewhere to the <tt class="docutils literal"><span class="pre">PATH</span></tt> environment. This allows us to simply
+run the <tt class="docutils literal"><span class="pre">ctl</span></tt> command instead of having to type <tt class="docutils literal"><span class="pre">/path/to/chef/src/ctl</span></tt>
+everytime. The build command above would thus become</p>
+<div class="highlight-python"><div class="highlight"><pre>$ ctl build
+</pre></div>
+</div>
+</div>
+<div class="section" id="managing-vms">
+<h2>1.4. Managing VMs<a class="headerlink" href="#managing-vms" title="Permalink to this headline">¶</a></h2>
+<p>The virtual machines for Chef can be managed through the <tt class="docutils literal"><span class="pre">vm</span></tt> subcommand. They
+are distributed and shared as gzipped tarballs, and can be imported to and
+exported from Chef.</p>
+<p>For now, let&#8217;s fetch a prepared virtual machine, then import it to Chef:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ wget https://dslab.epfl.ch/chef/Debian.tar.gz
+$ ctl vm import Debian.tar.gz MyExampleBox
+</pre></div>
+</div>
+<p>Once it&#8217;s done, it should appear in the list of managed VMs:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ ctl vm list
+MyExampleBox
+  Size: 10240MiB
+</pre></div>
+</div>
+<p>There is also no magic behind this (try <tt class="docutils literal"><span class="pre">tar</span> <span class="pre">tf</span> <span class="pre">Debian.tar.gz</span></tt> and
+<tt class="docutils literal"><span class="pre">find</span> <span class="pre">/path/to/chef/vm</span></tt> and find out!)</p>
+</div>
+<div class="section" id="workflow">
+<h2>1.5. Workflow<a class="headerlink" href="#workflow" title="Permalink to this headline">¶</a></h2>
+<p>In S²E (and consequently in Chef, too) the workflow is as follows:</p>
+<ol class="arabic simple">
+<li>Boot the machine in KVM mode, install packages, set up things, then shut it
+down.</li>
+<li>Boot the machine in <em>non-symbolic</em> dynamic-translation mode, launch the
+necessary services for running the experiment. Then, save a snapshot.</li>
+<li>Resume from the snapshot in <em>symbolic</em> dynamic-translation mode, and run the
+experiment.</li>
+</ol>
+<p><em>(technically we could skip step 2, however booting up a machine in symbolic
+mode is remarkably slow, so it is recommended to use non-symbolic mode for
+preparing an experiment)</em></p>
+<div class="section" id="kvm-mode">
+<h3>1.5.1. KVM mode<a class="headerlink" href="#kvm-mode" title="Permalink to this headline">¶</a></h3>
+<p>First, let&#8217;s launch our machine in KVM mode:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ ctl run MyExampleBox kvm
+</pre></div>
+</div>
+<p>In steps 2 and 3, there are no write-backs to the VM image, so if we wish to
+make persistent changes that remain between different experiments, we must do
+them here (mostly steps like installing packages). Once we&#8217;re done, we shut down
+the VM and proceed to the next step.</p>
+</div>
+<div class="section" id="preparation-mode">
+<h3>1.5.2. Preparation mode<a class="headerlink" href="#preparation-mode" title="Permalink to this headline">¶</a></h3>
+<div class="highlight-python"><div class="highlight"><pre>$ ctl run MyExampleBox prep
+</pre></div>
+</div>
+<p>Once the machine has booted up in non-symbolic, dynamic-translation mode, we can
+prepare our experiment, e.g. launch a server that will wait for instructions.
+Then, we <strong>don&#8217;t shut down the machine</strong>, but instead save a snapshot of it.
+This snapshot can later be used to resume the machine without having to boot it.</p>
+<p>But how do we do that?</p>
+<p>You may have noticed the following output when you launched the machine:</p>
+<div class="highlight-python"><div class="highlight"><pre>[INFO] Qemu monitor: port 12345 (connect with `{nc,telnet} XXX.XX.XX.XXX 12345)
+</pre></div>
+</div>
+<p>This is the port on which the <a class="reference external" href="https://en.wikibooks.org/wiki/QEMU/Monitor">qemu monitor</a> runs, and it can be used to save
+snapshots of the VM.</p>
+<p>So let&#8217;s launch a second shell, and connect to the monitor using some TCP
+connection tool (like netcat or telnet), then save a snapshot using the
+<tt class="docutils literal"><span class="pre">savevm</span></tt> command:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ nc localhost 12345
+QEMU 1.0.50 monitor - type &#39;help&#39; for more information
+(qemu) savevm blabla
+savevm blabla
+</pre></div>
+</div>
+<p>This should create a snapshot of the machine in the current state. If we were to
+run <tt class="docutils literal"><span class="pre">ctl</span> <span class="pre">vm</span> <span class="pre">list</span></tt>, we would see this:</p>
+<div class="highlight-python"><div class="highlight"><pre>MyExampleBox
+  Size: 10240MiB
+  Snapshots:
+    blabla
+</pre></div>
+</div>
+<p>Since we don&#8217;t need to gracefully shut down the machine, we can just stop it
+from the qemu monitor:</p>
+<div class="highlight-python"><div class="highlight"><pre>(qemu) quit
+</pre></div>
+</div>
+<p><em>(of course we could also just ^C in the main process terminal)</em></p>
+</div>
+<div class="section" id="symbolic-mode">
+<h3>1.5.3. Symbolic mode<a class="headerlink" href="#symbolic-mode" title="Permalink to this headline">¶</a></h3>
+<p>We can now resume from the snapshot in symbolic mode, and we may launch any
+experiments we like:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ ctl run MyExampleBox:blabla sym
+</pre></div>
+</div>
+<p>This will also create an experiment output directory in <tt class="docutils literal"><span class="pre">chef/expdata</span></tt>, which
+can be used to further evaluate experiment results. See <a class="reference external" href="http://example.com/">an inexisting guide</a>
+for more information on running experiments.</p>
+</div>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+  <h3><a href="index.html">Table Of Contents</a></h3>
+  <ul>
+<li><a class="reference internal" href="#">1. Getting Started</a><ul>
+<li><a class="reference internal" href="#getting-the-source">1.1. Getting the Source</a></li>
+<li><a class="reference internal" href="#preparing-the-environment">1.2. Preparing the Environment</a></li>
+<li><a class="reference internal" href="#building-chef">1.3. Building Chef</a></li>
+<li><a class="reference internal" href="#managing-vms">1.4. Managing VMs</a></li>
+<li><a class="reference internal" href="#workflow">1.5. Workflow</a><ul>
+<li><a class="reference internal" href="#kvm-mode">1.5.1. KVM mode</a></li>
+<li><a class="reference internal" href="#preparation-mode">1.5.2. Preparation mode</a></li>
+<li><a class="reference internal" href="#symbolic-mode">1.5.3. Symbolic mode</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+  <h4>Previous topic</h4>
+  <p class="topless"><a href="index.html"
+                        title="previous chapter">The Selective Symbolic Execution (S²E) Platform</a></p>
+  <h4>Next topic</h4>
+  <p class="topless"><a href="BuildingS2E.html"
+                        title="next chapter">2. Building the S2E Platform</a></p>
+  <h3>This Page</h3>
+  <ul class="this-page-menu">
+    <li><a href="_sources/GettingStarted.txt"
+           rel="nofollow">Show Source</a></li>
+  </ul>
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="BuildingS2E.html" title="2. Building the S2E Platform"
+             >next</a> |</li>
+        <li class="right" >
+          <a href="index.html" title="The Selective Symbolic Execution (S²E) Platform"
+             >previous</a> |</li>
+        <li><a href="index.html">Chef 0.9 documentation</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2015, Stefan Bucur.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.2.2.
+    </div>
+  </body>
+</html>

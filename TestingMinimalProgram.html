@@ -1,0 +1,411 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>5. Testing a Simple Program with S2E &mdash; Chef 0.9 documentation</title>
+    
+    <link rel="stylesheet" href="_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    './',
+        VERSION:     '0.9',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <link rel="top" title="Chef 0.9 documentation" href="index.html" />
+    <link rel="next" title="6. How to symbolically execute Linux binaries?" href="Howtos/init_env.html" />
+    <link rel="prev" title="4. Quickly Uploading Programs to the Guest with s2eget" href="UsingS2EGet.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="Howtos/init_env.html" title="6. How to symbolically execute Linux binaries?"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="UsingS2EGet.html" title="4. Quickly Uploading Programs to the Guest with s2eget"
+             accesskey="P">previous</a> |</li>
+        <li><a href="index.html">Chef 0.9 documentation</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <div class="section" id="testing-a-simple-program-with-s2e">
+<h1><a class="toc-backref" href="#id1">5. Testing a Simple Program with S2E</a><a class="headerlink" href="#testing-a-simple-program-with-s2e" title="Permalink to this headline">¶</a></h1>
+<p>This tutorial assumes that you have already built S2E and prepared VM image as described
+on the <a class="reference external" href="BuildingS2E.html">Building the S2E Framework</a> page.</p>
+<div class="contents topic" id="contents">
+<p class="topic-title first">Contents</p>
+<ul class="simple">
+<li><a class="reference internal" href="#testing-a-simple-program-with-s2e" id="id1">Testing a Simple Program with S2E</a><ul>
+<li><a class="reference internal" href="#program-to-test" id="id2">Program to Test</a></li>
+<li><a class="reference internal" href="#compiling-the-program-in-the-guest" id="id3">Compiling the Program in the Guest</a></li>
+<li><a class="reference internal" href="#preparing-the-program-for-s2e" id="id4">Preparing the Program for S2E</a></li>
+<li><a class="reference internal" href="#running-the-program-in-s2e" id="id5">Running the Program in S2E</a></li>
+<li><a class="reference internal" href="#exploring-the-program-faster" id="id6">Exploring the Program Faster</a></li>
+<li><a class="reference internal" href="#minimal-configuration-file" id="id7">Minimal Configuration File</a></li>
+</ul>
+</li>
+</ul>
+</div>
+<div class="section" id="program-to-test">
+<h2><a class="toc-backref" href="#id2">5.1. Program to Test</a><a class="headerlink" href="#program-to-test" title="Permalink to this headline">¶</a></h2>
+<p>We want to cover all of the code of the following program by exploring all
+the possible paths through it.</p>
+<div class="highlight-c"><div class="highlight"><pre><span class="cp">#include &lt;stdio.h&gt;</span>
+<span class="cp">#include &lt;string.h&gt;</span>
+
+<span class="kt">int</span> <span class="nf">main</span><span class="p">(</span><span class="kt">void</span><span class="p">)</span>
+<span class="p">{</span>
+  <span class="kt">char</span> <span class="n">str</span><span class="p">[</span><span class="mi">3</span><span class="p">];</span>
+  <span class="n">printf</span><span class="p">(</span><span class="s">&quot;Enter two characters: &quot;</span><span class="p">);</span>
+  <span class="k">if</span><span class="p">(</span><span class="o">!</span><span class="n">fgets</span><span class="p">(</span><span class="n">str</span><span class="p">,</span> <span class="k">sizeof</span><span class="p">(</span><span class="n">str</span><span class="p">),</span> <span class="n">stdin</span><span class="p">))</span>
+    <span class="k">return</span> <span class="mi">1</span><span class="p">;</span>
+
+  <span class="k">if</span><span class="p">(</span><span class="n">str</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="sc">&#39;\n&#39;</span> <span class="o">||</span> <span class="n">str</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="sc">&#39;\n&#39;</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">printf</span><span class="p">(</span><span class="s">&quot;Not enough characters</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+  <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+    <span class="k">if</span><span class="p">(</span><span class="n">str</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&gt;=</span> <span class="sc">&#39;a&#39;</span> <span class="o">&amp;&amp;</span> <span class="n">str</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&lt;=</span> <span class="sc">&#39;z&#39;</span><span class="p">)</span>
+      <span class="n">printf</span><span class="p">(</span><span class="s">&quot;First char is lowercase</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+    <span class="k">else</span>
+      <span class="n">printf</span><span class="p">(</span><span class="s">&quot;First char is not lowercase</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+
+    <span class="k">if</span><span class="p">(</span><span class="n">str</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&gt;=</span> <span class="sc">&#39;0&#39;</span> <span class="o">&amp;&amp;</span> <span class="n">str</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&lt;=</span> <span class="sc">&#39;9&#39;</span><span class="p">)</span>
+      <span class="n">printf</span><span class="p">(</span><span class="s">&quot;First char is a digit</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+    <span class="k">else</span>
+      <span class="n">printf</span><span class="p">(</span><span class="s">&quot;First char is not a digit</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+
+    <span class="k">if</span><span class="p">(</span><span class="n">str</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="n">str</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+      <span class="n">printf</span><span class="p">(</span><span class="s">&quot;First and second chars are the same</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+    <span class="k">else</span>
+      <span class="n">printf</span><span class="p">(</span><span class="s">&quot;First and second chars are not the same</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+  <span class="p">}</span>
+
+  <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</div>
+<div class="section" id="compiling-the-program-in-the-guest">
+<h2><a class="toc-backref" href="#id3">5.2. Compiling the Program in the Guest</a><a class="headerlink" href="#compiling-the-program-in-the-guest" title="Permalink to this headline">¶</a></h2>
+<p>Before testing the program in S2E, compile and run it in the native QEMU build
+(the one in the <tt class="docutils literal"><span class="pre">i386-softmmu</span></tt> directory).
+Launch QEMU with the following command:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ $S2EDIR/build/i386-softmmu/qemu-system-i386 your_image.raw
+</pre></div>
+</div>
+<p>You need to copy the example source code into the VM. As you will likely need to do this
+frequently, we recommend to install either <tt class="docutils literal"><span class="pre">ssh</span></tt> or an http server on your host
+machine. Then you can copy the code using <tt class="docutils literal"><span class="pre">scp</span></tt>:</p>
+<div class="highlight-python"><div class="highlight"><pre>guest$ scp &lt;your_login_on_host&gt;@&lt;your_host_name&gt;:path/to/tutorial1.c .
+guest$ scp &lt;your_login_on_host&gt;@&lt;your_host_name&gt;:path/to/s2e/guest/include/s2e.h .
+</pre></div>
+</div>
+<p>Compile and run the example with the following commands:</p>
+<div class="highlight-python"><div class="highlight"><pre>guest$ gcc -O3 tutorial1.c -o tutorial1
+guest$ ./tutorial1
+Enter two characters: ab
+First char is lowercase
+First char is not a digit
+First and second chars are not the same
+</pre></div>
+</div>
+</div>
+<div class="section" id="preparing-the-program-for-s2e">
+<h2><a class="toc-backref" href="#id4">5.3. Preparing the Program for S2E</a><a class="headerlink" href="#preparing-the-program-for-s2e" title="Permalink to this headline">¶</a></h2>
+<p>In order to execute the program symbolically, it is necessary to specify what
+values should become symbolic. There are many ways to do it in S2E, but the
+simplest one is to use the S2E opcodes library. This library provides a way for
+guest code to communicate with the S2E system.</p>
+<p>In order to explore all possible paths through the program that correspond to
+all possible inputs, we want to make these inputs symbolic. To accomplish this, we
+replace the call to <tt class="docutils literal"><span class="pre">fgets()</span></tt> by a call to <tt class="docutils literal"><span class="pre">s2e_make_symbolic()</span></tt>:</p>
+<div class="highlight-c"><div class="highlight"><pre><span class="p">...</span>
+<span class="kt">char</span> <span class="n">str</span><span class="p">[</span><span class="mi">3</span><span class="p">];</span>
+<span class="c1">// printf(&quot;Enter two characters: &quot;);</span>
+<span class="c1">// if(!fgets(str, sizeof(str), stdin))</span>
+<span class="c1">//   return 1;</span>
+<span class="n">s2e_make_symbolic</span><span class="p">(</span><span class="n">str</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="s">&quot;str&quot;</span><span class="p">);</span>
+<span class="n">str</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+<span class="p">...</span>
+</pre></div>
+</div>
+<p>By default, S2E propagates the symbolic values through the program but does
+not fork on branches. To enable forking, call
+<tt class="docutils literal"><span class="pre">s2e_enable_forking()</span></tt> before making symbolic values, and
+<tt class="docutils literal"><span class="pre">s2e_disable_forking()</span></tt> after exploring all branches.</p>
+<p>Finally, it would be interesting to see an example of input value that cause a
+program to take a particular execution path. This can be useful to reproduce a bug
+in a debugger, independently of S2E.
+For that, use the <tt class="docutils literal"><span class="pre">s2e_get_example()</span></tt> function. This function gives a concrete example of symbolic values
+that satisfy the current path constraints (i.e., all branch conditions along the
+execution path).</p>
+<p>After these changes, the example program looks as follows:</p>
+<div class="highlight-c"><div class="highlight"><pre><span class="cp">#include &lt;stdio.h&gt;</span>
+<span class="cp">#include &lt;string.h&gt;</span>
+<span class="cp">#include &quot;s2e.h&quot;</span>
+
+<span class="kt">int</span> <span class="nf">main</span><span class="p">(</span><span class="kt">void</span><span class="p">)</span>
+<span class="p">{</span>
+  <span class="kt">char</span> <span class="n">str</span><span class="p">[</span><span class="mi">3</span><span class="p">];</span>
+  <span class="c1">// printf(&quot;Enter two characters: &quot;);</span>
+  <span class="c1">// if(!fgets(str, sizeof(str), stdin))</span>
+  <span class="c1">//   return 1;</span>
+
+  <span class="n">s2e_enable_forking</span><span class="p">();</span>
+  <span class="n">s2e_make_symbolic</span><span class="p">(</span><span class="n">str</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="s">&quot;str&quot;</span><span class="p">);</span>
+
+  <span class="k">if</span><span class="p">(</span><span class="n">str</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="sc">&#39;\n&#39;</span> <span class="o">||</span> <span class="n">str</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="sc">&#39;\n&#39;</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">printf</span><span class="p">(</span><span class="s">&quot;Not enough characters</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+  <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+    <span class="k">if</span><span class="p">(</span><span class="n">str</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&gt;=</span> <span class="sc">&#39;a&#39;</span> <span class="o">&amp;&amp;</span> <span class="n">str</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&lt;=</span> <span class="sc">&#39;z&#39;</span><span class="p">)</span>
+      <span class="n">printf</span><span class="p">(</span><span class="s">&quot;First char is lowercase</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+    <span class="k">else</span>
+      <span class="n">printf</span><span class="p">(</span><span class="s">&quot;First char is not lowercase</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+
+    <span class="k">if</span><span class="p">(</span><span class="n">str</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&gt;=</span> <span class="sc">&#39;0&#39;</span> <span class="o">&amp;&amp;</span> <span class="n">str</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&lt;=</span> <span class="sc">&#39;9&#39;</span><span class="p">)</span>
+      <span class="n">printf</span><span class="p">(</span><span class="s">&quot;First char is a digit</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+    <span class="k">else</span>
+      <span class="n">printf</span><span class="p">(</span><span class="s">&quot;First char is not a digit</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+
+    <span class="k">if</span><span class="p">(</span><span class="n">str</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="n">str</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+      <span class="n">printf</span><span class="p">(</span><span class="s">&quot;First and second chars are the same</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+    <span class="k">else</span>
+      <span class="n">printf</span><span class="p">(</span><span class="s">&quot;First and second chars are not the same</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+  <span class="p">}</span>
+
+  <span class="n">s2e_disable_forking</span><span class="p">();</span>
+
+  <span class="n">s2e_get_example</span><span class="p">(</span><span class="n">str</span><span class="p">,</span> <span class="mi">2</span><span class="p">);</span>
+  <span class="n">printf</span><span class="p">(</span><span class="s">&quot;&#39;%c%c&#39; %02x %02x</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span> <span class="n">str</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">str</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span>
+         <span class="p">(</span><span class="kt">unsigned</span> <span class="kt">char</span><span class="p">)</span> <span class="n">str</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="p">(</span><span class="kt">unsigned</span> <span class="kt">char</span><span class="p">)</span> <span class="n">str</span><span class="p">[</span><span class="mi">1</span><span class="p">]);</span>
+
+  <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>Compile and run the program as usual:</p>
+<div class="highlight-python"><div class="highlight"><pre>guest$ gcc -O3 tutorial1.c -o tutorial1
+guest$ ./tutorial1
+Illegal instruction
+</pre></div>
+</div>
+<p>You see the <tt class="docutils literal"><span class="pre">Illegal</span> <span class="pre">instruction</span></tt> message because all <tt class="docutils literal"><span class="pre">s2e_*</span></tt> functions use
+special CPU opcodes that are only recognized by S2E.</p>
+</div>
+<div class="section" id="running-the-program-in-s2e">
+<h2><a class="toc-backref" href="#id5">5.4. Running the Program in S2E</a><a class="headerlink" href="#running-the-program-in-s2e" title="Permalink to this headline">¶</a></h2>
+<p>To run a program in S2E, we have to write a configuration file, then reboot
+the system in S2E.</p>
+<div class="highlight-lua"><div class="highlight"><pre><span class="c1">-- File: config.lua</span>
+<span class="n">s2e</span> <span class="o">=</span> <span class="p">{</span>
+  <span class="n">kleeArgs</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="c1">-- Pick a random path to execute among all the</span>
+    <span class="c1">-- available paths.</span>
+    <span class="s2">&quot;</span><span class="s">--use-random-path=true&quot;</span><span class="p">,</span>
+
+    <span class="c1">-- Run each state for at least 1 second before</span>
+    <span class="c1">-- switching to the other:</span>
+    <span class="s2">&quot;</span><span class="s">--use-batching-search=true&quot;</span><span class="p">,</span> <span class="s2">&quot;</span><span class="s">--batch-time=1.0&quot;</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+<span class="n">plugins</span> <span class="o">=</span> <span class="p">{</span>
+  <span class="c1">-- Enable a plugin that handles S2E custom opcode</span>
+  <span class="s2">&quot;</span><span class="s">BaseInstructions&quot;</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p><strong>Note:</strong> At the end of this tutorial, there is a section that shows an even simpler
+configuration file.</p>
+<p>Booting the system in S2E takes a long time. Use a two-step process to
+speed it up. First, boot the system in the version of QEMU that has S2E
+disabled. Then, save a snapshot and load it in the S2E:</p>
+<div class="highlight-python"><div class="highlight"><pre>guest$ su -c halt # shut down qemu
+
+$ $S2EDIR/build/qemu-release/i386-softmmu/qemu-system-i386 -net none your_image.raw.s2e
+&gt; Wait until Linux is loaded, login into the system. Then press
+&gt; Ctrl + Alt + 2 and type &#39;savevm 1&#39; then &#39;quit&#39;.
+&gt; Notice that we use i386-softmmu, which is the build with S2E **disabled**.
+
+$ $S2EDIR/build/qemu-release/i386-s2e-softmmu/qemu-system-i386 -net none your_image.raw.s2e -loadvm 1 \
+                           -s2e-config-file config.lua -s2e-verbose
+&gt; Wait until the snapshot is resumed, then type in the guest
+guest$ ./tutorial1
+&gt; Notice that we use i386-s2e-softmmu, which is the build with S2E ENABLED.
+</pre></div>
+</div>
+<p>After you run this command, S2E starts to symbolically execute the example.
+The configuration file instructs S2E to pick a random state once per second.
+You will see the QEMU screen content changing every
+second for different possible outputs of the example.</p>
+<p>Each state is a completely independent snapshot of the whole system. You can
+even interact with each state independently, for example by launching
+different programs. Try to launch <tt class="docutils literal"><span class="pre">tutorial1</span></tt> in one of the states again!</p>
+<p>In the host terminal (i.e., the S2E standard output), you see various
+information about state execution, forking and switching. This output is
+also saved into the <tt class="docutils literal"><span class="pre">s2e-last/messages.txt</span></tt> log file. As an exercise, try to follow the
+execution history of a state through the log file.</p>
+</div>
+<div class="section" id="exploring-the-program-faster">
+<h2><a class="toc-backref" href="#id6">5.5. Exploring the Program Faster</a><a class="headerlink" href="#exploring-the-program-faster" title="Permalink to this headline">¶</a></h2>
+<p>In the previous section, we made the program run along multiple execution
+paths.  However, each path continued to run even after the program terminated,
+executing operating system code.  This is great to visually experience how
+S2E works, but in general we want S2E to stop executing each path as soon as
+the program to analyze terminates.</p>
+<p>Terminating an execution path is accomplished with the <tt class="docutils literal"><span class="pre">s2e_kill_state()</span></tt> function.
+A call to this function immediately stops executing the
+current state and exits S2E if there are no more states to
+explore. Add a call to this function just before the program returns
+control to the OS. Before that, we might want to print example values in the
+S2E log using <tt class="docutils literal"><span class="pre">s2e_message()</span></tt> or <tt class="docutils literal"><span class="pre">s2e_warning()</span></tt> functions:</p>
+<div class="highlight-c"><div class="highlight"><pre><span class="kt">int</span> <span class="nf">main</span><span class="p">(</span><span class="kt">void</span><span class="p">)</span>
+<span class="p">{</span>
+  <span class="kt">char</span> <span class="n">buf</span><span class="p">[</span><span class="mi">32</span><span class="p">];</span>
+  <span class="n">memset</span><span class="p">(</span><span class="n">buf</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="k">sizeof</span><span class="p">(</span><span class="n">buf</span><span class="p">));</span>
+  <span class="p">...</span>
+
+  <span class="p">...</span>
+  <span class="n">s2e_get_example</span><span class="p">(</span><span class="n">str</span><span class="p">,</span> <span class="mi">2</span><span class="p">);</span>
+  <span class="n">snprintf</span><span class="p">(</span><span class="n">buf</span><span class="p">,</span> <span class="k">sizeof</span><span class="p">(</span><span class="n">buf</span><span class="p">),</span> <span class="s">&quot;&#39;%c%c&#39; %02x %02x</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span> <span class="n">str</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">str</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span>
+         <span class="p">(</span><span class="kt">unsigned</span> <span class="kt">char</span><span class="p">)</span> <span class="n">str</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="p">(</span><span class="kt">unsigned</span> <span class="kt">char</span><span class="p">)</span> <span class="n">str</span><span class="p">[</span><span class="mi">1</span><span class="p">]);</span>
+  <span class="n">s2e_warning</span><span class="p">(</span><span class="n">buf</span><span class="p">);</span>
+
+  <span class="n">s2e_kill_state</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="s">&quot;program terminated&quot;</span><span class="p">);</span>
+
+  <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>Now, resume the snapshot in QEMU with S2E disabled, edit and recompile
+the program, re-save the snapshot and re-load it in S2E.
+Your image needs to be in <a class="reference external" href="ImageInstallation.html">S2E format</a>.</p>
+<div class="highlight-python"><div class="highlight"><pre>$ $S2EDIR/build/qemu-release/i386-softmmu/qemu-system-i386 -net none your_image.raw.s2e -loadvm 1
+guest$ edit tutorial1.c
+guest$ gcc -O3 tutorial1.c -o tutorial1
+&gt; press Ctrl + Alt + 2 and type &#39;savevm 1&#39; then type &#39;quit&#39;.
+
+$ $S2EDIR/build/qemu/i386-s2e-softmmu/qemu-system-i386 -net none your_image.raw.s2e -loadvm 1 \
+                           -s2e-config-file config.lua -s2e-verbose
+guest$ ./tutorial1
+</pre></div>
+</div>
+<p>Running <tt class="docutils literal"><span class="pre">tutorial1</span></tt> this time  will make S2E quickly terminate, leaving
+a log file that you can examine.</p>
+<p>Please note that in case your program crashes or exits at some other point
+without calling <tt class="docutils literal"><span class="pre">s2e_kill_state()</span></tt>, S2E will not terminate and will continue to
+execute paths that returned to the system. To avoid this, you can use the <tt class="docutils literal"><span class="pre">s2ecmd</span></tt> utility (in <tt class="docutils literal"><span class="pre">$S2EDIR/guest</span></tt>).
+Launch it right after the invocation to the program that can crash, e.g., as follows:</p>
+<div class="highlight-python"><div class="highlight"><pre>guest$ ./tutorial; ./s2ecmd kill 0 &quot;done&quot;
+</pre></div>
+</div>
+</div>
+<div class="section" id="minimal-configuration-file">
+<h2><a class="toc-backref" href="#id7">5.6. Minimal Configuration File</a><a class="headerlink" href="#minimal-configuration-file" title="Permalink to this headline">¶</a></h2>
+<p>The following is a minimal configuration file that you can use to run this example:</p>
+<div class="highlight-lua"><div class="highlight"><pre><span class="c1">-- File: config.lua</span>
+<span class="n">s2e</span> <span class="o">=</span> <span class="p">{</span>
+  <span class="n">kleeArgs</span> <span class="o">=</span> <span class="p">{}</span>
+<span class="p">}</span>
+
+<span class="n">plugins</span> <span class="o">=</span> <span class="p">{</span>
+  <span class="c1">-- Enable a plugin that handles S2E custom opcode</span>
+  <span class="s2">&quot;</span><span class="s">BaseInstructions&quot;</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>In this case S2E uses the default <strong>depth-first searcher (DFS)</strong>.
+The current state will run until it is explicitely killed. After that,
+S2E will select another path, according to the DFS strategy.
+You <strong>must</strong> use <tt class="docutils literal"><span class="pre">s2ecmd</span></tt> or <tt class="docutils literal"><span class="pre">s2e_kill_state()</span></tt>, otherwise the current path will run forever
+and there will not be any progress.</p>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+  <h3><a href="index.html">Table Of Contents</a></h3>
+  <ul>
+<li><a class="reference internal" href="#">5. Testing a Simple Program with S2E</a><ul>
+<li><a class="reference internal" href="#program-to-test">5.1. Program to Test</a></li>
+<li><a class="reference internal" href="#compiling-the-program-in-the-guest">5.2. Compiling the Program in the Guest</a></li>
+<li><a class="reference internal" href="#preparing-the-program-for-s2e">5.3. Preparing the Program for S2E</a></li>
+<li><a class="reference internal" href="#running-the-program-in-s2e">5.4. Running the Program in S2E</a></li>
+<li><a class="reference internal" href="#exploring-the-program-faster">5.5. Exploring the Program Faster</a></li>
+<li><a class="reference internal" href="#minimal-configuration-file">5.6. Minimal Configuration File</a></li>
+</ul>
+</li>
+</ul>
+
+  <h4>Previous topic</h4>
+  <p class="topless"><a href="UsingS2EGet.html"
+                        title="previous chapter">4. Quickly Uploading Programs to the Guest with <tt class="docutils literal"><span class="pre">s2eget</span></tt></a></p>
+  <h4>Next topic</h4>
+  <p class="topless"><a href="Howtos/init_env.html"
+                        title="next chapter">6. How to symbolically execute Linux binaries?</a></p>
+  <h3>This Page</h3>
+  <ul class="this-page-menu">
+    <li><a href="_sources/TestingMinimalProgram.txt"
+           rel="nofollow">Show Source</a></li>
+  </ul>
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="Howtos/init_env.html" title="6. How to symbolically execute Linux binaries?"
+             >next</a> |</li>
+        <li class="right" >
+          <a href="UsingS2EGet.html" title="4. Quickly Uploading Programs to the Guest with s2eget"
+             >previous</a> |</li>
+        <li><a href="index.html">Chef 0.9 documentation</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2015, Stefan Bucur.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.2.2.
+    </div>
+  </body>
+</html>

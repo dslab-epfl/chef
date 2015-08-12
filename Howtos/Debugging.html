@@ -1,0 +1,145 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>4. Debugging Guest Code &mdash; Chef 0.9 documentation</title>
+    
+    <link rel="stylesheet" href="../_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../',
+        VERSION:     '0.9',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../_static/jquery.js"></script>
+    <script type="text/javascript" src="../_static/underscore.js"></script>
+    <script type="text/javascript" src="../_static/doctools.js"></script>
+    <link rel="top" title="Chef 0.9 documentation" href="../index.html" />
+    <link rel="next" title="1. Fork Profiler" href="../Tools/ForkProfiler.html" />
+    <link rel="prev" title="3. Parallel S2E" href="Parallel.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../Tools/ForkProfiler.html" title="1. Fork Profiler"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="Parallel.html" title="3. Parallel S2E"
+             accesskey="P">previous</a> |</li>
+        <li><a href="../index.html">Chef 0.9 documentation</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <div class="section" id="debugging-guest-code">
+<h1>4. Debugging Guest Code<a class="headerlink" href="#debugging-guest-code" title="Permalink to this headline">¶</a></h1>
+<p>It is possible to attach GDB to any running instance of S2E. S2E relies on the QEMU GDB interface, which can
+be enabled with the <cite>-s</cite> command line option. This option creates a socket on port number 1234.</p>
+<div class="highlight-python"><div class="highlight"><pre>$ ./i386-s2e-softmmu/qemu  -s2e-config-file config.lua -s
+</pre></div>
+</div>
+<p>Once the guest is launched and the program is running, attach GDB to it.</p>
+<div class="highlight-python"><div class="highlight"><pre>$ gdb /path/to/my/prog
+(gdb) target remote localhost:1234
+#use gdb as usual (set breakpoints, source directories, single-step, etc.).
+</pre></div>
+</div>
+<div class="section" id="remarks">
+<h2>4.1. Remarks<a class="headerlink" href="#remarks" title="Permalink to this headline">¶</a></h2>
+<ul class="simple">
+<li>GDB can only manipulate the current path. Use the DFS search strategy to have a coherent debugging experience.</li>
+<li>GDB cannot inspect symbolic variables. If you attempt to display a symbolic variable, S2E will concretize it.</li>
+<li>You can also debug kernel-mode code.</li>
+</ul>
+</div>
+<div class="section" id="useful-tips">
+<h2>4.2. Useful tips<a class="headerlink" href="#useful-tips" title="Permalink to this headline">¶</a></h2>
+<ul class="simple">
+<li>At any point, if you feel that symbolic execution got stuck, attach GDB to the running S2E instance to check
+what code is being executed.</li>
+</ul>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+  <h3><a href="../index.html">Table Of Contents</a></h3>
+  <ul>
+<li><a class="reference internal" href="#">4. Debugging Guest Code</a><ul>
+<li><a class="reference internal" href="#remarks">4.1. Remarks</a></li>
+<li><a class="reference internal" href="#useful-tips">4.2. Useful tips</a></li>
+</ul>
+</li>
+</ul>
+
+  <h4>Previous topic</h4>
+  <p class="topless"><a href="Parallel.html"
+                        title="previous chapter">3. Parallel S2E</a></p>
+  <h4>Next topic</h4>
+  <p class="topless"><a href="../Tools/ForkProfiler.html"
+                        title="next chapter">1. Fork Profiler</a></p>
+  <h3>This Page</h3>
+  <ul class="this-page-menu">
+    <li><a href="../_sources/Howtos/Debugging.txt"
+           rel="nofollow">Show Source</a></li>
+  </ul>
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../Tools/ForkProfiler.html" title="1. Fork Profiler"
+             >next</a> |</li>
+        <li class="right" >
+          <a href="Parallel.html" title="3. Parallel S2E"
+             >previous</a> |</li>
+        <li><a href="../index.html">Chef 0.9 documentation</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2015, Stefan Bucur.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.2.2.
+    </div>
+  </body>
+</html>

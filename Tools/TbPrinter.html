@@ -1,0 +1,157 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>2. Trace Printer &mdash; Chef 0.9 documentation</title>
+    
+    <link rel="stylesheet" href="../_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../',
+        VERSION:     '0.9',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../_static/jquery.js"></script>
+    <script type="text/javascript" src="../_static/underscore.js"></script>
+    <script type="text/javascript" src="../_static/doctools.js"></script>
+    <link rel="top" title="Chef 0.9 documentation" href="../index.html" />
+    <link rel="next" title="3. Execution Profiler" href="ExecutionProfiler.html" />
+    <link rel="prev" title="1. Fork Profiler" href="ForkProfiler.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="ExecutionProfiler.html" title="3. Execution Profiler"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="ForkProfiler.html" title="1. Fork Profiler"
+             accesskey="P">previous</a> |</li>
+        <li><a href="../index.html">Chef 0.9 documentation</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <div class="section" id="trace-printer">
+<h1>2. Trace Printer<a class="headerlink" href="#trace-printer" title="Permalink to this headline">¶</a></h1>
+<p>The trace printer tool outputs for each specified path all the trace items that were collected in these states.
+Items include memory accesses, executed translation blocks, or test cases.
+This tool is useful to quickly observe the execution sequence that led to a particular event that caused a state to terminate.
+It can also be useful for debugging.</p>
+<div class="section" id="examples">
+<h2>2.1. Examples<a class="headerlink" href="#examples" title="Permalink to this headline">¶</a></h2>
+<p>A complete tutorial on how to generate and display a trace can be found <a class="reference external" href="../Howtos/ExecutionTracers.html">here</a></p>
+<p>Assuming you have obtained a trace in <tt class="docutils literal"><span class="pre">ExecutionTracer.dat</span></tt>,
+the following command outputs the translation block trace for paths 0 and 34.
+Omitting the <tt class="docutils literal"><span class="pre">-pathId</span></tt> option will cause the command to output the trace for all paths.</p>
+<p>If the <tt class="docutils literal"><span class="pre">-printRegisters</span></tt> option is specified, the command also prints the contents of
+the registers before and after the execution of each translation block (provided that <tt class="docutils literal"><span class="pre">TranslationBlockTracer</span></tt> was enabled).</p>
+<p><tt class="docutils literal"><span class="pre">-printMemory</span></tt> also shows all memory accesses (provided that <cite>MemoryTracer`</cite> was enabled).</p>
+<blockquote>
+<div><div class="highlight-python"><div class="highlight"><pre>$ $S2EDIR/build/tools/Release+Asserts/bin/tbtrace -trace=s2e-last/ExecutionTracer.dat \
+  -outputdir=s2e-last/traces -pathId=0 -pathId=34 -printMemory
+</pre></div>
+</div>
+</div></blockquote>
+</div>
+<div class="section" id="required-plugins">
+<h2>2.2. Required Plugins<a class="headerlink" href="#required-plugins" title="Permalink to this headline">¶</a></h2>
+<ul class="simple">
+<li>ModuleExecutionDetector (only the translation blocks of those modules that are configured will be traced)</li>
+<li>ExecutionTracer</li>
+<li>TranslationBlockTracer</li>
+<li>ModuleTracer (for module information)</li>
+</ul>
+</div>
+<div class="section" id="optional-plugins">
+<h2>2.3. Optional Plugins<a class="headerlink" href="#optional-plugins" title="Permalink to this headline">¶</a></h2>
+<ul class="simple">
+<li>TestCaseGenerator (for test cases)</li>
+<li>MemoryTracer (for memory traces)</li>
+<li>TranslationBlockTracer (for executed translation blocks)</li>
+</ul>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+  <h3><a href="../index.html">Table Of Contents</a></h3>
+  <ul>
+<li><a class="reference internal" href="#">2. Trace Printer</a><ul>
+<li><a class="reference internal" href="#examples">2.1. Examples</a></li>
+<li><a class="reference internal" href="#required-plugins">2.2. Required Plugins</a></li>
+<li><a class="reference internal" href="#optional-plugins">2.3. Optional Plugins</a></li>
+</ul>
+</li>
+</ul>
+
+  <h4>Previous topic</h4>
+  <p class="topless"><a href="ForkProfiler.html"
+                        title="previous chapter">1. Fork Profiler</a></p>
+  <h4>Next topic</h4>
+  <p class="topless"><a href="ExecutionProfiler.html"
+                        title="next chapter">3. Execution Profiler</a></p>
+  <h3>This Page</h3>
+  <ul class="this-page-menu">
+    <li><a href="../_sources/Tools/TbPrinter.txt"
+           rel="nofollow">Show Source</a></li>
+  </ul>
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="ExecutionProfiler.html" title="3. Execution Profiler"
+             >next</a> |</li>
+        <li class="right" >
+          <a href="ForkProfiler.html" title="1. Fork Profiler"
+             >previous</a> |</li>
+        <li><a href="../index.html">Chef 0.9 documentation</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2015, Stefan Bucur.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.2.2.
+    </div>
+  </body>
+</html>

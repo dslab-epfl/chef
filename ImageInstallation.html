@@ -1,0 +1,235 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>3. Preparing VM Images for S2E &mdash; Chef 0.9 documentation</title>
+    
+    <link rel="stylesheet" href="_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    './',
+        VERSION:     '0.9',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <link rel="top" title="Chef 0.9 documentation" href="index.html" />
+    <link rel="next" title="4. Quickly Uploading Programs to the Guest with s2eget" href="UsingS2EGet.html" />
+    <link rel="prev" title="2. Building the S2E Platform" href="BuildingS2E.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="UsingS2EGet.html" title="4. Quickly Uploading Programs to the Guest with s2eget"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="BuildingS2E.html" title="2. Building the S2E Platform"
+             accesskey="P">previous</a> |</li>
+        <li><a href="index.html">Chef 0.9 documentation</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <div class="section" id="preparing-vm-images-for-s2e">
+<h1><a class="toc-backref" href="#id1">3. Preparing VM Images for S2E</a><a class="headerlink" href="#preparing-vm-images-for-s2e" title="Permalink to this headline">¶</a></h1>
+<div class="contents topic" id="contents">
+<p class="topic-title first">Contents</p>
+<ul class="simple">
+<li><a class="reference internal" href="#preparing-vm-images-for-s2e" id="id1">Preparing VM Images for S2E</a><ul>
+<li><a class="reference internal" href="#preparing-a-linux-vm-image" id="id2">Preparing a Linux VM Image</a></li>
+<li><a class="reference internal" href="#the-s2e-vm-image-format" id="id3">The S2E VM Image Format</a></li>
+<li><a class="reference internal" href="#general-requirements-and-guidelines-for-vm-images" id="id4">General Requirements and Guidelines for VM Images</a></li>
+<li><a class="reference internal" href="#experimental-kvm-snapshot-support" id="id5">Experimental KVM Snapshot Support</a></li>
+</ul>
+</li>
+</ul>
+</div>
+<p>To run S2E, you need a QEMU-compatible virtual machine disk image. S2E can run
+any x86 operating system inside the VM.
+In this section, we describe how to build a Linux image and present general
+requirements and guidelines for various operating systems.</p>
+<div class="section" id="preparing-a-linux-vm-image">
+<h2><a class="toc-backref" href="#id2">3.1. Preparing a Linux VM Image</a><a class="headerlink" href="#preparing-a-linux-vm-image" title="Permalink to this headline">¶</a></h2>
+<p>In the following, we describe how to install a minimal version of Debian Linux in QEMU.</p>
+<p><strong>Please make sure that you perform all the steps below using QEMU that ships with S2E.</strong>
+There will be compatibility problems if you use QEMU that comes with your system (especially
+when saving/restoring snapshots).</p>
+<p><tt class="docutils literal"><span class="pre">$S2EDIR</span></tt> refers to the directory where S2E is installed. The paths below assume you
+followed the installation tutorials.</p>
+<div class="highlight-python"><div class="highlight"><pre>$ # Create an empty disk image
+$ $S2EDIR/build/qemu-release/qemu-img create -f raw s2e_disk.raw 2G
+
+$ # Download debian install CD (the exact version doesn&#39;t really matter, below is an example)
+$ wget http://cdimage.debian.org/debian-cd/7.7.0/i386/iso-cd/debian-7.7.0-i386-CD-1.iso
+
+$ # Run QEMU and install the OS
+$ $S2EDIR/build/qemu-release/i386-softmmu/qemu-system-i386 s2e_disk.raw -enable-kvm -m 1024 -cdrom debian-7.7.0-i386-CD-1.iso
+&gt; Follow on-screen instructions to install Debian Linux inside VM (use the most basic setup that includes ssh)
+&gt; If you have trouble navigating the menus, try specifying a keymap (e.g., add &quot;-k en-us&quot;)
+&gt; Using &quot;-enable-kvm&quot; is faster, but KVM must be installed and you must be in the &#39;kvm&#39; group (otherwise remove &quot;-enable-kvm&quot;)
+
+$ # When your system is installed and rebooted, run the following command
+$ # inside the guest to install C and C++ compilers
+guest$ su -c &quot;apt-get install build-essential&quot;
+</pre></div>
+</div>
+<p>You have just set up a disk image in RAW format. You will need to give it
+a .s2e extension for use with S2E (the reasons for this are described in
+the next section).  The S2E image format is identical to the RAW format, so
+no conversion needs to take place.  We therefore create a .raw.s2e copy that
+will be treated as read-only by S2E, and we keep around the .raw image in
+case we want to make modifications to the base image in the future.</p>
+<div class="highlight-python"><div class="highlight"><pre>$ ln s2e_disk.raw s2e_disk.raw.s2e
+</pre></div>
+</div>
+</div>
+<div class="section" id="the-s2e-vm-image-format">
+<h2><a class="toc-backref" href="#id3">3.2. The S2E VM Image Format</a><a class="headerlink" href="#the-s2e-vm-image-format" title="Permalink to this headline">¶</a></h2>
+<p>Existing image formats are not suitable for multi-path execution, because
+they usually mutate internal bookkeeping structures on read operations.
+Worse, they may write these mutations back to the disk image file, causing
+VM image corruptions. QCOW2 is one example of such formats.</p>
+<p>The S2E image format, unlike the other formats, is multi-path aware.
+When in S2E mode, writes are local to each state and do not clobber other states.
+Moreover, writes are NEVER propagated from the state to the image (or the snapshot). This makes it possible
+to share one disk image and snapshots among many instances of S2E.</p>
+<p>The S2E image format stores snapshots in a separate file, suffixed by the name of the
+snapshot. For example, if the base image is called &#8220;my_image.raw.s2e&#8221;,
+the snapshot <tt class="docutils literal"><span class="pre">ready</span></tt> (generated with <tt class="docutils literal"><span class="pre">savevm</span> <span class="pre">ready</span></tt>) will be saved in the file
+<tt class="docutils literal"><span class="pre">my_image.raw.s2e.ready</span></tt> in the same folder as <tt class="docutils literal"><span class="pre">my_image.raw.s2e</span></tt>.</p>
+</div>
+<div class="section" id="general-requirements-and-guidelines-for-vm-images">
+<h2><a class="toc-backref" href="#id4">3.3. General Requirements and Guidelines for VM Images</a><a class="headerlink" href="#general-requirements-and-guidelines-for-vm-images" title="Permalink to this headline">¶</a></h2>
+<p>When running in S2E mode, the image <strong>must</strong> be in S2E format. S2E does not support any other image format.</p>
+<p>Any x86 image that boots in vanilla QEMU will work in S2E. However, we enumerate a list of tips
+and optimizations that will make administration easier and symbolic execution faster.
+<em>These tips should be used as guidelines and are not mandatory.</em></p>
+<p>Here is a checklist we recommend to follow:</p>
+<ul class="simple">
+<li>Install your operating system in the vanilla QEMU. It is the fastest approach. In general, all installation and setup tasks should be done in vanilla QEMU.</li>
+<li>Keep a fresh copy of your OS installation. It is recommended to start with a fresh copy for each analysis task. For instance, if you use an image to test a device driver, avoid using this same image to analyze some spreadsheet component. One image = one analysis. It is easier to manage and your results will be easier to reproduce.</li>
+<li>Once your image (in S2E format) is set up and ready to be run in symbolic execution mode, take a snapshot and resume that snapshot in the S2E-enabled QEMU. This step is not necessary, but it greatly shortens boot times. Booting an image in S2E can take a (very) long time.</li>
+<li>It is recommended to use 128MiB of RAM for the guest OS (or less). S2E is not limited by the amount of memory in any way (it is 64-bit), but your physical machine is.</li>
+<li>Disable fancy desktop themes. Most OSes have a GUI, which consumes resources. Disabling all visual effects will make program analysis faster.</li>
+<li>Disable the screen saver.</li>
+<li>Disable unnecessary services to save memory and speed up the guest. Services like file sharing, printing, wireless network configuration, or firewall are useless unless you want to test them in S2E.</li>
+<li>Avoid the QEMU <tt class="docutils literal"><span class="pre">virtio</span></tt> network interface for now. In the version of QEMU that is bundled into S2E, there can be random crashes.</li>
+</ul>
+</div>
+<div class="section" id="experimental-kvm-snapshot-support">
+<h2><a class="toc-backref" href="#id5">3.4. Experimental KVM Snapshot Support</a><a class="headerlink" href="#experimental-kvm-snapshot-support" title="Permalink to this headline">¶</a></h2>
+<p>It is possible to boot an image in KVM mode, take a snapshot, and resume
+it in the dynamic binary translation (DBT) mode that QEMU normally uses.
+This is useful if your guest system is large and avoids cumbersome manipulations to workaround the relative slowness of the DBT
+(e.g., starting in QEMU, setting up, converting the disk image to S2E, rebooting again in DBT mode, etc.).</p>
+<div class="highlight-python"><div class="highlight"><pre># Set up the guest, take a snapshot
+$ ./qemu-release/x86_64-softmmu/qemu-system-x86_64 -enable-kvm -cpu core2duo -net none
+
+# Resume the snapshot in DBT mode using vanilla QEMU, to finish the setup
+$ ./qemu-release/x86_64-softmmu/qemu-system-x86_64 -cpu core2duo -net none -loadvm mysnapshot
+
+# Resume the snapshot in S2E mode
+$ ./qemu-release/x86_64-s2e-softmmu/qemu-system-x86_64 -cpu core2duo -net none -loadvm mysnapshot
+</pre></div>
+</div>
+<p>Limitations:</p>
+<ul class="simple">
+<li>The host CPU in KVM mode must match the virtual CPU in DBT mode. For example, you cannot save a KVM snapshot
+on an Intel CPU and resume it with default settings in DBT mode (i.e., -cpu qemu64, which uses the AMD variations of some instructions).</li>
+<li>The CPUID flags should be matched between KVM and DBT mode. Mismatches do not seem to matter for simple experiments, but may
+lead to guest kernel crashes. You can dump <tt class="docutils literal"><span class="pre">/proc/cpuinfo</span></tt> in KVM and DBT mode, compare both and add the corresponding tweaks
+to the <tt class="docutils literal"><span class="pre">-cpu</span></tt> parameter.</li>
+<li>KVM mode does not support S2E custom instructions. They cause an invalid opcode exception in the guest.
+Therefore, you might need to save a second snapshot in DBT mode when using tools such as <tt class="docutils literal"><span class="pre">s2eget</span></tt>.</li>
+<li>It is possible that the guest hangs when resumed in DBT mode from a KVM snapshot.
+Try to save and resume again.</li>
+<li>Resuming DBT snapshots in KVM mode does not seem to work.</li>
+</ul>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+  <h3><a href="index.html">Table Of Contents</a></h3>
+  <ul>
+<li><a class="reference internal" href="#">3. Preparing VM Images for S2E</a><ul>
+<li><a class="reference internal" href="#preparing-a-linux-vm-image">3.1. Preparing a Linux VM Image</a></li>
+<li><a class="reference internal" href="#the-s2e-vm-image-format">3.2. The S2E VM Image Format</a></li>
+<li><a class="reference internal" href="#general-requirements-and-guidelines-for-vm-images">3.3. General Requirements and Guidelines for VM Images</a></li>
+<li><a class="reference internal" href="#experimental-kvm-snapshot-support">3.4. Experimental KVM Snapshot Support</a></li>
+</ul>
+</li>
+</ul>
+
+  <h4>Previous topic</h4>
+  <p class="topless"><a href="BuildingS2E.html"
+                        title="previous chapter">2. Building the S2E Platform</a></p>
+  <h4>Next topic</h4>
+  <p class="topless"><a href="UsingS2EGet.html"
+                        title="next chapter">4. Quickly Uploading Programs to the Guest with <tt class="docutils literal"><span class="pre">s2eget</span></tt></a></p>
+  <h3>This Page</h3>
+  <ul class="this-page-menu">
+    <li><a href="_sources/ImageInstallation.txt"
+           rel="nofollow">Show Source</a></li>
+  </ul>
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="UsingS2EGet.html" title="4. Quickly Uploading Programs to the Guest with s2eget"
+             >next</a> |</li>
+        <li class="right" >
+          <a href="BuildingS2E.html" title="2. Building the S2E Platform"
+             >previous</a> |</li>
+        <li><a href="index.html">Chef 0.9 documentation</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2015, Stefan Bucur.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.2.2.
+    </div>
+  </body>
+</html>

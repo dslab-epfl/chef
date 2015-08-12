@@ -1,0 +1,174 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>4. Quickly Uploading Programs to the Guest with s2eget &mdash; Chef 0.9 documentation</title>
+    
+    <link rel="stylesheet" href="_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    './',
+        VERSION:     '0.9',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <link rel="top" title="Chef 0.9 documentation" href="index.html" />
+    <link rel="next" title="5. Testing a Simple Program with S2E" href="TestingMinimalProgram.html" />
+    <link rel="prev" title="3. Preparing VM Images for S2E" href="ImageInstallation.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="TestingMinimalProgram.html" title="5. Testing a Simple Program with S2E"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="ImageInstallation.html" title="3. Preparing VM Images for S2E"
+             accesskey="P">previous</a> |</li>
+        <li><a href="index.html">Chef 0.9 documentation</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <div class="section" id="quickly-uploading-programs-to-the-guest-with-s2eget">
+<h1><a class="toc-backref" href="#id1">4. Quickly Uploading Programs to the Guest with <tt class="docutils literal"><span class="pre">s2eget</span></tt></a><a class="headerlink" href="#quickly-uploading-programs-to-the-guest-with-s2eget" title="Permalink to this headline">¶</a></h1>
+<p>The <tt class="docutils literal"><span class="pre">s2eget</span></tt> tool allows to easily upload files from the host into the guest in
+S2E mode. The typical use case for this tool is to set up a VM snapshot that, when
+resumed in S2E mode, automatically downloads a program from the host and starts
+symbolically executing it.</p>
+<div class="contents topic" id="contents">
+<p class="topic-title first">Contents</p>
+<ul class="simple">
+<li><a class="reference internal" href="#quickly-uploading-programs-to-the-guest-with-s2eget" id="id1">Quickly Uploading Programs to the Guest with <tt class="docutils literal"><span class="pre">s2eget</span></tt></a><ul>
+<li><a class="reference internal" href="#setting-up-hostfiles-plugin" id="id2">Setting up HostFiles Plugin</a></li>
+<li><a class="reference internal" href="#running-s2eget" id="id3">Running <tt class="docutils literal"><span class="pre">s2eget</span></tt></a></li>
+</ul>
+</li>
+</ul>
+</div>
+<div class="section" id="setting-up-hostfiles-plugin">
+<h2><a class="toc-backref" href="#id2">4.1. Setting up HostFiles Plugin</a><a class="headerlink" href="#setting-up-hostfiles-plugin" title="Permalink to this headline">¶</a></h2>
+<p>To use <tt class="docutils literal"><span class="pre">s2eget</span></tt>, enable the <tt class="docutils literal"><span class="pre">HostFiles</span></tt> plugin in the S2E configuration file.
+This file is called <tt class="docutils literal"><span class="pre">config.lua</span></tt> and can be placed anywhere you wish; its location
+will be passed via a command line argument.  For example, here is a simple <tt class="docutils literal"><span class="pre">config.lua</span></tt>:</p>
+<div class="highlight-lua"><div class="highlight"><pre><span class="n">plugins</span> <span class="o">=</span> <span class="p">{</span>
+  <span class="s2">&quot;</span><span class="s">HostFiles&quot;</span>
+<span class="p">}</span>
+
+<span class="n">pluginsConfig</span> <span class="o">=</span> <span class="p">{}</span>
+
+<span class="n">pluginsConfig</span><span class="p">.</span><span class="n">HostFiles</span> <span class="o">=</span> <span class="p">{</span>
+  <span class="n">baseDirs</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;</span><span class="s">/path/to/host/dir1&quot;</span><span class="p">,</span> <span class="s2">&quot;</span><span class="s">/path/to/host/dir2&quot;</span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>The <tt class="docutils literal"><span class="pre">pluginsConfig.HostFiles.baseDirs</span></tt> configuration option specifies what
+directories on the host should be exported to the guest. The paths can be either
+absolute, relative, or empty in which case the s2e output directory
+will be exported.</p>
+</div>
+<div class="section" id="running-s2eget">
+<h2><a class="toc-backref" href="#id3">4.2. Running <tt class="docutils literal"><span class="pre">s2eget</span></tt></a><a class="headerlink" href="#running-s2eget" title="Permalink to this headline">¶</a></h2>
+<p>First, boot the VM in the S2E version of QEMU in non-S2E mode:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ $S2EDIR/build/qemu-release/i386-softmmu/qemu-system-i386 s2e_disk.raw.s2e -m 1024
+</pre></div>
+</div>
+<p>Copy <tt class="docutils literal"><span class="pre">s2eget</span></tt> into the guest over SSH (or any other method). Then run the tool, for example,
+as follows:</p>
+<div class="highlight-python"><div class="highlight"><pre>guest$ ./s2eget &lt;filename&gt; &amp;&amp; chmod +x ./&lt;filename&gt; &amp;&amp; ./&lt;filename&gt;
+</pre></div>
+</div>
+<p>where <tt class="docutils literal"><span class="pre">&lt;filename&gt;</span></tt> specifies what file to download from the host and execute
+in the guest.</p>
+<p>When being run like that in non-S2E mode, <tt class="docutils literal"><span class="pre">s2eget</span></tt> simply waits. At that
+point, save the VM snapshot and then load it in S2E mode. <tt class="docutils literal"><span class="pre">s2eget</span></tt> will
+detect it and download the file. The rest of the command line will make it
+executable and execute it.</p>
+<p>Note that you could resume this snapshot as many times as you want, changing
+the program and/or trying different S2E options.</p>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+  <h3><a href="index.html">Table Of Contents</a></h3>
+  <ul>
+<li><a class="reference internal" href="#">4. Quickly Uploading Programs to the Guest with <tt class="docutils literal"><span class="pre">s2eget</span></tt></a><ul>
+<li><a class="reference internal" href="#setting-up-hostfiles-plugin">4.1. Setting up HostFiles Plugin</a></li>
+<li><a class="reference internal" href="#running-s2eget">4.2. Running <tt class="docutils literal"><span class="pre">s2eget</span></tt></a></li>
+</ul>
+</li>
+</ul>
+
+  <h4>Previous topic</h4>
+  <p class="topless"><a href="ImageInstallation.html"
+                        title="previous chapter">3. Preparing VM Images for S2E</a></p>
+  <h4>Next topic</h4>
+  <p class="topless"><a href="TestingMinimalProgram.html"
+                        title="next chapter">5. Testing a Simple Program with S2E</a></p>
+  <h3>This Page</h3>
+  <ul class="this-page-menu">
+    <li><a href="_sources/UsingS2EGet.txt"
+           rel="nofollow">Show Source</a></li>
+  </ul>
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="TestingMinimalProgram.html" title="5. Testing a Simple Program with S2E"
+             >next</a> |</li>
+        <li class="right" >
+          <a href="ImageInstallation.html" title="3. Preparing VM Images for S2E"
+             >previous</a> |</li>
+        <li><a href="index.html">Chef 0.9 documentation</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2015, Stefan Bucur.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.2.2.
+    </div>
+  </body>
+</html>

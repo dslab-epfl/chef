@@ -1,0 +1,158 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>4. Coverage Generator &mdash; Chef 0.9 documentation</title>
+    
+    <link rel="stylesheet" href="../_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../',
+        VERSION:     '0.9',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../_static/jquery.js"></script>
+    <script type="text/javascript" src="../_static/underscore.js"></script>
+    <script type="text/javascript" src="../_static/doctools.js"></script>
+    <link rel="top" title="Chef 0.9 documentation" href="../index.html" />
+    <link rel="next" title="1. Frequently Asked Questions (FAQ)" href="../FAQ.html" />
+    <link rel="prev" title="3. Execution Profiler" href="ExecutionProfiler.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../FAQ.html" title="1. Frequently Asked Questions (FAQ)"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="ExecutionProfiler.html" title="3. Execution Profiler"
+             accesskey="P">previous</a> |</li>
+        <li><a href="../index.html">Chef 0.9 documentation</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <div class="section" id="coverage-generator">
+<h1>4. Coverage Generator<a class="headerlink" href="#coverage-generator" title="Permalink to this headline">¶</a></h1>
+<p>The coverage generator tool outputs the basic block coverage of the specified modules.
+There must be a file suffixed with <tt class="docutils literal"><span class="pre">.bblist</span></tt> on the module path.
+This file contains the list of basic blocks for the desired module and can be generated with the
+<tt class="docutils literal"><span class="pre">extractBasicBlocks.py</span></tt> script for IDAPro.</p>
+<p>Here is an example of such a file (showing a few basic blocks from the rtl8139.sys driver shipped with Windows XP).</p>
+<blockquote>
+<div><div class="highlight-python"><div class="highlight"><pre>0x00010300 0x0001031e RTFast_EnableInterrupt(x)
+0x0001031f 0x00010321 RTFast_EnableInterrupt(x)
+0x00010322 0x00010335 RTFast_DisableInterrupt(x)
+0x00010336 0x00010341 RTFast_DisableInterrupt(x)
+0x00010342 0x00010352 RTFast_Isr(x,x,x)
+0x00010353 0x00010360 RTFast_Isr(x,x,x)
+</pre></div>
+</div>
+</div></blockquote>
+<div class="section" id="examples">
+<h2>4.1. Examples<a class="headerlink" href="#examples" title="Permalink to this headline">¶</a></h2>
+<blockquote>
+<div><div class="highlight-python"><div class="highlight"><pre>$ /home/s2e/tools/Release/bin/coverage -trace=s2e-last/ExecutionTracer.dat -outputdir=s2e-last/ \
+  -moddir=/home/s2e/experiments/rtl8139.sys/driver -moddir=/home/s2e/experiments/rtl8029.sys/driver
+</pre></div>
+</div>
+</div></blockquote>
+</div>
+<div class="section" id="required-plugins">
+<h2>4.2. Required Plugins<a class="headerlink" href="#required-plugins" title="Permalink to this headline">¶</a></h2>
+<ul>
+<li><p class="first">ExecutionTracer</p>
+</li>
+<li><p class="first">TranslationBlockTracer</p>
+</li>
+<li><dl class="first docutils">
+<dt>ModuleTracer</dt>
+<dd><p class="first last">The coverage tool will not produce any output without this plugin, because it would not know which module the traced program counters belong to.</p>
+</dd>
+</dl>
+</li>
+</ul>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+  <h3><a href="../index.html">Table Of Contents</a></h3>
+  <ul>
+<li><a class="reference internal" href="#">4. Coverage Generator</a><ul>
+<li><a class="reference internal" href="#examples">4.1. Examples</a></li>
+<li><a class="reference internal" href="#required-plugins">4.2. Required Plugins</a></li>
+</ul>
+</li>
+</ul>
+
+  <h4>Previous topic</h4>
+  <p class="topless"><a href="ExecutionProfiler.html"
+                        title="previous chapter">3. Execution Profiler</a></p>
+  <h4>Next topic</h4>
+  <p class="topless"><a href="../FAQ.html"
+                        title="next chapter">1. Frequently Asked Questions (FAQ)</a></p>
+  <h3>This Page</h3>
+  <ul class="this-page-menu">
+    <li><a href="../_sources/Tools/CoverageGenerator.txt"
+           rel="nofollow">Show Source</a></li>
+  </ul>
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../FAQ.html" title="1. Frequently Asked Questions (FAQ)"
+             >next</a> |</li>
+        <li class="right" >
+          <a href="ExecutionProfiler.html" title="3. Execution Profiler"
+             >previous</a> |</li>
+        <li><a href="../index.html">Chef 0.9 documentation</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2015, Stefan Bucur.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.2.2.
+    </div>
+  </body>
+</html>

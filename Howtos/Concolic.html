@@ -1,0 +1,246 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>7. Analyzing Large Programs Using Concolic Execution &mdash; Chef 0.9 documentation</title>
+    
+    <link rel="stylesheet" href="../_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../',
+        VERSION:     '0.9',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../_static/jquery.js"></script>
+    <script type="text/javascript" src="../_static/underscore.js"></script>
+    <script type="text/javascript" src="../_static/doctools.js"></script>
+    <link rel="top" title="Chef 0.9 documentation" href="../index.html" />
+    <link rel="next" title="8. Equivalence Testing" href="../EquivalenceTesting.html" />
+    <link rel="prev" title="6. How to symbolically execute Linux binaries?" href="init_env.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../EquivalenceTesting.html" title="8. Equivalence Testing"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="init_env.html" title="6. How to symbolically execute Linux binaries?"
+             accesskey="P">previous</a> |</li>
+        <li><a href="../index.html">Chef 0.9 documentation</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <div class="section" id="analyzing-large-programs-using-concolic-execution">
+<h1>7. Analyzing Large Programs Using Concolic Execution<a class="headerlink" href="#analyzing-large-programs-using-concolic-execution" title="Permalink to this headline">¶</a></h1>
+<p>In the previous tutorials, we have seen how to use symbolic execution in order
+to explore different program paths. In practice, symbolic execution
+requires the S2E user to inject symbolic values in the program&#8217;s inputs so that
+the symbolic execution engine can follow both outcomes of the conditional branches.
+This allows covering parts of the program that might be hard to reach otherwise
+(e.g., by guessing the inputs, or using random testing).</p>
+<p>Unfortunately, symbolic execution may get stuck at the start of an
+execution and have a hard time reaching deep paths. This is caused by the
+path selection heuristics and by the constraint solver. Path selection heuristics
+may not know very well which execution paths to choose so that execution
+goes deeper. For example, in a loop that depends on a symbolic condition, the heuristics
+may blindly keep selecting paths that would never exit the loop. Even if the path
+selection heuristics knew which path to select to go through the whole program,
+invoking the constraint solver on every branch that depends on symbolic input may
+become increasingly slower with larger and larger path depths.</p>
+<p>To alleviate this, S2E also implements <em>concolic execution</em>.
+Concolic execution works exactly as traditional symbolic execution: it propagates
+symbolic inputs through the system, allowing conditional branches to fork new paths
+whenever necessary. The key difference is that concolic execution augments these
+symbolic values with <em>concrete</em> values (hence the term <em>concolic</em>). The concrete values
+give a hint to the search heuristics about which paths to follow first. In practice,
+the S2E user launches the program with concrete arguments that would drive the
+program down the path that reaches interesting parts of that program, which S2E would
+then thoroughly explore. More practical details are provided in the next sections
+of this tutorial.</p>
+<p>Concolic execution allows the program under analysis to run to completion
+(without getting stuck in the middle) while exploring additional paths along the main concrete path.
+On each branch that depends on a symbolic value, the engine follows in priority the one that
+would have been followed had the program been executed with concrete values. When the first path
+that corresponds to the initial concrete values terminates, the engine will pick another path,
+recompute a new set of concrete values, and proceed similarly until this second path terminates.
+Of course, custom path selection plugins can optimize the selection for different needs
+(high code coverage, bug finding, etc.).</p>
+<p>There are two key optimizations to make this feasible: (1) <em>never</em> call the constraint solver during the execution
+of a path and (2) perform speculative forking. Whenever execution reaches
+a branch that depends on symbolic input, S2E forks a new state regardless of the actual
+feasibility of that forked state. This avoids calling the constraint solver.
+Since S2E stores concrete values for every symbolic variable, the execution engine can
+readily evaluate the outcome of every branch condition by substituting symbolic values with concrete ones,
+and chose the corresponding concrete path.</p>
+<p>S2E invokes the constraint solver when selecting a new state to run. Since all states result
+from speculative forks, it is necessary to check whether the states are actually feasible
+before running them. For that, S2E invokes the constraint solver to compute the concrete inputs
+that would allow execution to reach that state. If the solver fails to find the inputs,
+S2E discards the state. Otherwise, S2E uses the computed concrete inputs to resume
+concolic execution.</p>
+<div class="section" id="setting-up-s2e-for-concolic-execution">
+<h2>7.1. Setting up S2E for Concolic Execution<a class="headerlink" href="#setting-up-s2e-for-concolic-execution" title="Permalink to this headline">¶</a></h2>
+<p>The following is a minimal S2E configuration file that enables concolic execution.</p>
+<div class="highlight-python"><div class="highlight"><pre>s2e = {
+  kleeArgs = {}
+}
+
+plugins = {
+  -- Enable a plugin that handles S2E custom opcode
+  &quot;BaseInstructions&quot;
+}
+</pre></div>
+</div>
+<p>It instructs the S2E engine to enable concolic execution and to use the depth-first path selection heuristic (aka path <em>searcher</em>).
+The DFS heuristic works well with concolic execution, because it naturally lets the current &#8220;concrete&#8221;
+path run to completion. It is possible to use any existing searcher in concolic mode.
+However, it may be better to design new searchers with concolic execution in mind in order to improve
+exploration efficiency.</p>
+<p><strong>Note:</strong> concolic mode with DFS is the default setting of S2E. The following is an explicit configuration:</p>
+<div class="highlight-python"><div class="highlight"><pre>s2e = {
+  kleeArgs = {
+    &quot;--use-concolic-execution=true&quot;,
+    &quot;--use-dfs-search=true&quot;
+  }
+}
+
+plugins = {
+  -- Enable a plugin that handles S2E custom opcode
+  &quot;BaseInstructions&quot;
+}
+</pre></div>
+</div>
+</div>
+<div class="section" id="executing-programs-in-concolic-mode">
+<h2>7.2. Executing Programs in Concolic Mode<a class="headerlink" href="#executing-programs-in-concolic-mode" title="Permalink to this headline">¶</a></h2>
+<div class="section" id="using-custom-instructions">
+<h3>7.2.1. Using custom instructions<a class="headerlink" href="#using-custom-instructions" title="Permalink to this headline">¶</a></h3>
+<p>The <tt class="docutils literal"><span class="pre">s2e_make_concolic</span></tt> custom instruction injects symbolic values while keeping the original concrete values.
+It is used in the same way as <tt class="docutils literal"><span class="pre">s2e_make_symbolic</span></tt>. It reads the original concrete values from memory, stores them in an internal cache,
+and overwrites the memory with symbolic values. The cache maps the symbolic values to the actual
+concrete values and allows the substitution of symbolic inputs with the concrete ones during
+expression evaluation (e.g., at fork points).</p>
+</div>
+<div class="section" id="using-the-init-env-plugin">
+<h3>7.2.2. Using the <tt class="docutils literal"><span class="pre">init_env</span></tt> plugin<a class="headerlink" href="#using-the-init-env-plugin" title="Permalink to this headline">¶</a></h3>
+<p>The <a class="reference external" href="init_env.html">init_env</a> library enables symbolic execution without modifying the program&#8217;s source code.
+This library also supports concolic execution with the <tt class="docutils literal"><span class="pre">--concolic</span></tt> switch, that can be added right before the concrete program arguments.
+The following example invokes the <tt class="docutils literal"><span class="pre">tr</span></tt> Unix utility via the <tt class="docutils literal"><span class="pre">tr</span> <span class="pre">ab</span> <span class="pre">ab</span> <span class="pre">ab</span></tt> command. The library automatically assigns
+symbolic arguments to all arguments while keeping the concrete <tt class="docutils literal"><span class="pre">ab</span></tt> values.</p>
+<div class="highlight-python"><div class="highlight"><pre>LD_PRELOAD=/home/s2e/init_env.so tr --concolic ab ab ab
+</pre></div>
+</div>
+</div>
+</div>
+<div class="section" id="faq">
+<h2>7.3. FAQ<a class="headerlink" href="#faq" title="Permalink to this headline">¶</a></h2>
+<ul>
+<li><p class="first"><em>Can I use s2e_make_symbolic in concolic mode?</em></p>
+<p>Yes. S2E will automatically assign default concrete values satisfying the path constraints during concolic execution.</p>
+</li>
+<li><p class="first"><em>I have cryptographic routines in my code. Can concolic execution get through them?</em></p>
+<p>Yes, but. Concolic execution will use the initial concrete values to get through cryptographic routines without getting stuck in the constraint solver.
+However, it is very likely to get stuck when checking the feasibility of a newly-selected deep speculative state (and computing new sets of concrete inputs).
+Concolic execution does not magically make constraint solving easier, it merely defers it to a later point.</p>
+</li>
+<li><p class="first"><em>Concolic execution seems to fork a lot more states than symbolic execution. Why?</em></p>
+<p>This is due to speculative forking. In normal symbolic execution, the execution engine only forks a new path
+if the solver reports that both are feasible. In concolic execution, forking is done regardless of the feasibility.
+The execution engine prunes the infeasible paths later, after the path selection heuristic selects one for execution.</p>
+</li>
+<li><p class="first"><em>I implemented custom plugins to aggressively prune paths because symbolic execution was getting stuck. Are these plugins still useful?</em></p>
+<p>Yes, reducing state space by discarding uninteresting paths is always useful. Concolic execution does not solve the path explosion
+problem by itself. It merley helps getting to deep parts of the program faster.</p>
+</li>
+</ul>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+  <h3><a href="../index.html">Table Of Contents</a></h3>
+  <ul>
+<li><a class="reference internal" href="#">7. Analyzing Large Programs Using Concolic Execution</a><ul>
+<li><a class="reference internal" href="#setting-up-s2e-for-concolic-execution">7.1. Setting up S2E for Concolic Execution</a></li>
+<li><a class="reference internal" href="#executing-programs-in-concolic-mode">7.2. Executing Programs in Concolic Mode</a><ul>
+<li><a class="reference internal" href="#using-custom-instructions">7.2.1. Using custom instructions</a></li>
+<li><a class="reference internal" href="#using-the-init-env-plugin">7.2.2. Using the <tt class="docutils literal"><span class="pre">init_env</span></tt> plugin</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#faq">7.3. FAQ</a></li>
+</ul>
+</li>
+</ul>
+
+  <h4>Previous topic</h4>
+  <p class="topless"><a href="init_env.html"
+                        title="previous chapter">6. How to symbolically execute Linux binaries?</a></p>
+  <h4>Next topic</h4>
+  <p class="topless"><a href="../EquivalenceTesting.html"
+                        title="next chapter">8. Equivalence Testing</a></p>
+  <h3>This Page</h3>
+  <ul class="this-page-menu">
+    <li><a href="../_sources/Howtos/Concolic.txt"
+           rel="nofollow">Show Source</a></li>
+  </ul>
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../EquivalenceTesting.html" title="8. Equivalence Testing"
+             >next</a> |</li>
+        <li class="right" >
+          <a href="init_env.html" title="6. How to symbolically execute Linux binaries?"
+             >previous</a> |</li>
+        <li><a href="../index.html">Chef 0.9 documentation</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2015, Stefan Bucur.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.2.2.
+    </div>
+  </body>
+</html>

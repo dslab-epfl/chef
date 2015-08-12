@@ -1,0 +1,149 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>Profiling S2E &mdash; Chef 0.9 documentation</title>
+    
+    <link rel="stylesheet" href="_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    './',
+        VERSION:     '0.9',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <link rel="top" title="Chef 0.9 documentation" href="index.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li><a href="index.html">Chef 0.9 documentation</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <div class="section" id="profiling-s2e">
+<h1>Profiling S2E<a class="headerlink" href="#profiling-s2e" title="Permalink to this headline">¶</a></h1>
+<p>This page explains how to profile and optimize S2E itself.</p>
+<div class="section" id="running-oprofile">
+<h2>Running OProfile<a class="headerlink" href="#running-oprofile" title="Permalink to this headline">¶</a></h2>
+<ol class="arabic">
+<li><p class="first">Recompile STP, KLEE and QEMU with <tt class="docutils literal"><span class="pre">-fno-omit-frame-pointer</span></tt> option in <tt class="docutils literal"><span class="pre">CFLAGS</span></tt> and <tt class="docutils literal"><span class="pre">CXXFLAGS</span></tt></p>
+</li>
+<li><p class="first">Run QEMU as usual with the workload you want to profile</p>
+</li>
+<li><p class="first">Start OProfile using the following commands:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ sudo opcontrol --reset
+$ sudo opcontrol --no-vmlinux --callgraph=128 --start
+</pre></div>
+</div>
+</li>
+<li><p class="first">Wait for some time to get statistics (remember, this is statistical profiling, time is important)</p>
+</li>
+<li><p class="first">Stop OProfile using the following command:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ sudo opcontrol --stop
+</pre></div>
+</div>
+</li>
+<li><p class="first">Now you can use <tt class="docutils literal"><span class="pre">opreport</span></tt> to generate various profiling reports</p>
+</li>
+</ol>
+</div>
+<div class="section" id="viewing-results-with-kcachegrind">
+<h2>Viewing results with <tt class="docutils literal"><span class="pre">kcachegrind</span></tt><a class="headerlink" href="#viewing-results-with-kcachegrind" title="Permalink to this headline">¶</a></h2>
+<p>You can convert results to kcachegrind-readable format with the following command:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ opreport -gdf | op2calltree
+</pre></div>
+</div>
+<p>However, callgraph information is not preserved by this conversion tool.</p>
+</div>
+<div class="section" id="generating-callgraphs-with-gprof2dot-and-graphviz">
+<h2>Generating callgraphs with <tt class="docutils literal"><span class="pre">gprof2dot</span></tt> and <tt class="docutils literal"><span class="pre">graphviz</span></tt><a class="headerlink" href="#generating-callgraphs-with-gprof2dot-and-graphviz" title="Permalink to this headline">¶</a></h2>
+<ol class="arabic">
+<li><p class="first">Download the <tt class="docutils literal"><span class="pre">gprof2dot</span></tt> tool from <a class="reference external" href="http://code.google.com/p/jrfonseca/wiki/Gprof2Dot">http://code.google.com/p/jrfonseca/wiki/Gprof2Dot</a></p>
+</li>
+<li><p class="first">Run the following commands:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ opreport -lcD smart image:/path/to/qemu | \
+  ./gprof2dot.py -f oprofile -n 1 -e 1 -s &gt; prof.dot
+$ dot prof.dot -Tpng -o prof.png
+</pre></div>
+</div>
+</li>
+</ol>
+<p>Now you can view the generated <tt class="docutils literal"><span class="pre">prof.png</span></tt> file. You can change its verbosity by modifying <tt class="docutils literal"><span class="pre">-n</span></tt> and <tt class="docutils literal"><span class="pre">-e</span></tt> options
+(minimal percentage of nodes and edges to show) or removing  the <tt class="docutils literal"><span class="pre">-s</span></tt> option (strip function arguments).</p>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+  <h3><a href="index.html">Table Of Contents</a></h3>
+  <ul>
+<li><a class="reference internal" href="#">Profiling S2E</a><ul>
+<li><a class="reference internal" href="#running-oprofile">Running OProfile</a></li>
+<li><a class="reference internal" href="#viewing-results-with-kcachegrind">Viewing results with <tt class="docutils literal"><span class="pre">kcachegrind</span></tt></a></li>
+<li><a class="reference internal" href="#generating-callgraphs-with-gprof2dot-and-graphviz">Generating callgraphs with <tt class="docutils literal"><span class="pre">gprof2dot</span></tt> and <tt class="docutils literal"><span class="pre">graphviz</span></tt></a></li>
+</ul>
+</li>
+</ul>
+
+  <h3>This Page</h3>
+  <ul class="this-page-menu">
+    <li><a href="_sources/ProfilingS2E.txt"
+           rel="nofollow">Show Source</a></li>
+  </ul>
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             >index</a></li>
+        <li><a href="index.html">Chef 0.9 documentation</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2015, Stefan Bucur.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.2.2.
+    </div>
+  </body>
+</html>

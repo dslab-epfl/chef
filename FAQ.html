@@ -1,0 +1,271 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>1. Frequently Asked Questions (FAQ) &mdash; Chef 0.9 documentation</title>
+    
+    <link rel="stylesheet" href="_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    './',
+        VERSION:     '0.9',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <link rel="top" title="Chef 0.9 documentation" href="index.html" />
+    <link rel="prev" title="4. Coverage Generator" href="Tools/CoverageGenerator.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="Tools/CoverageGenerator.html" title="4. Coverage Generator"
+             accesskey="P">previous</a> |</li>
+        <li><a href="index.html">Chef 0.9 documentation</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <div class="section" id="frequently-asked-questions-faq">
+<h1><a class="toc-backref" href="#id1">1. Frequently Asked Questions (FAQ)</a><a class="headerlink" href="#frequently-asked-questions-faq" title="Permalink to this headline">¶</a></h1>
+<div class="contents topic" id="contents">
+<p class="topic-title first">Contents</p>
+<ul class="simple">
+<li><a class="reference internal" href="#frequently-asked-questions-faq" id="id1">Frequently Asked Questions (FAQ)</a><ul>
+<li><a class="reference internal" href="#s2e" id="id2">S2E</a><ul>
+<li><a class="reference internal" href="#how-do-i-know-what-s2e-is-doing" id="id3">How do I know what S2E is doing?</a></li>
+<li><a class="reference internal" href="#execution-seems-stuck-slow-what-to-do" id="id4">Execution seems stuck/slow. What to do?</a></li>
+<li><a class="reference internal" href="#how-do-i-deal-with-path-explosion" id="id5">How do I deal with path explosion?</a></li>
+<li><a class="reference internal" href="#how-to-keep-memory-usage-low" id="id6">How to keep memory usage low?</a></li>
+<li><a class="reference internal" href="#how-much-time-is-the-constraint-solver-taking-to-solve-constraints" id="id7">How much time is the constraint solver taking to solve constraints?</a></li>
+<li><a class="reference internal" href="#what-do-the-various-fields-in-run-stats-mean" id="id8">What do the various fields in <tt class="docutils literal"><span class="pre">run.stats</span></tt> mean?</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</div>
+<div class="section" id="s2e">
+<h2><a class="toc-backref" href="#id2">1.1. S2E</a><a class="headerlink" href="#s2e" title="Permalink to this headline">¶</a></h2>
+<div class="section" id="how-do-i-know-what-s2e-is-doing">
+<h3><a class="toc-backref" href="#id3">1.1.1. How do I know what S2E is doing?</a><a class="headerlink" href="#how-do-i-know-what-s2e-is-doing" title="Permalink to this headline">¶</a></h3>
+<ol class="arabic">
+<li><p class="first">Enable execution tracing and use the fork profiler to identify the code locations that fork the most.
+In your LUA file, enable the <tt class="docutils literal"><span class="pre">ExecutionTracer</span></tt>, <tt class="docutils literal"><span class="pre">ModuleTracer</span></tt> and the <tt class="docutils literal"><span class="pre">ModuleExecutionDetector</span></tt> plugins.
+This will allow you to collect all fork locations. Additionally, you can use <tt class="docutils literal"><span class="pre">TranslationBlockTracer</span></tt>  in order to
+have a detailed trace for each execution path, which you can view with the <tt class="docutils literal"><span class="pre">tbtrace</span></tt> tool. Finally, <tt class="docutils literal"><span class="pre">TranslationBlockTracer</span></tt>
+allows you to use the basic block <a class="reference external" href="Tools/CoverageGenerator.html">coverage</a> tool.</p>
+</li>
+<li><p class="first">Look at <tt class="docutils literal"><span class="pre">s2e-last/debug.txt</span></tt> and other files.
+These files list all the major events occurring during symbolic execution.</p>
+<p>S2E outputs &#8220;Firing timer event&#8221; into <tt class="docutils literal"><span class="pre">s2e-last/debug.txt</span></tt> once per second.
+If you do not see this event every second,
+it means that QEMU is stuck running plugin code (most likely because of a plugin bug)
+or constraint solver code (because of a complex query).
+To see which query is causing the problem, look at the query log.</p>
+</li>
+<li><p class="first"><tt class="docutils literal"><span class="pre">run.stats</span></tt> contains many types of statistics. S2E updates this file about every second,
+when executing symbolic code. See later in this FAQ for a description of its fields.</p>
+</li>
+</ol>
+</div>
+<div class="section" id="execution-seems-stuck-slow-what-to-do">
+<h3><a class="toc-backref" href="#id4">1.1.2. Execution seems stuck/slow. What to do?</a><a class="headerlink" href="#execution-seems-stuck-slow-what-to-do" title="Permalink to this headline">¶</a></h3>
+<p>First, ensure that you configured S2E properly.</p>
+<ul class="simple">
+<li>If you used <tt class="docutils literal"><span class="pre">s2e_disable_all_apic_interrupts</span></tt>, you probably forgot an <tt class="docutils literal"><span class="pre">s2e_enable_all_apic_interrupts</span></tt> call somewhere in your code.
+Use this functionality with care, disabling interrupts can easily hang your guest OS.</li>
+<li>Some constraints are hard to solve. Set a timeout in the constraint solver with <tt class="docutils literal"><span class="pre">--use-forked-stp</span></tt> and <tt class="docutils literal"><span class="pre">--max-stp-time=TimeoutInSeconds</span></tt>.
+If you do not see the &#8220;Firing timer event&#8221; message periodically in the <tt class="docutils literal"><span class="pre">debug.txt</span></tt> log file, execution got stuck in the
+constraint solver.</li>
+<li>By default, S2E flushes the translation block cache on every state switch.
+S2E does not implement copy-on-write for this cache, therefore it must flush
+the cache to ensure correct execution. Flushing avoids clobbering in case
+there are two paths that execute different pieces of code loaded at the same memory locations.
+Flushing is <em>very</em> expensive in case of frequent state switches. In most of the cases, flushing is not necessary, e.g., if you
+execute a program that does not use self-modifying code or frequently loads/unloads libraries. In this case,
+use the <tt class="docutils literal"><span class="pre">--flush-tbs-on-state-switch=false</span></tt> option.</li>
+<li>Make sure your VM image is minimal for the components you want to test. In most cases, it should not have swap enabled
+and all unnecessary background deamons should be disabled. Refer to the <a class="reference external" href="ImageInstallation.html">image installation</a> tutorial for
+more information.</li>
+</ul>
+<p>Second, throw hardware at your problem</p>
+<ul class="simple">
+<li>Refer to the &#8220;<a class="reference external" href="Howtos/Parallel.html">How to run S2E on multiple cores</a>&#8221; tutorial for instructions.</li>
+</ul>
+<p>Third, use S2E to <em>selectively</em> relax and/or overconstrain path constraints.</p>
+<ul class="simple">
+<li>Understanding what to select can be made considerably easier if you <a class="reference external" href="Howtos/Debugging.html">attach a debugger</a> to the S2E instance.</li>
+<li>Check that the module under analysis is not doing unnecessary calls with symbolic arguments (e.g., <tt class="docutils literal"><span class="pre">printf</span></tt>).
+Use the <tt class="docutils literal"><span class="pre">s2e_get_example_*</span></tt> functions to provide a concrete value to <tt class="docutils literal"><span class="pre">printf</span></tt>  without actually adding path
+constraints, to avoid disabling future paths. Unless a program reads the output of <tt class="docutils literal"><span class="pre">printf</span></tt> and takes decisions
+based on it, not adding constraints will not affect execution consistency from the point of view of the module under analysis.</li>
+<li>If you use a depth-first search and execution hits a polling loop, rapid forking may occur and execution may never exit the loop.
+Moreover, depending on the accumulated constraints, each iteration may be slower and slower.
+Try to use a different search strategy or kill unwanted execution paths.</li>
+<li>Try to relax path constraints. For example, there may be a branch that causes a bottleneck. Use the <em>Annotation</em> plugin to intercept
+that branch instruction and overwrite the branch condition with an unconstrained value. This trades execution consistency
+for execution speed. Unconstraining execution may create paths that cannot occur in real executions (i.e., false positives), but as long as there
+are few of them, or you can detect them a posteriori, this is an acceptable trade-off.</li>
+</ul>
+</div>
+<div class="section" id="how-do-i-deal-with-path-explosion">
+<h3><a class="toc-backref" href="#id5">1.1.3. How do I deal with path explosion?</a><a class="headerlink" href="#how-do-i-deal-with-path-explosion" title="Permalink to this headline">¶</a></h3>
+<p>Use S2E to <em>selectively</em> kill paths that are not interesting and prevent forking outside modules of interest.
+The following describes concrete steps that allowed us to explore programs most efficiently.</p>
+<ol class="arabic simple">
+<li>Run your program with minimum symbolic input (e.g., 1 byte) and with tracing enabled (see first section).</li>
+<li>Insert more and more symbolic values until path explosion occurs (i.e., it takes too long for you to explore all the paths
+or it takes too much memory/CPU resources).</li>
+<li>Extract the fork profile and identify the code locations that fork the most.</li>
+<li>If forking occurs outside the module of interest, the following may help:<ul>
+<li>Use the CodeSelector plugin to disable forking when execution leaves the module of interest</li>
+<li>Concretize some symbolic values when execution leaves the module of interest. You may need to use the <tt class="docutils literal"><span class="pre">FunctionMonitor</span></tt> plugin
+to track function calls and concretize parameters.</li>
+<li>Provide example values to library functions (e.g., to <tt class="docutils literal"><span class="pre">printf</span></tt>, as described previously)</li>
+</ul>
+</li>
+<li>Kill the paths that you are not interested in:<ul>
+<li>You may only want to explore error-free paths. For example, kill all those where library functions fail.</li>
+<li>You may only be interested in error recovery code. In this case, kill all the paths in which no errors occur.</li>
+<li>Write a custom plugin that probes the program&#8217;s state to decide when to kill the path.</li>
+<li>If you exercise multiple entry points of a library (e.g., a device driver), it may make sense to choose only
+one successful path when an entry point exits and kill all the others. Use the <a class="reference external" href="Plugins/StateManager.html">StateManager</a> plugin to suspend
+the execution of all paths that returned from a library function until one return succeeds.</li>
+<li>Kill back-edges of polling loops using the <a class="reference external" href="Plugins/EdgeKiller.html">EdgeKiller</a> plugin. You can also use
+this plugin when execution enters some block of code (e.g., error recovery).</li>
+</ul>
+</li>
+<li>Prioritize paths according to a metric that makes sense for your problem.
+This may be done by writing a custom state searcher plugin. S2E comes with several examples of searchers that aim to maximize code coverage
+as fast as possible.</li>
+</ol>
+</div>
+<div class="section" id="how-to-keep-memory-usage-low">
+<h3><a class="toc-backref" href="#id6">1.1.4. How to keep memory usage low?</a><a class="headerlink" href="#how-to-keep-memory-usage-low" title="Permalink to this headline">¶</a></h3>
+<p>You can use several options, depending on your needs.</p>
+<ul class="simple">
+<li>Enable the shared framebuffer. By default, each state writes to its own framebuffer, which
+may add up to several megabytes to each state. However, it often does not matter what appears on
+the screen. In such case, use the <tt class="docutils literal"><span class="pre">--state-shared-memory=true</span></tt> option.</li>
+<li>Disable forking when a memory limit is reached
+using the following KLEE options: <tt class="docutils literal"><span class="pre">--max-memory-inhibit</span></tt> and  <tt class="docutils literal"><span class="pre">--max-memory=MemoryLimitInMB</span></tt>.</li>
+<li>Explicitly kill unneeded paths. For example, if you want to achieve high code coverage and
+know that some path is unlikely to cover any new code, kill it.</li>
+</ul>
+</div>
+<div class="section" id="how-much-time-is-the-constraint-solver-taking-to-solve-constraints">
+<h3><a class="toc-backref" href="#id7">1.1.5. How much time is the constraint solver taking to solve constraints?</a><a class="headerlink" href="#how-much-time-is-the-constraint-solver-taking-to-solve-constraints" title="Permalink to this headline">¶</a></h3>
+<p>Enable logging for constraint solving queries:</p>
+<div class="highlight-python"><div class="highlight"><pre>s2e = {
+ kleeArgs = {
+   &quot;--use-query-log&quot;, &quot;--use-query-pc-log&quot;,  &quot;--use-stp-query-pc-log&quot;
+}
+</pre></div>
+</div>
+<p>With this configuration S2E generates two logs: <tt class="docutils literal"><span class="pre">s2e-last/queries.pc</span></tt> and <tt class="docutils literal"><span class="pre">s2e-last/stp-queries.qlog</span></tt>.
+Look for &#8220;Elapsed time&#8221; in the logs.</p>
+</div>
+<div class="section" id="what-do-the-various-fields-in-run-stats-mean">
+<h3><a class="toc-backref" href="#id8">1.1.6. What do the various fields in <tt class="docutils literal"><span class="pre">run.stats</span></tt> mean?</a><a class="headerlink" href="#what-do-the-various-fields-in-run-stats-mean" title="Permalink to this headline">¶</a></h3>
+<p>You can open <tt class="docutils literal"><span class="pre">run.stats</span></tt> in a spreadsheet as a CSV file.
+Most of the fields are self-explanatory. Here are the trickiest ones:</p>
+<ul class="simple">
+<li><tt class="docutils literal"><span class="pre">QueryTime</span></tt> shows how much time KLEE spent in the STP solver.</li>
+<li><tt class="docutils literal"><span class="pre">CexCacheTime</span></tt> adds to that time also the time spent while looking
+for a solution in a counter-example cache (which is enabled by the
+<tt class="docutils literal"><span class="pre">--use-cex-cache</span></tt> KLEE option).
+SolverTime shows how much time KLEE spent in total while solving queries
+(this includes all the solver optimizations that could be enabled by various solver-related KLEE options).</li>
+<li><tt class="docutils literal"><span class="pre">ResolveTime</span></tt> represents time that KLEE spent resolving symbolic
+memory addresses, however in S2E this is not computed correctly yet.</li>
+<li><tt class="docutils literal"><span class="pre">ForkTime</span></tt> shows how much time KLEE spent on forking states.</li>
+</ul>
+</div>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+  <h3><a href="index.html">Table Of Contents</a></h3>
+  <ul>
+<li><a class="reference internal" href="#">1. Frequently Asked Questions (FAQ)</a><ul>
+<li><a class="reference internal" href="#s2e">1.1. S2E</a><ul>
+<li><a class="reference internal" href="#how-do-i-know-what-s2e-is-doing">1.1.1. How do I know what S2E is doing?</a></li>
+<li><a class="reference internal" href="#execution-seems-stuck-slow-what-to-do">1.1.2. Execution seems stuck/slow. What to do?</a></li>
+<li><a class="reference internal" href="#how-do-i-deal-with-path-explosion">1.1.3. How do I deal with path explosion?</a></li>
+<li><a class="reference internal" href="#how-to-keep-memory-usage-low">1.1.4. How to keep memory usage low?</a></li>
+<li><a class="reference internal" href="#how-much-time-is-the-constraint-solver-taking-to-solve-constraints">1.1.5. How much time is the constraint solver taking to solve constraints?</a></li>
+<li><a class="reference internal" href="#what-do-the-various-fields-in-run-stats-mean">1.1.6. What do the various fields in <tt class="docutils literal"><span class="pre">run.stats</span></tt> mean?</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+  <h4>Previous topic</h4>
+  <p class="topless"><a href="Tools/CoverageGenerator.html"
+                        title="previous chapter">4. Coverage Generator</a></p>
+  <h3>This Page</h3>
+  <ul class="this-page-menu">
+    <li><a href="_sources/FAQ.txt"
+           rel="nofollow">Show Source</a></li>
+  </ul>
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="Tools/CoverageGenerator.html" title="4. Coverage Generator"
+             >previous</a> |</li>
+        <li><a href="index.html">Chef 0.9 documentation</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2015, Stefan Bucur.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.2.2.
+    </div>
+  </body>
+</html>
