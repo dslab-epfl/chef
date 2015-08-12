@@ -27,7 +27,6 @@ class VM:
         self.name = name
         self.path = '%s/%s' % (utils.CHEFROOT_VM, name)
         self.path_raw = '%s/disk.s2e' % self.path
-        self.path_qcow = '%s/disk.qcow2' % self.path
         self.scan_snapshots()
         self.path_executable = '%s/%s-%s-%s/qemu' \
                   % (utils.CHEFROOT_BUILD, utils.ARCH, utils.TARGET, utils.MODE)
@@ -144,13 +143,8 @@ class VM:
 
         os.chdir(self.path)  # create intermediate files in VM's path
 
-        utils.pend("convert disk image")
-        utils.execute(['%s/qemu-img' % self.path_executable, 'convert',
-                       self.path_raw, '-f', 'raw', '-O', 'qcow2', self.path_qcow])
-        utils.ok()
-
         utils.pend("package disk image")
-        utils.execute(['tar', '-cf', tar, os.path.basename(self.path_qcow)])
+        utils.execute(['tar', '-cSf', tar, os.path.basename(self.path_raw)])
         utils.ok()
 
         for s in self.snapshots:
@@ -164,7 +158,6 @@ class VM:
         utils.ok()
 
         utils.pend("clean up")
-        os.unlink(self.path_qcow)
         os.unlink(tar)
         utils.ok()
 
@@ -182,7 +175,7 @@ class VM:
 
         os.chdir(self.path)     # create intermediate files in VM's path
 
-        utils.pend("decompress tarball")
+        utils.pend("decompress tarball", msg="may take some time")
         utils.execute(['gzip', '-cd', targz], outfile=tar)
         utils.ok()
 
@@ -192,7 +185,7 @@ class VM:
 
         file_list = file_list.split()
         for f in file_list:
-            if f == os.path.basename(self.path_qcow):
+            if f == os.path.basename(self.path_raw):
                 utils.pend("extract disk image")
             else:
                 result = re.search(
@@ -206,13 +199,7 @@ class VM:
             utils.execute(['tar', '-x', f, '-f', tar])
             utils.ok()
 
-        utils.pend("convert disk image")
-        utils.execute(['%s/qemu-img' % self.path_executable, 'convert',
-                       self.path_qcow, '-f','qcow2', '-O','raw', self.path_raw])
-        utils.ok()
-
         utils.pend("clean up")
-        os.unlink(self.path_qcow)
         os.unlink(tar)
         utils.ok()
 

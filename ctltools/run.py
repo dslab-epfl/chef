@@ -49,7 +49,7 @@ COMMAND_PORT = 1234
 MONITOR_PORT = 12345
 VNC_DISPLAY = 0
 VNC_PORT_BASE = 5900
-TIMEOUT = 60
+TIMEOUT_CMD = 60
 CONFIGFILE = '%s/config/default-config.lua' % utils.CHEFROOT_SRC
 NETWORK_MODE = 'user'
 TAP_INTERFACE = 'tap0'
@@ -98,10 +98,10 @@ class Script(object):
         })
 
 
-def send_command(command, host, port):
+def send_command(command, host, port, timeout):
     conn = None
     try:
-        conn = http.client.HTTPConnection(host, port=port, timeout=TIMEOUT)
+        conn = http.client.HTTPConnection(host, port=port, timeout=timeout)
         conn.request("POST", command.url_path, command.to_json())
         response = conn.getresponse()
         if response.status != http.client.OK:
@@ -113,7 +113,7 @@ def send_command(command, host, port):
             conn.close()
 
 
-def async_send_command(command, host, port, timeout=TIMEOUT):
+def async_send_command(command, host, port, timeout):
     pid = os.getpid()
     if os.fork() != 0:
         return
@@ -130,12 +130,12 @@ def async_send_command(command, host, port, timeout=TIMEOUT):
         if now < command_deadline:
             try:
                 utils.pend("sending command %s to %s:%d" % (command.args, host, port))
-                send_command(command, host, port)
+                send_command(command, host, port, timeout)
+                utils.ok("command %s successfully sent" % command.args)
             except CommandError as e:
                 utils.pend(None, msg="%s, retrying for %d more seconds"
                                  % (e, (command_deadline - now).seconds))
             else:
-                utils.ok()
                 break
         else:
             utils.abort("command timeout")
@@ -160,9 +160,11 @@ def kill_me_later(timeout, extra_time=60):
             if now < int_deadline:
                 os.kill(pid, 0)  # Just poll the process
             elif now < kill_deadline:
+                utils.info("execution timeout reached, interrupting")
                 os.kill(pid, signal.SIGINT if not int_sent else 0)
                 int_sent = True
             else:
+                utils.info("execution timeout reached, killing")
                 os.kill(pid, signal.SIGKILL)
                 break
         except OSError:  # The process terminated
@@ -214,8 +216,7 @@ def execute(args, cmd_line):
         if args['command']:
             obj = Command.from_cmd_args(args['command'], args['env_var'] or [])
         if obj:
-            async_send_command(obj, 'localhost', args['command_port'],
-                               timeout=args['timeout'])
+            async_send_command(obj, 'localhost', args['command_port'], TIMEOUT_CMD)
 
         # drop `s2e-last` symlink somewhere where it does not get in the way:
         os.chdir(utils.CHEFROOT_EXPDATA)
@@ -281,7 +282,7 @@ def parse_cmd_line():
     symbolic_mode.set_defaults(mode='sym')
     symbolic_mode.add_argument('-f','--config-file', default=CONFIGFILE,
                                help="The Chef configuration file")
-    symbolic_mode.add_argument('-t','--timeout', type=int, default=TIMEOUT,
+    symbolic_mode.add_argument('-t','--timeout', type=int, default=None,
                                help="Timeout (in seconds)")
     symbolic_mode.add_argument('-p','--command-port', type=int, default=COMMAND_PORT,
                                help="Port on which the watchdog is accessible")
