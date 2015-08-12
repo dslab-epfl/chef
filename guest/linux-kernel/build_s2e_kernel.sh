@@ -29,7 +29,7 @@ sed -i 's/^\(abiname: .*\)/\1-s2e/' debian/config/defines
 
 fakeroot debian/rules debian/control-real || echo "Assuming success, moving on..."
 
-ARCH=i386_none_586
+ARCH=i386_none_486
 REAL_ARCH=i386_none_real
 
 make -f debian/rules.gen setup_${ARCH}
