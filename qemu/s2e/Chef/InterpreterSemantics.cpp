@@ -45,7 +45,8 @@ namespace s2e {
 bool SpiderMonkeySemantics::decodeInstruction(S2EExecutionState *state,
         uint64_t hlpc, InterpreterInstruction &inst) {
     uint8_t opcode;
-    if (!state->readMemoryConcrete(hlpc, &opcode, sizeof(opcode), VirtualAddress)) {
+    if (!state->readMemoryConcrete(hlpc, &opcode, sizeof(opcode),
+            S2EExecutionState::VirtualAddress)) {
         return false;
     }
 
@@ -63,7 +64,7 @@ bool LuaSemantics::decodeInstruction(S2EExecutionState *state, uint64_t hlpc,
         InterpreterInstruction &inst) {
     uint32_t instruction;
     if (!state->readMemoryConcrete(hlpc, &instruction, sizeof(instruction),
-            VirtualAddress)) {
+            S2EExecutionState::VirtualAddress)) {
         return false;
     }
 
@@ -79,7 +80,8 @@ bool LuaSemantics::decodeInstruction(S2EExecutionState *state, uint64_t hlpc,
 bool CPythonSemantics::decodeInstruction(S2EExecutionState *state, uint64_t hlpc,
             InterpreterInstruction &inst) {
     uint8_t opcode;
-    if (!state->readMemoryConcrete(hlpc, &opcode, sizeof(opcode), VirtualAddress)) {
+    if (!state->readMemoryConcrete(hlpc, &opcode, sizeof(opcode),
+            S2EExecutionState::VirtualAddress)) {
         return false;
     }
 
