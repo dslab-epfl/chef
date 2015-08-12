@@ -50,6 +50,15 @@ int execute_llvm = 0;
 
 int tb_invalidated_flag;
 
+#ifdef CONFIG_S2E
+static int tb_invalidate_before_fetch = 0;
+
+void s2e_tb_safe_flush(void)
+{
+    tb_invalidate_before_fetch = 1;
+}
+#endif
+
 //#define CONFIG_DEBUG_EXEC
 
 bool qemu_cpu_has_work(CPUArchState *env)
@@ -178,6 +187,18 @@ static inline TranslationBlock *tb_find_fast(CPUArchState *env)
     TranslationBlock *tb;
     target_ulong cs_base, pc;
     int flags;
+
+    /**
+     * Plugin code cannot usually invalidate the TB cache safely
+     * because it would also detroy the currently running code.
+     * Instead, flush the cache at the next TB fetch.
+     */
+#ifdef CONFIG_S2E
+    if (tb_invalidate_before_fetch) {
+        tb_invalidate_before_fetch = 0;
+        tb_flush(env);
+    }
+#endif
 
     /* we record a subset of the CPU state. It will
        always be the same before a given translated block

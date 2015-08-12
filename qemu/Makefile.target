@@ -510,6 +510,8 @@ s2eobj-y += s2e/Plugins/HostFiles.o
 s2eobj-y += s2e/Plugins/LibraryCallMonitor.o
 s2eobj-y += s2e/Plugins/Searchers/MaxTbSearcher.o
 
+s2eobj-y += s2e/Plugins/Chef/InterpreterAnalyzer.o
+
 #sqlite database is deprecated now
 #s2eobj-y += s2e/sqlite3.o
 #s2eobj-y += s2e/Database.o
@@ -527,6 +529,18 @@ s2eobj-y += s2e/S2EExecutionState.o
 s2eobj-y += s2e/S2EDeviceState.o
 s2eobj-y += s2e/S2EStatsTracker.o
 s2eobj-y += s2e/ExprInterface.o
+
+s2eobj-y += s2e/Chef/ExecutionStream.o
+s2eobj-y += s2e/Chef/OSTracer.o
+s2eobj-y += s2e/Chef/CallTracer.o
+s2eobj-y += s2e/Chef/S2ESyscallMonitor.o
+s2eobj-y += s2e/Chef/InterpreterDetector.o
+s2eobj-y += s2e/Chef/InterpreterTracer.o
+s2eobj-y += s2e/Chef/InterpreterSemantics.o
+s2eobj-y += s2e/Chef/HighLevelExecutor.o
+s2eobj-y += s2e/Chef/HighLevelStrategy.o
+s2eobj-y += s2e/Chef/LowLevelStrategy.o
+s2eobj-y += s2e/Chef/LowLevelTopoStrategy.o
 
 s2eobj-y += s2e/S2E.o
 s2eobj-y += s2e/x64.o

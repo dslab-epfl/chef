@@ -1,7 +1,7 @@
 /*
  * S2E Selective Symbolic Execution Framework
  *
- * Copyright (c) 2010, Dependable Systems Laboratory, EPFL
+ * Copyright (c) 2015, Dependable Systems Laboratory, EPFL
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -27,55 +27,40 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  * Currently maintained by:
- *    Vitaly Chipounov <vitaly.chipounov@epfl.ch>
- *    Volodymyr Kuznetsov <vova.kuznetsov@epfl.ch>
+ *    Stefan Bucur <stefan.bucur@epfl.ch>
  *
  * All contributors are listed in the S2E-AUTHORS file.
  */
 
-#ifndef __S2E_OPCODES__
+#include "HighLevelStrategy.h"
 
-#define __S2E_OPCODES__
+namespace s2e {
 
-/** Custom opcodes
+// RandomPathStrategy //////////////////////////////////////////////////////////
 
-    ARM: 0xFF 0xXX 0xYY 0x00
-	I386/AMD64: 0x0F 0x3F 0x00 0xXX 0xYY 0x00 0x00 0x00 0x00 0x00
+RandomPathStrategy::RandomPathStrategy() {
 
-    0xXX = main opcode
-    0xYY = subfunction operand, used by some plugins
- */
+}
 
-//Central opcode repository for plugins that implement micro-operations
-#define RAW_MONITOR_OPCODE   0xAA
-#define MEMORY_TRACER_OPCODE 0xAC
-#define STATE_MANAGER_OPCODE 0xAD
-#define CODE_SELECTOR_OPCODE 0xAE
-#define MODULE_EXECUTION_DETECTOR_OPCODE 0xAF
-#define HOSTFILES_OPCODE 0xEE
-#define SYSCALL_OPCODE       0xB0
-#define BASIC_BLOCK_OPCODE   0xBB
 
-#ifdef TARGET_I386
+void RandomPathStrategy::addStates(StateRef current,
+        const std::vector<StateRef> &states) {
 
-#define OPSHIFT 8
-#define SUBOPSHIFT 16
-#ifdef S2E_DISPATCH_CUSTOM
-#define OPCODE_SIZE (2 + 8)
-#else
-#define OPCODE_SIZE 8
-#endif
-#define OPCODE_CHECK(operand, opcode) ((((operand)>> OPSHIFT) & 0xFF) == (opcode))
-#define OPCODE_GETSUBFUNCTION(operand) (((operand) >> SUBOPSHIFT) & 0xFF)
+}
 
-#elif defined(TARGET_ARM)
 
-#define OPSHIFT 16
-#define SUBOPSHIFT 8
-#define OPCODE_SIZE (2 + 2)
-#define OPCODE_CHECK(operand, opcode) ((((operand)>> OPSHIFT) & 0xFF) == (opcode))
-#define OPCODE_GETSUBFUNCTION(operand) (((operand) >> SUBOPSHIFT) & 0xFF)
+void RandomPathStrategy::killState(StateRef state) {
 
-#endif
+}
 
-#endif
+
+void RandomPathStrategy::updateState(StateRef state) {
+
+}
+
+
+RandomPathStrategy::StateRef RandomPathStrategy::selectState() {
+    return RandomPathStrategy::StateRef();
+}
+
+} /* namespace s2e */

@@ -44,6 +44,7 @@
 #include <inttypes.h>
 #include <cpu.h>
 #include <s2e/s2e_qemu.h>
+#include <s2e/Chef/ExecutionStream.h>
 
 #include <llvm/Support/TimeValue.h>
 
@@ -73,7 +74,7 @@ typedef sigc::signal<void, S2EExecutionState*, uint64_t /* pc */> ExecutionSigna
 typedef bool (*SYMB_PORT_CHECK)(uint16_t port, void *opaque);
 typedef bool (*SYMB_MMIO_CHECK)(uint64_t physaddress, uint64_t size, void *opaque);
 
-class CorePlugin : public Plugin {
+class CorePlugin : public Plugin, public ExecutionStream {
     S2E_PLUGIN
 
 private:
@@ -127,76 +128,11 @@ public:
         return m_Timer;
     }
 
-    /** Signal that is emitted on beginning and end of code generation
-        for each QEMU translation block.
-    */
-    sigc::signal<void, ExecutionSignal*, 
-            S2EExecutionState*,
-            TranslationBlock*,
-            uint64_t /* block PC */>
-            onTranslateBlockStart;
-
-    /** Signal that is emitted upon end of translation block */
-    sigc::signal<void, ExecutionSignal*, 
-            S2EExecutionState*,
-            TranslationBlock*,
-            uint64_t /* ending instruction pc */,
-            bool /* static target is valid */,
-            uint64_t /* static target pc */>
-            onTranslateBlockEnd;
-
-    
-    /** Signal that is emitted on code generation for each instruction */
-    sigc::signal<void, ExecutionSignal*,
-            S2EExecutionState*,
-            TranslationBlock*,
-            uint64_t /* instruction PC */>
-            onTranslateInstructionStart, onTranslateInstructionEnd;
-
-    /**
-     *  Triggered *after* each instruction is translated to notify
-     *  plugins of which registers are used by the instruction.
-     *  Each bit of the mask corresponds to one of the registers of
-     *  the architecture (e.g., R_EAX, R_ECX, etc).
-     */
-    sigc::signal<void,
-                 ExecutionSignal*,
-                 S2EExecutionState* /* current state */,
-                 TranslationBlock*,
-                 uint64_t /* program counter of the instruction */,
-                 uint64_t /* registers read by the instruction */,
-                 uint64_t /* registers written by the instruction */,
-                 bool /* instruction accesses memory */>
-          onTranslateRegisterAccessEnd;
-
-    /** Signal that is emitted on code generation for each jump instruction */
-    sigc::signal<void, ExecutionSignal*,
-            S2EExecutionState*,
-            TranslationBlock*,
-            uint64_t /* instruction PC */,
-            int /* jump_type */>
-            onTranslateJumpStart;
-
     /** Signal that is emitted upon exception */
     sigc::signal<void, S2EExecutionState*, 
             unsigned /* Exception Index */,
             uint64_t /* pc */>
             onException;
-
-    /** Signal that is emitted when custom opcode is detected */
-    sigc::signal<void, S2EExecutionState*, 
-            uint64_t  /* arg */
-            >
-            onCustomInstruction;
-
-    /** Signal that is emitted on each memory access */
-    /* XXX: this signal is still not emitted for code */
-    sigc::signal<void, S2EExecutionState*,
-                 klee::ref<klee::Expr> /* virtualAddress */,
-                 klee::ref<klee::Expr> /* hostAddress */,
-                 klee::ref<klee::Expr> /* value */,
-                 bool /* isWrite */, bool /* isIO */>
-            onDataMemoryAccess;
 
     /** Signal that is emitted on each port access */
     sigc::signal<void, S2EExecutionState*,
@@ -207,17 +143,6 @@ public:
 
     sigc::signal<void> onTimer;
 
-    /** Signal emitted when the state is forked */
-    sigc::signal<void, S2EExecutionState* /* originalState */,
-                 const std::vector<S2EExecutionState*>& /* newStates */,
-                 const std::vector<klee::ref<klee::Expr> >& /* newConditions */>
-            onStateFork;
-
-    sigc::signal<void,
-                 S2EExecutionState*, /* currentState */
-                 S2EExecutionState*> /* nextState */
-            onStateSwitch;
-
     /**
      * Triggered when S2E wants to generate a test case
      */
@@ -225,11 +150,6 @@ public:
                  S2EExecutionState*, /* currentState */
                  const std::string& /* message */>
             onTestCaseGeneration;
-
-    /**
-     * Triggered whenever a state is killed
-     */
-    sigc::signal<void, S2EExecutionState*> onStateKill;
 
 
     /** Signal emitted when spawning a new S2E process */
@@ -266,28 +186,6 @@ public:
                  uint64_t /* old_addr */
                  >
             onPciDeviceMappingUpdate;
-
-    /**
-     * The current execution privilege level was changed (e.g., kernel-mode=>user-mode)
-     * previous and current are privilege levels. The meaning of the value may
-     * depend on the architecture.
-     */
-    sigc::signal<void,
-                 S2EExecutionState* /* current state */,
-                 unsigned /* previous level */,
-                 unsigned /* current level */>
-          onPrivilegeChange;
-
-    /**
-     * The current page directory was changed.
-     * This may occur, e.g., when the OS swaps address spaces.
-     * The addresses correspond to physical addresses.
-     */
-    sigc::signal<void,
-                 S2EExecutionState* /* current state */,
-                 uint64_t /* previous page directory base */,
-                 uint64_t /* current page directory base */>
-          onPageDirectoryChange;
 
     /**
      * S2E completed initialization and is about to enter
