@@ -31,7 +31,7 @@ Tracers rely on the ModuleExecutionDetector plugin to obtain this information. M
 on OS monitor plugins to be notified whenever the OS loads or unloads the modules.
 
 
-Here is an end-to-end example of how to generate an execution trace for the ``echo`` utility using the `init_env.so <../Howtos/init_env.html>`_ library.
+Here is an end-to-end example of how to generate an execution trace for the ``echo`` utility using the :doc:`init_env.so <../Howtos/init_env>` library.
 The trace will contain all memory accesses done by ``echo``, as well as the list of executed translation blocks and test cases.
 
 1. Minimal Configuration File
@@ -68,7 +68,7 @@ The trace will contain all memory accesses done by ``echo``, as well as the list
 2. Guest Configuration
 ======================
 
-Preparing the guest program for tracing is easy. The `init_env.so <../Howtos/init_env.html>`_ library will instruct
+Preparing the guest program for tracing is easy. The :doc:`init_env.so <../Howtos/init_env>` library will instruct
 S2E to trace the program as specified in the configuration file.
 
 
@@ -82,7 +82,7 @@ S2E to trace the program as specified in the configuration file.
 
 S2E comes with several tools that parse and display the execution traces.
 They are located in the `tools`  folder of the source distribution.
-You can find the documentation for them on the `main page <../index.html>`_.
+You can find the documentation for them on the :doc:`main page <../index>`.
 
 Here is an example that prints the list of executed translation blocks and all memory accesses performed in paths #0 and #34.
 

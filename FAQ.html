@@ -73,7 +73,7 @@
 In your LUA file, enable the <tt class="docutils literal"><span class="pre">ExecutionTracer</span></tt>, <tt class="docutils literal"><span class="pre">ModuleTracer</span></tt> and the <tt class="docutils literal"><span class="pre">ModuleExecutionDetector</span></tt> plugins.
 This will allow you to collect all fork locations. Additionally, you can use <tt class="docutils literal"><span class="pre">TranslationBlockTracer</span></tt>  in order to
 have a detailed trace for each execution path, which you can view with the <tt class="docutils literal"><span class="pre">tbtrace</span></tt> tool. Finally, <tt class="docutils literal"><span class="pre">TranslationBlockTracer</span></tt>
-allows you to use the basic block <a class="reference external" href="Tools/CoverageGenerator.html">coverage</a> tool.</p>
+allows you to use the basic block <a class="reference internal" href="Tools/CoverageGenerator.html"><em>coverage</em></a> tool.</p>
 </li>
 <li><p class="first">Look at <tt class="docutils literal"><span class="pre">s2e-last/debug.txt</span></tt> and other files.
 These files list all the major events occurring during symbolic execution.</p>
@@ -110,11 +110,11 @@ more information.</li>
 </ul>
 <p>Second, throw hardware at your problem</p>
 <ul class="simple">
-<li>Refer to the &#8220;<a class="reference external" href="Howtos/Parallel.html">How to run S2E on multiple cores</a>&#8221; tutorial for instructions.</li>
+<li>Refer to the &#8220;<a class="reference internal" href="Howtos/Parallel.html"><em>How to run S2E on multiple cores</em></a>&#8221; tutorial for instructions.</li>
 </ul>
 <p>Third, use S2E to <em>selectively</em> relax and/or overconstrain path constraints.</p>
 <ul class="simple">
-<li>Understanding what to select can be made considerably easier if you <a class="reference external" href="Howtos/Debugging.html">attach a debugger</a> to the S2E instance.</li>
+<li>Understanding what to select can be made considerably easier if you <a class="reference internal" href="Howtos/Debugging.html"><em>attach a debugger</em></a> to the S2E instance.</li>
 <li>Check that the module under analysis is not doing unnecessary calls with symbolic arguments (e.g., <tt class="docutils literal"><span class="pre">printf</span></tt>).
 Use the <tt class="docutils literal"><span class="pre">s2e_get_example_*</span></tt> functions to provide a concrete value to <tt class="docutils literal"><span class="pre">printf</span></tt>  without actually adding path
 constraints, to avoid disabling future paths. Unless a program reads the output of <tt class="docutils literal"><span class="pre">printf</span></tt> and takes decisions
@@ -149,9 +149,9 @@ to track function calls and concretize parameters.</li>
 <li>You may only be interested in error recovery code. In this case, kill all the paths in which no errors occur.</li>
 <li>Write a custom plugin that probes the program&#8217;s state to decide when to kill the path.</li>
 <li>If you exercise multiple entry points of a library (e.g., a device driver), it may make sense to choose only
-one successful path when an entry point exits and kill all the others. Use the <a class="reference external" href="Plugins/StateManager.html">StateManager</a> plugin to suspend
+one successful path when an entry point exits and kill all the others. Use the <a class="reference internal" href="Plugins/StateManager.html"><em>StateManager</em></a> plugin to suspend
 the execution of all paths that returned from a library function until one return succeeds.</li>
-<li>Kill back-edges of polling loops using the <a class="reference external" href="Plugins/EdgeKiller.html">EdgeKiller</a> plugin. You can also use
+<li>Kill back-edges of polling loops using the <a class="reference internal" href="Plugins/EdgeKiller.html"><em>EdgeKiller</em></a> plugin. You can also use
 this plugin when execution enters some block of code (e.g., error recovery).</li>
 </ul>
 </li>

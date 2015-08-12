@@ -122,7 +122,7 @@ the corresponding execution path.
 Running the Program in S2E
 ==========================
 
-Run the program in S2E. Refer to `this tuorial <TestingMinimalProgram.html>`_ for more details.
+Run the program in S2E. Refer to :doc:`this tutorial <TestingMinimalProgram>` for more details.
 S2E will exit when all paths terminate.
 
 Make sure to have at least 8 GB of available virtual memory

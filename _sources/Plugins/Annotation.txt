@@ -17,7 +17,7 @@ It requires *FunctionMonitor*, *ModuleExecutionDetector* and an OS monitor plugi
 Setting up S2E for Annotation usage
 ------------------------------------
 
-An example of practical Annotation usage is shown in the `Analyzing Windows Driver tutorial <../Windows/DriverTutorial.html>`_, as follows:
+An example of practical Annotation usage is shown in the :doc:`Analyzing Windows Driver tutorial <../Windows/DriverTutorial>`, as follows:
 
 ::
 
@@ -265,7 +265,7 @@ Execution State
 	it has been generated due to pre-forking in concolic mode. Such
 	states could be actually discarded at a later point, if the solver
 	finds them to be unreachable; for more details check the
-	`Concolic Execution <../Howtos/Concolic.html>`_ documentation.
+	:doc:`Concolic Execution <../Howtos/Concolic>` documentation.
 
 Current Plugin State
 ''''''''''''''''''''

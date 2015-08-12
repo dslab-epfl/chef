@@ -142,7 +142,7 @@ expression evaluation (e.g., at fork points).</p>
 </div>
 <div class="section" id="using-the-init-env-plugin">
 <h3>7.2.2. Using the <tt class="docutils literal"><span class="pre">init_env</span></tt> plugin<a class="headerlink" href="#using-the-init-env-plugin" title="Permalink to this headline">¶</a></h3>
-<p>The <a class="reference external" href="init_env.html">init_env</a> library enables symbolic execution without modifying the program&#8217;s source code.
+<p>The <a class="reference internal" href="init_env.html"><em>init_env</em></a> library enables symbolic execution without modifying the program&#8217;s source code.
 This library also supports concolic execution with the <tt class="docutils literal"><span class="pre">--concolic</span></tt> switch, that can be added right before the concrete program arguments.
 The following example invokes the <tt class="docutils literal"><span class="pre">tr</span></tt> Unix utility via the <tt class="docutils literal"><span class="pre">tr</span> <span class="pre">ab</span> <span class="pre">ab</span> <span class="pre">ab</span></tt> command. The library automatically assigns
 symbolic arguments to all arguments while keeping the concrete <tt class="docutils literal"><span class="pre">ab</span></tt> values.</p>

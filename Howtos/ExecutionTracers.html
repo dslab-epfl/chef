@@ -50,15 +50,15 @@
           <div class="body">
             
   <div class="section" id="how-to-use-execution-tracers">
-<h1><a class="toc-backref" href="#id2">1. How to Use Execution Tracers?</a><a class="headerlink" href="#how-to-use-execution-tracers" title="Permalink to this headline">¶</a></h1>
+<h1><a class="toc-backref" href="#id1">1. How to Use Execution Tracers?</a><a class="headerlink" href="#how-to-use-execution-tracers" title="Permalink to this headline">¶</a></h1>
 <div class="contents topic" id="contents">
 <p class="topic-title first">Contents</p>
 <ul class="simple">
-<li><a class="reference internal" href="#how-to-use-execution-tracers" id="id2">How to Use Execution Tracers?</a><ul>
-<li><a class="reference internal" href="#minimal-configuration-file" id="id3">1. Minimal Configuration File</a></li>
-<li><a class="reference internal" href="#guest-configuration" id="id4">2. Guest Configuration</a></li>
-<li><a class="reference internal" href="#viewing-the-traces" id="id5">3. Viewing the Traces</a></li>
-<li><a class="reference internal" href="#mini-faq" id="id6">Mini-FAQ</a></li>
+<li><a class="reference internal" href="#how-to-use-execution-tracers" id="id1">How to Use Execution Tracers?</a><ul>
+<li><a class="reference internal" href="#minimal-configuration-file" id="id2">1. Minimal Configuration File</a></li>
+<li><a class="reference internal" href="#guest-configuration" id="id3">2. Guest Configuration</a></li>
+<li><a class="reference internal" href="#viewing-the-traces" id="id4">3. Viewing the Traces</a></li>
+<li><a class="reference internal" href="#mini-faq" id="id5">Mini-FAQ</a></li>
 </ul>
 </li>
 </ul>
@@ -83,10 +83,10 @@ coverage.</li>
 anywhere in the system). For this, tracers need to know when execution enters and leaves the modules of interest.
 Tracers rely on the ModuleExecutionDetector plugin to obtain this information. ModuleExecutionDetector relies itself
 on OS monitor plugins to be notified whenever the OS loads or unloads the modules.</p>
-<p>Here is an end-to-end example of how to generate an execution trace for the <tt class="docutils literal"><span class="pre">echo</span></tt> utility using the <a class="reference external" href="../Howtos/init_env.html">init_env.so</a> library.
+<p>Here is an end-to-end example of how to generate an execution trace for the <tt class="docutils literal"><span class="pre">echo</span></tt> utility using the <a class="reference internal" href="init_env.html"><em>init_env.so</em></a> library.
 The trace will contain all memory accesses done by <tt class="docutils literal"><span class="pre">echo</span></tt>, as well as the list of executed translation blocks and test cases.</p>
 <div class="section" id="minimal-configuration-file">
-<h2><a class="toc-backref" href="#id3">1.1. 1. Minimal Configuration File</a><a class="headerlink" href="#minimal-configuration-file" title="Permalink to this headline">¶</a></h2>
+<h2><a class="toc-backref" href="#id2">1.1. 1. Minimal Configuration File</a><a class="headerlink" href="#minimal-configuration-file" title="Permalink to this headline">¶</a></h2>
 <blockquote>
 <div><div class="highlight-python"><div class="highlight"><pre>s2e = {
   kleeArgs = {}
@@ -117,8 +117,8 @@ pluginsConfig.MemoryTracer = {
 </div></blockquote>
 </div>
 <div class="section" id="guest-configuration">
-<h2><a class="toc-backref" href="#id4">1.2. 2. Guest Configuration</a><a class="headerlink" href="#guest-configuration" title="Permalink to this headline">¶</a></h2>
-<p>Preparing the guest program for tracing is easy. The <a class="reference external" href="../Howtos/init_env.html">init_env.so</a> library will instruct
+<h2><a class="toc-backref" href="#id3">1.2. 2. Guest Configuration</a><a class="headerlink" href="#guest-configuration" title="Permalink to this headline">¶</a></h2>
+<p>Preparing the guest program for tracing is easy. The <a class="reference internal" href="init_env.html"><em>init_env.so</em></a> library will instruct
 S2E to trace the program as specified in the configuration file.</p>
 <blockquote>
 <div><div class="highlight-python"><div class="highlight"><pre>$ LD_PRELOAD=/home/s2e/init_env.so /bin/echo abc ab &gt; /dev/null
@@ -127,10 +127,10 @@ S2E to trace the program as specified in the configuration file.</p>
 </div></blockquote>
 </div>
 <div class="section" id="viewing-the-traces">
-<h2><a class="toc-backref" href="#id5">1.3. 3. Viewing the Traces</a><a class="headerlink" href="#viewing-the-traces" title="Permalink to this headline">¶</a></h2>
+<h2><a class="toc-backref" href="#id4">1.3. 3. Viewing the Traces</a><a class="headerlink" href="#viewing-the-traces" title="Permalink to this headline">¶</a></h2>
 <p>S2E comes with several tools that parse and display the execution traces.
 They are located in the <cite>tools</cite>  folder of the source distribution.
-You can find the documentation for them on the <a class="reference external" href="../index.html">main page</a>.</p>
+You can find the documentation for them on the <a class="reference internal" href="../index.html"><em>main page</em></a>.</p>
 <p>Here is an example that prints the list of executed translation blocks and all memory accesses performed in paths #0 and #34.</p>
 <blockquote>
 <div><div class="highlight-python"><div class="highlight"><pre>$ $S2EDIR/build/tools/Release+Asserts/bin/tbtrace -trace=s2e-last/ExecutionTracer.dat \
@@ -140,7 +140,7 @@ You can find the documentation for them on the <a class="reference external" hre
 </div></blockquote>
 </div>
 <div class="section" id="mini-faq">
-<h2><a class="toc-backref" href="#id6">1.4. Mini-FAQ</a><a class="headerlink" href="#mini-faq" title="Permalink to this headline">¶</a></h2>
+<h2><a class="toc-backref" href="#id5">1.4. Mini-FAQ</a><a class="headerlink" href="#mini-faq" title="Permalink to this headline">¶</a></h2>
 <ul class="simple">
 <li>You followed all steps and no debug information is displayed by the offline tools.<ul>
 <li>Some programs might be relocated by the OS and their load base will differ from their native base. Try to disable ASLR.</li>

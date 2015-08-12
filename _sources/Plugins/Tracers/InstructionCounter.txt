@@ -13,7 +13,7 @@ This plugin does not have any option.
 Required Plugins
 ----------------
 
-* `ExecutionTracer <ExecutionTracer.html>`_
+* :doc:`ExecutionTracer <ExecutionTracer>`
 
 Configuration Sample
 --------------------

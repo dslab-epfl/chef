@@ -114,7 +114,7 @@ expression evaluation (e.g., at fork points).
 Using the ``init_env`` plugin
 -----------------------------
 
-The `init_env <init_env.html>`_ library enables symbolic execution without modifying the program's source code.
+The :doc:`init_env <init_env>` library enables symbolic execution without modifying the program's source code.
 This library also supports concolic execution with the ``--concolic`` switch, that can be added right before the concrete program arguments.
 The following example invokes the ``tr`` Unix utility via the ``tr ab ab ab`` command. The library automatically assigns
 symbolic arguments to all arguments while keeping the concrete ``ab`` values.

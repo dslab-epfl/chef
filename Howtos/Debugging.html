@@ -52,7 +52,7 @@
   <div class="section" id="debugging-guest-code">
 <h1>4. Debugging Guest Code<a class="headerlink" href="#debugging-guest-code" title="Permalink to this headline">¶</a></h1>
 <p>It is possible to attach GDB to any running instance of S2E. S2E relies on the QEMU GDB interface, which can
-be enabled with the <cite>-s</cite> command line option. This option creates a socket on port number 1234.</p>
+be enabled with the <tt class="docutils literal"><span class="pre">-s</span></tt> command line option. This option creates a socket on port number 1234.</p>
 <div class="highlight-python"><div class="highlight"><pre>$ ./i386-s2e-softmmu/qemu  -s2e-config-file config.lua -s
 </pre></div>
 </div>

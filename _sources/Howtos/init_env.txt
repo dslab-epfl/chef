@@ -5,7 +5,7 @@ How to symbolically execute Linux binaries?
 .. contents::
 
 In this tutorial, we will show how to symbolically (or concolically) execute *existing* Linux programs,
-*without* modifying their source code. In the `Testing a Simple Program <../TestingMinimalProgram.html>`_ tutorial,
+*without* modifying their source code. In the :doc:`Testing a Simple Program <../TestingMinimalProgram>` tutorial,
 we instrumented the source code with S2E instructions to inject symbolic values.
 This tutorial shows how to do this directly from the program's command line.
 
@@ -97,7 +97,7 @@ is ``--help``.
 ---------------------------------------------------
 
 Depending on the program under analysis, normal symbolic execution may get stuck in the constraint
-solver. It is better in general to use `concolic execution <Concolic.html>`_. The following
+solver. It is better in general to use :doc:`concolic execution <Concolic>`. The following
 command runs ``echo`` in concolic mode, based on the concrete parameter ``abc`` (i.e., the first
 path will print ``abc``, while the others will print other strings)::
 

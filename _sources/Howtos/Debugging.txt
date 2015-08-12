@@ -3,7 +3,7 @@ Debugging Guest Code
 ====================
 
 It is possible to attach GDB to any running instance of S2E. S2E relies on the QEMU GDB interface, which can
-be enabled with the `-s` command line option. This option creates a socket on port number 1234.
+be enabled with the ``-s`` command line option. This option creates a socket on port number 1234.
 
 ::
 

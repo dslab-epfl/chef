@@ -238,7 +238,7 @@ to overwrite the settings with symbolic values. If the call fails, no symbolic v
 </li>
 <li><p class="first">Save a copy of the <em>RAW</em> image</p>
 </li>
-<li><p class="first"><a class="reference external" href="../ImageInstallation.html">Convert the *RAW* image to *S2E* by renaming (or makeing a symlink) the image file</a>.</p>
+<li><p class="first"><a class="reference internal" href="../ImageInstallation.html"><em>Convert the *RAW* image to *S2E* by renaming (or makeing a symlink) the image file</em></a>.</p>
 <div class="highlight-python"><div class="highlight"><pre><span class="n">cp</span> <span class="o">/</span><span class="n">home</span><span class="o">/</span><span class="n">s2e</span><span class="o">/</span><span class="n">vm</span><span class="o">/</span><span class="n">windows_pcntpci5</span><span class="o">.</span><span class="n">sys</span><span class="o">.</span><span class="n">raw</span> <span class="o">/</span><span class="n">home</span><span class="o">/</span><span class="n">s2e</span><span class="o">/</span><span class="n">vm</span><span class="o">/</span><span class="n">windows_pcntpci5</span><span class="o">.</span><span class="n">sys</span><span class="o">.</span><span class="n">raw</span><span class="o">.</span><span class="n">s2e</span>
 </pre></div>
 </div>
@@ -457,7 +457,7 @@ interrupts and handle DMA.</p>
 <div class="section" id="detecting-polling-loops">
 <h3><a class="toc-backref" href="#id15">1.2.6. Detecting polling loops</a><a class="headerlink" href="#detecting-polling-loops" title="Permalink to this headline">¶</a></h3>
 <p>Drivers often use polling loops to check the status of registers.
-Polling loops cause the number of states to explode. The <a class="reference external" href="../Plugins/EdgeKiller.html">EdgeKiller</a> plugin relies on the user
+Polling loops cause the number of states to explode. The <a class="reference internal" href="../Plugins/EdgeKiller.html"><em>EdgeKiller</em></a> plugin relies on the user
 to specify the location of each of these loops and kills the states whenever it detects such loops.
 Each configuration entry for this plugin takes a pair of addresses specifying an edge in the control flow graph of
 the binary. The plugin kills the state whenever it detects the execution of such an edge.</p>

@@ -63,4 +63,4 @@ Your S2E configuration file should have the following section:
     monitorProcessUnload=true
   }
 
-The `WindowsMonitor <../Plugins/WindowsInterceptor/WindowsMonitor.html>`_ plugin has **only** support for the checked version of ntoskrnlpa.exe for now!
+The :doc:`WindowsMonitor <../Plugins/WindowsInterceptor/WindowsMonitor>` plugin has **only** support for the checked version of ntoskrnlpa.exe for now!
