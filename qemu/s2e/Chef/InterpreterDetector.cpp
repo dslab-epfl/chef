@@ -49,6 +49,7 @@
 #include <set>
 
 using boost::shared_ptr;
+using namespace klee;
 
 namespace {
 
@@ -416,12 +417,26 @@ InterpreterDetector::InterpreterDetector(CallTracer &call_tracer,
 
 InterpreterDetector::~InterpreterDetector() {
     syscall_range_->deregister();
-    on_concrete_data_memory_access_.disconnect();
+    on_data_memory_access_.disconnect();
 }
 
 
-void InterpreterDetector::onConcreteDataMemoryAccess(S2EExecutionState *state,
-        uint64_t address, uint64_t value, uint8_t size, unsigned flags) {
+void InterpreterDetector::onDataMemoryAccess(S2EExecutionState *state,
+        ref<Expr> vaddr, ref<Expr> haddr, ref<Expr> value_expr, bool isWrite, bool isIO) {
+    uint64_t address, value;
+    uint8_t size;
+    if (ConstantExpr *CE = dyn_cast<ConstantExpr>(vaddr)) {
+        address = CE->getZExtValue();
+    } else {
+        return;
+    }
+    if (ConstantExpr *CE = dyn_cast<ConstantExpr>(value_expr)) {
+        value = CE->getZExtValue();
+        size = CE->getWidth() >> 3;
+    } else {
+        return;
+    }
+
     OSThread *thread = os_tracer_.getState(state)->getThread(call_tracer_.tracked_tid());
 
     if (!thread->running() || thread->kernel_mode()) {
@@ -434,12 +449,10 @@ void InterpreterDetector::onConcreteDataMemoryAccess(S2EExecutionState *state,
         return;
     }
 
-    bool is_write = flags & S2E_MEM_TRACE_FLAG_WRITE;
-
     shared_ptr<CallStack> ll_stack = call_tracer_.getState(state);
 
     memory_recording_->recordMemoryOp(state->getPc(), ll_stack->top(),
-            address, value, size, is_write);
+            address, value, size, isWrite);
     return;
 }
 
@@ -479,9 +492,9 @@ void InterpreterDetector::startCalibration(S2EExecutionState *state) {
             << "Starting interpreter detector calibration." << '\n';
 
     memory_recording_.reset(new MemoryOpRecorder());
-    on_concrete_data_memory_access_ = os_tracer_.stream().
-            onConcreteDataMemoryAccess.connect(
-                    sigc::mem_fun(*this, &InterpreterDetector::onConcreteDataMemoryAccess));
+    on_data_memory_access_ = os_tracer_.stream().
+            onDataMemoryAccess.connect(
+                    sigc::mem_fun(*this, &InterpreterDetector::onDataMemoryAccess));
 
     min_opcode_count_ = 0;
     memop_range_ = std::make_pair(0, 0);
@@ -506,7 +519,7 @@ void InterpreterDetector::endCalibration(S2EExecutionState *state) {
     assert(calibrating_ && "Calibration end attempted before start");
     s2e_.getMessagesStream(state) << "Calibration ended." << '\n';
 
-    on_concrete_data_memory_access_.disconnect();
+    on_data_memory_access_.disconnect();
     calibrating_ = false;
 
     MemoryOpAnalyzer analyzer(s2e_, state, memory_recording_->mem_ops,

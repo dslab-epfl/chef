@@ -37,6 +37,7 @@
 
 #include <s2e/Signals/Signals.h>
 #include <s2e/Chef/InterpreterSemantics.h>
+#include <s2e/Chef/ExecutionStream.h>
 
 #include <boost/shared_ptr.hpp>
 #include <boost/scoped_ptr.hpp>
@@ -83,8 +84,10 @@ public:
 private:
     struct MemoryOpRecorder;
 
-    void onConcreteDataMemoryAccess(S2EExecutionState *state, uint64_t address,
-            uint64_t value, uint8_t size, unsigned flags);
+    void onDataMemoryAccess(S2EExecutionState *state,
+            klee::ref<klee::Expr> vaddr, klee::ref<klee::Expr> haddr,
+            klee::ref<klee::Expr> value,
+            bool isWrite, bool isIO);
 
     void onS2ESyscall(S2EExecutionState *state, uint64_t syscall_id,
             uint64_t data, uint64_t size);
@@ -109,7 +112,7 @@ private:
     boost::scoped_ptr<InterpreterStructureParams> detected_params_;
 
     // Signals
-    sigc::connection on_concrete_data_memory_access_;
+    sigc::connection on_data_memory_access_;
 };
 
 } /* namespace s2e */
