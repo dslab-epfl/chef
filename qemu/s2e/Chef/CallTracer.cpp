@@ -32,14 +32,14 @@
  * All contributors are listed in the S2E-AUTHORS file.
  */
 
-#include "CallTracer.h"
-
 extern "C" {
 #include "config.h"
 #include "qemu-common.h"
 #include "cpu.h"
-extern CPUX86State *env;
+extern CPUArchState *env;
 }
+
+#include "CallTracer.h"
 
 #include <s2e/S2E.h>
 #include <s2e/S2EExecutor.h>
