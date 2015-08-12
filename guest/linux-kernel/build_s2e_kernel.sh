@@ -21,7 +21,7 @@ SRC_DIR=./linux-*/
 pushd $SRC_DIR
 
 for PATCH in ${PATCH_DIR}/*.patch; do
-    patch -p1 <${PATCH}
+    patch -N -p1 <${PATCH}
 done
 
 sed -i 's/^\(abiname: .*\)-s2e/\1/' debian/config/defines
