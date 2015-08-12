@@ -224,7 +224,8 @@ void OSTracer::onS2ESyscall(S2EExecutionState *state, uint64_t syscall_id,
     case S2E_THREAD_START: {
         s2e_thread_struct s2e_thread;
         assert(sizeof(s2e_thread) == size);
-        if (!state->readMemoryConcrete(data, &s2e_thread, size, VirtualAddress)) {
+        if (!state->readMemoryConcrete(data, &s2e_thread, size,
+                S2EExecutionState::VirtualAddress)) {
             s2e().getWarningsStream(state) << "Could not read thread descriptor" << '\n';
             return;
         }
@@ -248,7 +249,7 @@ void OSTracer::onS2ESyscall(S2EExecutionState *state, uint64_t syscall_id,
                 os_state, s2e_thread.pid, address_space, s2e_thread.stack_top));
         address_space->thread_ = os_thread;
 
-        if (!state->mem()->readString(s2e_thread.name, os_thread->name_, 256)) {
+        if (!state->readString(s2e_thread.name, os_thread->name_, 256)) {
             s2e().getWarningsStream(state) << "Could not read thread name" << '\n';
         }
 
@@ -277,7 +278,8 @@ void OSTracer::onS2ESyscall(S2EExecutionState *state, uint64_t syscall_id,
     case S2E_VM_ALLOC: {
         s2e_vmmap_struct s2e_vmmap;
         assert(sizeof(s2e_vmmap) == size);
-        if (!state->readMemoryConcrete(data, &s2e_vmmap, size, VirtualAddress)) {
+        if (!state->readMemoryConcrete(data, &s2e_vmmap, size,
+                S2EExecutionState::VirtualAddress)) {
             s2e().getWarningsStream(state) << "Could not read thread descriptor" << '\n';
             return;
         }
@@ -290,7 +292,7 @@ void OSTracer::onS2ESyscall(S2EExecutionState *state, uint64_t syscall_id,
 
         OSAddressSpace::VMArea vm_area;
 
-        if (!state->mem()->readString(s2e_vmmap.name, vm_area.name, 256)) {
+        if (!state->readString(s2e_vmmap.name, vm_area.name, 256)) {
             s2e().getWarningsStream(state) << "Could not read VM area name" << '\n';
         }
 
