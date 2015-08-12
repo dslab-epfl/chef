@@ -277,8 +277,8 @@ void LowLevelState::step(uint64_t hlpc) {
 
 
 void LowLevelState::setAPICState(bool enabled) {
-    s2e_state()->regs()->write(CPU_OFFSET(all_apic_interrupts_disabled),
-                (uint8_t)!enabled);
+    s2e_state()->writeCpuState(CPU_OFFSET(all_apic_interrupts_disabled),
+            (uint8_t)!enabled, 8);
 }
 
 // HighLevelExecutor ///////////////////////////////////////////////////////////
