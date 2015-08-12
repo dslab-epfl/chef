@@ -76,15 +76,6 @@ public:
             uint64_t /* static target pc */>
             onTranslateBlockEnd;
 
-    /**
-     * Signal that is emitted when the translator finishes
-     * translating the block.
-     */
-    sigc::signal<void, S2EExecutionState*,
-            TranslationBlock*,
-            uint64_t /* ending instruction pc */>
-            onTranslateBlockComplete;
-
 
     /** Signal that is emitted on code generation for each instruction */
     sigc::signal<void, ExecutionSignal*,
@@ -92,6 +83,22 @@ public:
             TranslationBlock*,
             uint64_t /* instruction PC */>
             onTranslateInstructionStart, onTranslateInstructionEnd;
+
+    /**
+     *  Triggered *after* each instruction is translated to notify
+     *  plugins of which registers are used by the instruction.
+     *  Each bit of the mask corresponds to one of the registers of
+     *  the architecture (e.g., R_EAX, R_ECX, etc).
+     */
+    sigc::signal<void,
+                 ExecutionSignal*,
+                 S2EExecutionState* /* current state */,
+                 TranslationBlock*,
+                 uint64_t /* program counter of the instruction */,
+                 uint64_t /* registers read by the instruction */,
+                 uint64_t /* registers written by the instruction */,
+                 bool /* instruction accesses memory */>
+          onTranslateRegisterAccessEnd;
 
     /** Signal that is emitted on code generation for each jump instruction */
     sigc::signal<void, ExecutionSignal*,
@@ -106,6 +113,31 @@ public:
             uint64_t  /* arg */
             >
             onCustomInstruction;
+
+    /** Signal that is emitted on each memory access */
+    /* XXX: this signal is still not emitted for code */
+    sigc::signal<void, S2EExecutionState*,
+                 klee::ref<klee::Expr> /* virtualAddress */,
+                 klee::ref<klee::Expr> /* hostAddress */,
+                 klee::ref<klee::Expr> /* value */,
+                 bool /* isWrite */, bool /* isIO */>
+            onDataMemoryAccess;
+
+    /** Signal emitted when the state is forked */
+    sigc::signal<void, S2EExecutionState* /* originalState */,
+                 const std::vector<S2EExecutionState*>& /* newStates */,
+                 const std::vector<klee::ref<klee::Expr> >& /* newConditions */>
+            onStateFork;
+
+    sigc::signal<void,
+                 S2EExecutionState*, /* currentState */
+                 S2EExecutionState*> /* nextState */
+            onStateSwitch;
+
+    /**
+     * Triggered whenever a state is killed
+     */
+    sigc::signal<void, S2EExecutionState*> onStateKill;
 
     /**
      * The current execution privilege level was changed (e.g., kernel-mode=>user-mode)
@@ -128,63 +160,6 @@ public:
                  uint64_t /* previous page directory base */,
                  uint64_t /* current page directory base */>
           onPageDirectoryChange;
-
-    /**
-     *  Triggered *after* each instruction is translated to notify
-     *  plugins of which registers are used by the instruction.
-     *  Each bit of the mask corresponds to one of the registers of
-     *  the architecture (e.g., R_EAX, R_ECX, etc).
-     */
-    sigc::signal<void,
-                 ExecutionSignal*,
-                 S2EExecutionState* /* current state */,
-                 TranslationBlock*,
-                 uint64_t /* program counter of the instruction */,
-                 uint64_t /* registers read by the instruction */,
-                 uint64_t /* registers written by the instruction */,
-                 bool /* instruction accesses memory */>
-          onTranslateRegisterAccessEnd;
-
-    /**
-     * Signal emitted before handling a memory address.
-     * - The concrete address is one example of an address that satisfies
-     * the constraints.
-     * - The concretize flag can be set to ask the engine to concretize the address.
-     */
-    sigc::signal<void, S2EExecutionState*,
-                 klee::ref<klee::Expr> /* virtualAddress */,
-                 uint64_t /* concreteAddress */,
-                 bool & /* concretize */>
-            onSymbolicMemoryAddress;
-
-    /* Optimized signal for concrete accesses */
-    sigc::signal<void, S2EExecutionState*,
-                 uint64_t /* virtualAddress */,
-                 uint64_t /* value */,
-                 uint8_t /* size */,
-                 unsigned /* flags */>
-            onConcreteDataMemoryAccess;
-
-    /** Signal emitted when the state is forked */
-    sigc::signal<void, S2EExecutionState* /* originalState */,
-                 const std::vector<S2EExecutionState*>& /* newStates */,
-                 const std::vector<klee::ref<klee::Expr> >& /* newConditions */>
-            onStateFork;
-
-    /** Signal that is emitted when two states are merged */
-    sigc::signal<void, S2EExecutionState* /* destination */,
-                 S2EExecutionState* /* source */>
-            onStateMerge;
-
-    sigc::signal<void,
-                 S2EExecutionState*, /* currentState */
-                 S2EExecutionState*> /* nextState */
-            onStateSwitch;
-
-    /**
-     * Triggered whenever a state is killed
-     */
-    sigc::signal<void, S2EExecutionState*> onStateKill;
 
 private:
     ExecutionStream(const ExecutionStream&);
