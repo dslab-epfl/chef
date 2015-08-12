@@ -256,13 +256,14 @@ void CallTracer::onCustomInstruction(S2EExecutionState *state, uint64_t opcode) 
 
     if (schedule_state) {
         // Skip the current instruction, since we'll throw at the end
-        state->regs()->write<target_ulong>(CPU_OFFSET(eip), state->getPc() + S2E_CUSTOM_INSTRUCTION_SIZE);
+        state->setPc(state->getPc() + S2E_OPCODE_SIZE);
 
         // XXX: Not sure why we clear these.  Ask Vitaly next time...
-        state->regs()->write(CPU_OFFSET(cc_op), 0);
-        state->regs()->write(CPU_OFFSET(cc_src), 0);
-        state->regs()->write(CPU_OFFSET(cc_dst), 0);
-        state->regs()->write(CPU_OFFSET(cc_tmp), 0);
+        target_long val = 0;
+        state->writeCpuRegisterConcrete(CPU_OFFSET(cc_op), &val, sizeof(val));
+        state->writeCpuRegisterConcrete(CPU_OFFSET(cc_src), &val, sizeof(val));
+        state->writeCpuRegisterConcrete(CPU_OFFSET(cc_dst), &val, sizeof(val));
+        state->writeCpuRegisterConcrete(CPU_OFFSET(cc_tmp), &val, sizeof(val));
 
         // What is the performance impact of this?
         // Do we ever need a TLB in symbolic mode?
