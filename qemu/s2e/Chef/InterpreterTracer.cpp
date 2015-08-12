@@ -42,6 +42,8 @@
 using boost::shared_ptr;
 using boost::make_shared;
 
+using namespace klee;
+
 namespace s2e {
 
 namespace {
@@ -89,8 +91,7 @@ InterpreterTracer::InterpreterTracer(CallTracer &call_tracer)
 
 
 InterpreterTracer::~InterpreterTracer() {
-    on_concrete_data_memory_access_.disconnect();
-    on_symbolic_data_memory_access_.disconnect();
+    on_data_memory_access_.disconnect();
     on_stack_frame_push_.disconnect();
     on_stack_frame_popping_.disconnect();
     on_state_switch_.disconnect();
@@ -120,8 +121,7 @@ void InterpreterTracer::setInterpreterStructureParams(S2EExecutionState *state,
         }
     }
 
-    on_concrete_data_memory_access_.disconnect();
-    on_symbolic_data_memory_access_.disconnect();
+    on_data_memory_access_.disconnect();
     on_stack_frame_push_.disconnect();
     on_stack_frame_popping_.disconnect();
 
@@ -173,8 +173,25 @@ void InterpreterTracer::popHighLevelFrame(CallStack *call_stack,
 }
 
 
-void InterpreterTracer::onConcreteDataMemoryAccess(S2EExecutionState *state,
-        uint64_t address, uint64_t value, uint8_t size, unsigned flags) {
+void InterpreterTracer::onDataMemoryAccess(S2EExecutionState *state,
+        ref<Expr> vaddr, ref<Expr> haddr, ref<Expr> value_expr, bool isWrite, bool isIO) {
+    uint64_t address, value;
+    uint8_t size;
+
+    // TODO Make sure here that no symbolic HLPC updates ever occur
+
+    if (ConstantExpr *CE = dyn_cast<ConstantExpr>(vaddr)) {
+        address = CE->getZExtValue();
+    } else {
+        return;
+    }
+    if (ConstantExpr *CE = dyn_cast<ConstantExpr>(value_expr)) {
+        value = CE->getZExtValue();
+        size = CE->getWidth() >> 3;
+    } else {
+        return;
+    }
+
     OSThread *thread = os_tracer_.getState(state)->getThread(call_tracer_.tracked_tid());
 
     if (!thread->running() || thread->kernel_mode()) {
@@ -191,8 +208,6 @@ void InterpreterTracer::onConcreteDataMemoryAccess(S2EExecutionState *state,
         return;
     }
 
-    bool is_write = flags & S2E_MEM_TRACE_FLAG_WRITE;
-
     shared_ptr<CallStack> ll_stack = call_tracer_.getState(state);
 
     shared_ptr<HighLevelStack> hl_stack = getState(state);
@@ -204,13 +219,13 @@ void InterpreterTracer::onConcreteDataMemoryAccess(S2EExecutionState *state,
     }
 
     if (state->getPc() == interp_params_.hlpc_update_pc) {
-        if (!is_write) {
+        if (!isWrite) {
             s2e().getWarningsStream(state) << "Unexpected memory access: "
-                    << llvm::format("EIP=0x%x Addr=0x%x Value=0x%x Size=%d Flags=0x%08x",
-                            state->getPc(), address, value, size, flags)
+                    << llvm::format("EIP=0x%x Addr=0x%x Value=0x%x Size=%d",
+                            state->getPc(), address, value, size)
                     << '\n';
         }
-        assert(is_write);
+        assert(isWrite);
 
         if (!hl_frame->hlpc_ptr) {
             hl_frame->hlpc_ptr = address;
@@ -239,7 +254,7 @@ void InterpreterTracer::onConcreteDataMemoryAccess(S2EExecutionState *state,
         }
     }
 
-    if (address == hl_frame->hlpc_ptr && is_write) {
+    if (address == hl_frame->hlpc_ptr && isWrite) {
         hl_frame->hlpc = value;
         onHighLevelPCUpdate.emit(state, hl_stack.get());
 
@@ -250,13 +265,13 @@ void InterpreterTracer::onConcreteDataMemoryAccess(S2EExecutionState *state,
     }
 
     if (state->getPc() == interp_params_.instruction_fetch_pc) {
-        if (is_write) {
+        if (isWrite) {
             s2e().getWarningsStream(state) << "Unexpected memory access: "
-                    << llvm::format("EIP=0x%x Addr=0x%x Value=0x%x Size=%d Flags=0x%08x",
-                            state->getPc(), address, value, size, flags)
+                    << llvm::format("EIP=0x%x Addr=0x%x Value=0x%x Size=%d",
+                            state->getPc(), address, value, size)
                     << '\n';
         }
-        assert(!is_write);
+        assert(!isWrite);
         //assert(!hl_frame->hlpc || address == hl_frame->hlpc);
         hl_frame->hlinst = address;
         onHighLevelInstructionFetch.emit(state, hl_stack.get());
@@ -265,12 +280,6 @@ void InterpreterTracer::onConcreteDataMemoryAccess(S2EExecutionState *state,
                     << llvm::format("Instruction=0x%x", hl_frame->hlinst) << '\n';
         }
     }
-}
-
-
-void InterpreterTracer::onSymbolicDataMemoryAccess(S2EExecutionState *state,
-        klee::ref<klee::Expr> address, uint64_t concr_addr, bool &concretize) {
-    // TODO Make sure here that no symbolic HLPC updates ever occur
 }
 
 
@@ -310,20 +319,14 @@ void InterpreterTracer::onStateSwitch(S2EExecutionState *prev,
 
 void InterpreterTracer::updateMemoryTracking(boost::shared_ptr<CallStackFrame> top) {
     if (top->function != interp_params_.interp_loop_function) {
-        on_concrete_data_memory_access_.disconnect();
-        on_symbolic_data_memory_access_.disconnect();
+        on_data_memory_access_.disconnect();
         return;
     }
 
-    if (!on_concrete_data_memory_access_.connected()) {
-        on_concrete_data_memory_access_ = os_tracer_.stream().
-            onConcreteDataMemoryAccess.connect(sigc::mem_fun(
-                    *this, &InterpreterTracer::onConcreteDataMemoryAccess));
-    }
-    if (!on_symbolic_data_memory_access_.connected()) {
-        on_symbolic_data_memory_access_ = os_tracer_.stream().
-            onSymbolicMemoryAddress.connect(sigc::mem_fun(
-                    *this, &InterpreterTracer::onSymbolicDataMemoryAccess));
+    if (!on_data_memory_access_.connected()) {
+        on_data_memory_access_ = os_tracer_.stream().
+            onDataMemoryAccess.connect(sigc::mem_fun(
+                    *this, &InterpreterTracer::onDataMemoryAccess));
     }
 }
 

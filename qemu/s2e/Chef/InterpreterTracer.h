@@ -174,10 +174,10 @@ protected:
     StateRef createState(S2EExecutionState *s2e_state);
 
 private:
-    void onConcreteDataMemoryAccess(S2EExecutionState *state, uint64_t address,
-            uint64_t value, uint8_t size, unsigned flags);
-    void onSymbolicDataMemoryAccess(S2EExecutionState *state,
-            klee::ref<klee::Expr> address, uint64_t concr_addr, bool &concretize);
+    void onDataMemoryAccess(S2EExecutionState *state,
+            klee::ref<klee::Expr> vaddr, klee::ref<klee::Expr> haddr,
+            klee::ref<klee::Expr> value,
+            bool isWrite, bool isIO);
 
     void pushHighLevelFrame(CallStack *call_stack, HighLevelStack *hl_stack);
     void popHighLevelFrame(CallStack *call_stack, HighLevelStack *hl_stack);
@@ -203,8 +203,7 @@ private:
     sigc::connection on_stack_frame_push_;
     sigc::connection on_stack_frame_popping_;
 
-    sigc::connection on_concrete_data_memory_access_;
-    sigc::connection on_symbolic_data_memory_access_;
+    sigc::connection on_data_memory_access_;
 
     sigc::connection on_state_switch_;
 };
