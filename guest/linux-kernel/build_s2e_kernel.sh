@@ -21,7 +21,12 @@ SRC_DIR=./linux-*/
 pushd $SRC_DIR
 
 for PATCH in ${PATCH_DIR}/*.patch; do
-    patch -N -p1 <${PATCH}
+    echo "Applying patch ${PATCH}..."
+    if patch -R -p1 --dry-run <${PATCH}; then
+	echo "Patch already applied, skipping"
+    else
+	patch -p1 <${PATCH}
+    fi
 done
 
 sed -i 's/^\(abiname: .*\)-s2e/\1/' debian/config/defines
