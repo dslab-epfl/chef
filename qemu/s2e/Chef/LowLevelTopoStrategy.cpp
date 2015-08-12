@@ -32,15 +32,15 @@
  * All contributors are listed in the S2E-AUTHORS file.
  */
 
-#include "LowLevelTopoStrategy.h"
-
 // TODO: This is a bit messy; encapsulate somewhere else.
 extern "C" {
 #include "config.h"
 #include "qemu-common.h"
 #include "cpu.h"
-extern CPUX86State *env;
+extern CPUArchState *env;
 }
+
+#include "LowLevelTopoStrategy.h"
 
 #include <s2e/S2EExecutor.h>
 
@@ -263,13 +263,14 @@ void LowLevelTopoStrategy::onBasicBlockEnter(CallStack *stack,
         {
             S2EExecutionState *s2e_state = state->s2e_state();
             // Skip the current instruction, since we'll throw at the end
-            s2e_state->regs()->write<target_ulong>(CPU_OFFSET(eip), s2e_state->getPc() + S2E_CUSTOM_INSTRUCTION_SIZE);
+            s2e_state->setPc(s2e_state->getPc() + S2E_OPCODE_SIZE);
 
             // XXX: Not sure why we clear these.  Ask Vitaly next time...
-            s2e_state->regs()->write(CPU_OFFSET(cc_op), 0);
-            s2e_state->regs()->write(CPU_OFFSET(cc_src), 0);
-            s2e_state->regs()->write(CPU_OFFSET(cc_dst), 0);
-            s2e_state->regs()->write(CPU_OFFSET(cc_tmp), 0);
+            target_long val = 0;
+            s2e_state->writeCpuRegisterConcrete(CPU_OFFSET(cc_op), &val, sizeof(val));
+            s2e_state->writeCpuRegisterConcrete(CPU_OFFSET(cc_src), &val, sizeof(val));
+            s2e_state->writeCpuRegisterConcrete(CPU_OFFSET(cc_dst), &val, sizeof(val));
+            s2e_state->writeCpuRegisterConcrete(CPU_OFFSET(cc_tmp), &val, sizeof(val));
 
             // What is the performance impact of this?
             // Do we ever need a TLB in symbolic mode?
