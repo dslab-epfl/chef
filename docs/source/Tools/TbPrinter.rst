@@ -4,13 +4,13 @@ Trace Printer
 
 The trace printer tool outputs for each specified path all the trace items that were collected in these states.
 Items include memory accesses, executed translation blocks, or test cases.
-This tool is useful to quickly observe the execution sequence that led to a particular event that caused a state to terminate. 
+This tool is useful to quickly observe the execution sequence that led to a particular event that caused a state to terminate.
 It can also be useful for debugging.
 
 Examples
 ~~~~~~~~
 
-A complete tutorial on how to generate and display a trace can be found `here <../Howtos/ExecutionTracers.html>`_
+A complete tutorial on how to generate and display a trace can be found :doc:`here <../Howtos/ExecutionTracers>`
 
 Assuming you have obtained a trace in ``ExecutionTracer.dat``,
 the following command outputs the translation block trace for paths 0 and 34.

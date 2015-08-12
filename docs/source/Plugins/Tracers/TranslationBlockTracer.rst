@@ -27,8 +27,8 @@ will not appear in the trace unless the block is flushed and retranslated again.
 Required Plugins
 ----------------
 
-* `ExecutionTracer <ExecutionTracer.html>`_
-* `ModuleExecutionDetector <../ModuleExecutionDetector.html>`_
+* :doc:`ExecutionTracer <ExecutionTracer>`
+* :doc:`ModuleExecutionDetector <../ModuleExecutionDetector>`
 
 Configuration Sample
 --------------------

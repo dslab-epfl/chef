@@ -16,7 +16,8 @@ cd build/html
 numchange="$(git status --porcelain | wc -l)"
 if [ "$numchange" != '0' ]; then
 	echo "changes detected: ($numchange files)"
-	git commit -a -v
+	git add --all
+	git commit -v
 	git push
 else
 	echo "no changes detected, not publishing"

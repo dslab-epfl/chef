@@ -3,7 +3,7 @@ Testing a Simple Program with S2E
 =================================
 
 This tutorial assumes that you have already built S2E and prepared VM image as described
-on the `Building the S2E Framework <BuildingS2E.html>`_ page.
+on the :doc:`Building the S2E Framework <BuildingS2E>` page.
 
 .. contents::
 
@@ -48,7 +48,7 @@ the possible paths through it.
      return 0;
    }
 
-   
+
 Compiling the Program in the Guest
 ==================================
 
@@ -76,7 +76,7 @@ Compile and run the example with the following commands::
 
 Preparing the Program for S2E
 =============================
-   
+
 In order to execute the program symbolically, it is necessary to specify what
 values should become symbolic. There are many ways to do it in S2E, but the
 simplest one is to use the S2E opcodes library. This library provides a way for
@@ -197,7 +197,7 @@ speed it up. First, boot the system in the version of QEMU that has S2E
 disabled. Then, save a snapshot and load it in the S2E::
 
    guest$ su -c halt # shut down qemu
-   
+
    $ $S2EDIR/build/qemu-release/i386-softmmu/qemu-system-i386 -net none your_image.raw.s2e
    > Wait until Linux is loaded, login into the system. Then press
    > Ctrl + Alt + 2 and type 'savevm 1' then 'quit'.
@@ -260,7 +260,7 @@ S2E log using ``s2e_message()`` or ``s2e_warning()`` functions:
 
 Now, resume the snapshot in QEMU with S2E disabled, edit and recompile
 the program, re-save the snapshot and re-load it in S2E.
-Your image needs to be in `S2E format <ImageInstallation.html>`_.
+Your image needs to be in :doc:`S2E format <ImageInstallation>`.
 
 ::
 

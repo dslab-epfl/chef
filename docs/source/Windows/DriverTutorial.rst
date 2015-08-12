@@ -124,7 +124,7 @@ Converting the image
 
 1. Once you have set registry settings, make sure the adapter is disabled, then shutdown the guest OS.
 2. Save a copy of the *RAW* image
-3. `Convert the *RAW* image to *S2E* by renaming (or makeing a symlink) the image file <../ImageInstallation.html>`_.
+3. :doc:`Convert the *RAW* image to *S2E* by renaming (or makeing a symlink) the image file <../ImageInstallation>`.
 
    ::
 
@@ -369,7 +369,7 @@ Detecting polling loops
 -----------------------
 
 Drivers often use polling loops to check the status of registers.
-Polling loops cause the number of states to explode. The `EdgeKiller <../Plugins/EdgeKiller.html>`_ plugin relies on the user
+Polling loops cause the number of states to explode. The :doc:`EdgeKiller <../Plugins/EdgeKiller>` plugin relies on the user
 to specify the location of each of these loops and kills the states whenever it detects such loops.
 Each configuration entry for this plugin takes a pair of addresses specifying an edge in the control flow graph of
 the binary. The plugin kills the state whenever it detects the execution of such an edge.

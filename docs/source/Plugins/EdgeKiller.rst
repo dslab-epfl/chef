@@ -10,7 +10,7 @@ Options
 
 The configuration requires one section per module to be monitored.
 The section name must match the module identifier defined in the configuration section of
-the `ModuleExecutionDetector <../ModuleExecutionDetector.html>`_ plugin.
+the :doc:`ModuleExecutionDetector <../ModuleExecutionDetector>` plugin.
 Each section contains a list of named pairs of program counters that define the program edges.
 All program counters are relative to the native load base of the module. The name of each pair is not important, but must be unique.
 
@@ -18,14 +18,14 @@ All program counters are relative to the native load base of the module. The nam
 Required Plugins
 ----------------
 
-* `ModuleExecutionDetector <../ModuleExecutionDetector.html>`_
+* `ModuleExecutionDetector <../ModuleExecutionDetector>`
 
 Configuration Sample
 --------------------
 
 The following example shows how to kill the polling loops in the `pcntpci5.sys` device driver.
 Each pair of addresses represents the source and the target of a polling loop back-edge.
-Refer to the `Windows driver testing <../Windows/DriverTutorial.html>`_ tutorial for more detailed examples.
+Refer to the :doc:`Windows driver testing <../Windows/DriverTutorial>` tutorial for more detailed examples.
 
 ::
 

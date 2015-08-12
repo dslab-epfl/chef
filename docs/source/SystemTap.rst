@@ -12,7 +12,7 @@ This allows to inject symbolic values in any place, kill states based on complex
 conditions, etc.
 
 In this tutorial, we describe how to build and run SystemTap. We also give several
-examples of useful in-vivo analysis that can be achieved. 
+examples of useful in-vivo analysis that can be achieved.
 
 .. contents::
 
@@ -29,9 +29,9 @@ SystemTap requires a kernel built with the following settings:
 For the purpose of this tutorial, also enable the following options:
 
 - CONFIG_PCNET32=m (To enable this option, issue "make menuconfig", then select Device Drivers ---> Network device support ---> Ethernet (10 or 100Mbit) ---> AMD PCnet32 PCI support)
-- For other additional options, please refer to the `config.s2e.i686 <config.s2e.i686>`_ file.
+- For other additional options, please refer to the :doc:`config.s2e.i686 <config.s2e.i686>` file.
 
-Refer to the `Building Linux <BuildingLinux.html>`_ tutorial
+Refer to the :doc:`Building Linux <BuildingLinux>` tutorial
 for a list of detailed steps.
 
 Install the resulting kernel in the guest OS.
@@ -53,13 +53,13 @@ In the ``chroot`` environment you use to compile your kernel, do the following:
    # Install the compiled kernel, headers, and debug information.
    # You must ensure that kernel-package = 11.015 is installed, later versions (>=12)
    # strip the debug information from the kernel image/modules.
-   
+
    # Install initramfs-tools and its dependencies
    $ apt-get install initramfs-tools klibc-utils libklibc udev libvolume-id0
-   
+
    # Set up the Linux image (an initrd image will be created in /boot/ as well).
    # Adapt all the filenames accordingly.
-   $ dpkg -i linux-image-2.6.26.8-s2e.deb linux-headers-2.6.26.8-s2e.deb   
+   $ dpkg -i linux-image-2.6.26.8-s2e.deb linux-headers-2.6.26.8-s2e.deb
 
    # Install packages on which SystemTap depends:
    $ apt-get install libdw-dev libebl-dev
@@ -76,13 +76,13 @@ In the ``chroot`` environment you use to compile your kernel, do the following:
 Building SystemTap on the guest
 ===============================
 
-Build SystemTap dependencies and fetch SystemTap source: 
+Build SystemTap dependencies and fetch SystemTap source:
 
 ::
 
    # Boot the OS image in the vanilla QEMU and login as root.
    $ $S2EBUILD/qemu-release/i386-softmmu/qemu-system-i386 s2e_disk.raw
-   
+
    # Get packages on which SystemTap depends and install them:
    $ wget http://ftp.au.debian.org/debian/pool/main/e/elfutils/libelf1_0.131-4_i386.deb
    $ wget http://ftp.au.debian.org/debian/pool/main/e/elfutils/libelf-dev_0.131-4_i386.deb
@@ -131,7 +131,7 @@ Shut down the QEMU machine:
 ::
 
    $ halt
- 
+
 Creating a simple S2E-enabled SystemTap script
 ==============================================
 
@@ -146,7 +146,7 @@ Create (on the host machine) a ``pcnet32.stp`` file with the following content:
    # custom instructions. A comprehensive set of such instructions can
    # be found in s2e.h. You can adapt them to SystemTap, in case
    # you need them.
-   
+
    # Terminate current state.
    # This is a SystemTap function that can be called from SystemTap code.
    function s2e_kill_state(status:long, message: string) %{
@@ -185,9 +185,9 @@ Create (on the host machine) a ``pcnet32.stp`` file with the following content:
    }
    %}
 
-   #### Now comes the real stuff ####   
-   
-   # Take a pointer to the IP header, and make the options length field symbolic.   
+   #### Now comes the real stuff ####
+
+   # Take a pointer to the IP header, and make the options length field symbolic.
    function s2e_inject_symbolic_ip_optionlength(ipheader: long) %{
      uint8_t *data = (uint8_t*)((uintptr_t)(THIS->ipheader + 0));
 
@@ -207,7 +207,7 @@ Create (on the host machine) a ``pcnet32.stp`` file with the following content:
      s2e_inject_symbolic_ip_optionlength($skb->data)
    }
 
-   
+
    # Instruct SystemTap to intercept the pcnet32_start_xmit in the pcnet32 driver.
    # We also tell S2E to kill the current state.
    # Intercepting this function can be useful to analyze the reaction of the kernel
@@ -226,7 +226,7 @@ Compile the script with SystemTap in the ``chroot`` environment, adjusting the k
     $ stap -r 2.6.26.8-s2e -g -m pcnet_probe pcnet32.stp
     WARNING: kernel release/architecture mismatch with host forces last-pass 4.
     pcnet_probe.ko
-    
+
 This will result in a module called ``pcnet_probe.ko`` that we will upload to the VM.
 Refer to `how to prepare an OS image <ImageInstallation.html>`_ to learn how to do
 it efficiently.
@@ -253,7 +253,7 @@ Create the ``tcpip.lua`` configuration file with the following content:
 
    pluginsConfig = {}
 
-  
+
 
 To prepare a snapshot for S2E: start the vanilla QEMU with port forwarding enabled
 by adding ``-net user,hostfwd=tcp::2222-:22,hostfwd=udp::2222-:22`` to the QEMU command line.
@@ -270,9 +270,10 @@ name of the disk image to suit your needs.
    # Press Ctrl-Alt-1 to return to the emulation screen, then shut down the QEMU machine
    $ su -c halt
 
-  
+
 
 Start the S2E-enabled QEMU with port forwarding enabled:
+
 ::
 
    $ $S2EBUILD/qemu-release/i386-s2e-softmmu/qemu-system-i386 -rtc clock=vm \
@@ -284,7 +285,7 @@ Once you uploaded the ``pcnet_probe.ko`` module to the guest OS, run the followi
 ::
 
     $ staprun pcnet_probe.ko &
-    
+
 This will load the probe into the kernel. Symbolic execution will start when the network card
 receives the first packet. To send a packet, use ``netcat`` (in the guest) to send a UDP
 packet:
@@ -292,6 +293,6 @@ packet:
 ::
 
    $ nc -u localhost 2222
-   
+
 Type some characters, and press enter.
 

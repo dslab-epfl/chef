@@ -35,7 +35,7 @@ Required Plugins
 ----------------
 
 StateManager only exposes an API that must be called from a client plugin to be useful.
-A client plugin would typically use the `FunctionMonitor <FunctionMonitor.html>`_ plugin to intercept all function returns, check the status of the
+A client plugin would typically use the :doc:`FunctionMonitor <FunctionMonitor>` plugin to intercept all function returns, check the status of the
 returned function, and decide whether to kill the execution path or suspend it using StateManager.
 
 Configuration Sample

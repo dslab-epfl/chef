@@ -15,7 +15,7 @@ How do I know what S2E is doing?
    In your LUA file, enable the ``ExecutionTracer``, ``ModuleTracer`` and the ``ModuleExecutionDetector`` plugins.
    This will allow you to collect all fork locations. Additionally, you can use ``TranslationBlockTracer``  in order to
    have a detailed trace for each execution path, which you can view with the ``tbtrace`` tool. Finally, ``TranslationBlockTracer``
-   allows you to use the basic block `coverage <Tools/CoverageGenerator.html>`_ tool.
+   allows you to use the basic block :doc:`coverage <Tools/CoverageGenerator>` tool.
 
 2. Look at ``s2e-last/debug.txt`` and other files.
    These files list all the major events occurring during symbolic execution.
@@ -58,11 +58,11 @@ First, ensure that you configured S2E properly.
 
 Second, throw hardware at your problem
 
-* Refer to the "`How to run S2E on multiple cores <Howtos/Parallel.html>`_" tutorial for instructions.
+* Refer to the ":doc:`How to run S2E on multiple cores <Howtos/Parallel>`" tutorial for instructions.
 
 Third, use S2E to *selectively* relax and/or overconstrain path constraints.
 
-* Understanding what to select can be made considerably easier if you `attach a debugger <Howtos/Debugging.html>`_ to the S2E instance.
+* Understanding what to select can be made considerably easier if you :doc:`attach a debugger <Howtos/Debugging>` to the S2E instance.
 
 * Check that the module under analysis is not doing unnecessary calls with symbolic arguments (e.g., ``printf``).
   Use the ``s2e_get_example_*`` functions to provide a concrete value to ``printf``  without actually adding path
@@ -105,9 +105,9 @@ The following describes concrete steps that allowed us to explore programs most 
    * You may only be interested in error recovery code. In this case, kill all the paths in which no errors occur.
    * Write a custom plugin that probes the program's state to decide when to kill the path.
    * If you exercise multiple entry points of a library (e.g., a device driver), it may make sense to choose only
-     one successful path when an entry point exits and kill all the others. Use the `StateManager <Plugins/StateManager.html>`_ plugin to suspend
+     one successful path when an entry point exits and kill all the others. Use the :doc:`StateManager <Plugins/StateManager>` plugin to suspend
      the execution of all paths that returned from a library function until one return succeeds.
-   * Kill back-edges of polling loops using the `EdgeKiller <Plugins/EdgeKiller.html>`_ plugin. You can also use
+   * Kill back-edges of polling loops using the :doc:`EdgeKiller <Plugins/EdgeKiller>` plugin. You can also use
      this plugin when execution enters some block of code (e.g., error recovery).
 
 6. Prioritize paths according to a metric that makes sense for your problem.
