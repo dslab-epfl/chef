@@ -144,7 +144,7 @@ class VM:
         os.chdir(self.path)  # create intermediate files in VM's path
 
         utils.pend("package disk image")
-        utils.execute(['tar', '-cf', tar, os.path.basename(self.path_raw)])
+        utils.execute(['tar', '-cSf', tar, os.path.basename(self.path_raw)])
         utils.ok()
 
         for s in self.snapshots:
