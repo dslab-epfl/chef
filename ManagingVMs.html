@@ -1,0 +1,333 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>Managing VMs &mdash; Chef 0.9 documentation</title>
+    
+    <link rel="stylesheet" href="_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    './',
+        VERSION:     '0.9',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <link rel="top" title="Chef 0.9 documentation" href="index.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li><a href="index.html">Chef 0.9 documentation</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <div class="section" id="managing-vms">
+<h1><a class="toc-backref" href="#id5">Managing VMs</a><a class="headerlink" href="#managing-vms" title="Permalink to this headline">¶</a></h1>
+<div class="contents topic" id="contents">
+<p class="topic-title first">Contents</p>
+<ul class="simple">
+<li><a class="reference internal" href="#managing-vms" id="id5">Managing VMs</a><ul>
+<li><a class="reference internal" href="#with-ctl" id="id6">With <tt class="docutils literal"><span class="pre">ctl</span></tt></a><ul>
+<li><a class="reference internal" href="#create" id="id7">Create</a></li>
+<li><a class="reference internal" href="#clone" id="id8">Clone</a></li>
+<li><a class="reference internal" href="#export-import" id="id9">Export/Import</a></li>
+<li><a class="reference internal" href="#delete" id="id10">Delete</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#manually" id="id11">Manually</a><ul>
+<li><a class="reference internal" href="#id1" id="id12">Create</a></li>
+<li><a class="reference internal" href="#id2" id="id13">Clone</a></li>
+<li><a class="reference internal" href="#id3" id="id14">Export/Import</a></li>
+<li><a class="reference internal" href="#id4" id="id15">Delete</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#about-the-s2e-suffix" id="id16">About the <tt class="docutils literal"><span class="pre">.s2e</span></tt> suffix</a></li>
+</ul>
+</li>
+</ul>
+</div>
+<p>Virtual machines are conveniently managed through the <tt class="docutils literal"><span class="pre">vm</span></tt> subcommand of the
+<tt class="docutils literal"><span class="pre">ctl</span></tt> script.</p>
+<p>In this document, we cover most of the functionality of the <tt class="docutils literal"><span class="pre">vm</span></tt> command, but
+may leave out some details. Passing the <tt class="docutils literal"><span class="pre">-h</span></tt> option will show and explain
+all available options and arguments.</p>
+<div class="section" id="with-ctl">
+<h2><a class="toc-backref" href="#id6">With <tt class="docutils literal"><span class="pre">ctl</span></tt></a><a class="headerlink" href="#with-ctl" title="Permalink to this headline">¶</a></h2>
+<div class="section" id="create">
+<h3><a class="toc-backref" href="#id7">Create</a><a class="headerlink" href="#create" title="Permalink to this headline">¶</a></h3>
+<p>A new, empty VM can be created with the <tt class="docutils literal"><span class="pre">ctl</span></tt> script:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ ctl vm create MyBox 7680M
+[ OK ] initialise VM
+[ OK ] create 7680MiB image
+</pre></div>
+</div>
+<p>The resulting VM should then show up in the list of managed VMs:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ ctl vm list
+MyBox
+  Size: 7680.0MiB
+</pre></div>
+</div>
+</div>
+<div class="section" id="clone">
+<h3><a class="toc-backref" href="#id8">Clone</a><a class="headerlink" href="#clone" title="Permalink to this headline">¶</a></h3>
+<p>Assuming we want to split the development on a machine</p>
+<div class="highlight-python"><div class="highlight"><pre>$ ctl vm list
+MyBox
+  Size: 7680.0MiB
+  Snapshots:
+    ready
+    base
+    asdföklj
+</pre></div>
+</div>
+<p>or just fiddle around on it and have a &#8220;safe copy&#8221; in case something goes
+wrong:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ ctl vm clone MyBox MyClonedBox
+[ OK ] initialise VM
+[ OK ] copy disk image
+[ OK ] copy snapshot: ready
+[ OK ] copy snapshot: base
+[ OK ] copy snapshot: asdfölkj
+</pre></div>
+</div>
+<p>After this, the result is:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ ctl vm list
+MyBox
+  Size: 7680.0MiB
+  Snapshots:
+    ready
+    base
+    asdföklj
+MyClonedBox
+  Size: 7680.0MiB
+  Snapshots:
+    ready
+    base
+    asdföklj
+</pre></div>
+</div>
+<p>Note that cloning takes both time and disk space. Depending on your tasks,
+creating snapshots may be a better solution.</p>
+</div>
+<div class="section" id="export-import">
+<h3><a class="toc-backref" href="#id9">Export/Import</a><a class="headerlink" href="#export-import" title="Permalink to this headline">¶</a></h3>
+<p>To facilitate collaboration, VMs can be packaged:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ ctl vm export MyBox
+[INFO] exporting to /path/to/working/directory/MyBox.tar.gz
+[ OK ] package disk image
+[ OK ] package snapshot: ready
+[ OK ] package snapshot: base
+[ OK ] package snapshot: asdfölkj
+[ OK ] compress package
+[ OK ] clean up
+</pre></div>
+</div>
+<p>The resulting package can then of course be imported again:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ ctl vm import MyBox.tar.gz AnImportedBox
+[ OK ] initialise VM
+[ OK ] decompress package
+[ OK ] scan package
+[ OK ] extract disk image
+[ OK ] extract snapshot: ready
+[ OK ] extract snapshot: base
+[ OK ] extract snapshot: asdfölkj
+[ OK ] clean up
+</pre></div>
+</div>
+<p>and should appear in the list of managed VMs:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ ctl vm list
+MyBox
+  Size: 7680.0MiB
+  Snapshots:
+    ready
+    base
+    asdfölkj
+AnImportedBox
+  Size: 7680.0MiB
+  Snapshots:
+    ready
+    base
+    asdfölkj
+</pre></div>
+</div>
+</div>
+<div class="section" id="delete">
+<h3><a class="toc-backref" href="#id10">Delete</a><a class="headerlink" href="#delete" title="Permalink to this headline">¶</a></h3>
+<p>In order to delete a snapshot, we can:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ ctl vm delete MyBox:asdfölkj
+[ OK ] delete snapshot MyBox:asdfölkj
+</pre></div>
+</div>
+<p>By omitting the snapshot name, we can lay the entire VM into ashes:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ ctl vm delete MyBox
+Delete VM MyBox? [y/N] y
+[ OK ] delete MyBox
+</pre></div>
+</div>
+</div>
+</div>
+<div class="section" id="manually">
+<h2><a class="toc-backref" href="#id11">Manually</a><a class="headerlink" href="#manually" title="Permalink to this headline">¶</a></h2>
+<p>Each of the abovementioned actions can also be done without <tt class="docutils literal"><span class="pre">ctl</span></tt>, and are
+rather simple. In this section, we will simply list the &#8220;manual&#8221; equivalent to
+each of the commands mentioned above.</p>
+<div class="section" id="id1">
+<h3><a class="toc-backref" href="#id12">Create</a><a class="headerlink" href="#id1" title="Permalink to this headline">¶</a></h3>
+<div class="highlight-python"><div class="highlight"><pre>$ ctl vm create MyBox 7680M
+___
+
+$ mkdir /path/to/s2e/vm/MyBox
+$ /path/to/s2e/build/i386-release/normal/qemu/qemu-img create -f raw /path/to/s2e/vm/MyBox/disk.s2e 7680M
+</pre></div>
+</div>
+</div>
+<div class="section" id="id2">
+<h3><a class="toc-backref" href="#id13">Clone</a><a class="headerlink" href="#id2" title="Permalink to this headline">¶</a></h3>
+<div class="highlight-python"><div class="highlight"><pre>$ ctl vm clone MyBox MyClonedBox
+___
+
+$ cp -r /path/to/s2e/vm/MyBox /path/to/s2e/vm/MyClonedBox
+</pre></div>
+</div>
+</div>
+<div class="section" id="id3">
+<h3><a class="toc-backref" href="#id14">Export/Import</a><a class="headerlink" href="#id3" title="Permalink to this headline">¶</a></h3>
+<div class="highlight-python"><div class="highlight"><pre>$ ctl vm export MyBox MyBox.tar.gz
+___
+
+$ cd /path/to/s2e/vm/MyBox/
+$ tar czf MyBox.tar.gz disk.s2e*
+$ cd -
+$ mv /path/to/s2e/vm/MyBox/MyBox.tar.gz .
+</pre></div>
+</div>
+<p>and</p>
+<div class="highlight-python"><div class="highlight"><pre>$ ctl vm import MyBox.tar.gz AnotherBox
+___
+
+$ mkdir /path/to/s2e/vm/AnotherBox
+$ cd /path/to/s2e/vm/AnotherBox/
+$ tar xzf /path/to/MyBox.tar.gz
+$ cd -
+</pre></div>
+</div>
+<p>This also reveals how VM packages are structured.</p>
+</div>
+<div class="section" id="id4">
+<h3><a class="toc-backref" href="#id15">Delete</a><a class="headerlink" href="#id4" title="Permalink to this headline">¶</a></h3>
+<div class="highlight-python"><div class="highlight"><pre>$ ctl vm delete MyBox:asdfölkj
+___
+
+$ rm /path/to/s2e/vm/MyBox/disk.s2e.asdfölkj
+</pre></div>
+</div>
+<p>and</p>
+<div class="highlight-python"><div class="highlight"><pre>$ ctl vm delete MyBox
+___
+
+$ rm -r /path/to/s2e/vm/MyBox
+</pre></div>
+</div>
+</div>
+</div>
+<div class="section" id="about-the-s2e-suffix">
+<h2><a class="toc-backref" href="#id16">About the <tt class="docutils literal"><span class="pre">.s2e</span></tt> suffix</a><a class="headerlink" href="#about-the-s2e-suffix" title="Permalink to this headline">¶</a></h2>
+<p>S²E operates on raw qemu disk images as hard drive files. In some runtime
+configurations however (preparation and symbolic mode), S²E should treat the
+hard drives as having the &#8220;S²E format&#8221; so that it won&#8217;t write changes back to it
+and cause corruption.</p>
+<p>In order to do so, the option <tt class="docutils literal"><span class="pre">-drive</span> <span class="pre">format=s2e</span></tt> can be passed to S²E/qemu.
+Alternatively, the hard drive will automatically be treated as having the S²E
+format if its filename has the <tt class="docutils literal"><span class="pre">.s2e</span></tt> suffix.</p>
+<p>To prevent data corruption upon forgetting to declare the hard drive format as
+<tt class="docutils literal"><span class="pre">s2e</span></tt>, in practice, S²E will refuse to operate on a drive file that does not
+have the <tt class="docutils literal"><span class="pre">.s2e</span></tt> suffix (even if explicitely specified with <tt class="docutils literal"><span class="pre">-drive</span>
+<span class="pre">format=s2e</span></tt>).</p>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+  <h3><a href="index.html">Table Of Contents</a></h3>
+  <ul>
+<li><a class="reference internal" href="#">Managing VMs</a><ul>
+<li><a class="reference internal" href="#with-ctl">With <tt class="docutils literal"><span class="pre">ctl</span></tt></a><ul>
+<li><a class="reference internal" href="#create">Create</a></li>
+<li><a class="reference internal" href="#clone">Clone</a></li>
+<li><a class="reference internal" href="#export-import">Export/Import</a></li>
+<li><a class="reference internal" href="#delete">Delete</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#manually">Manually</a><ul>
+<li><a class="reference internal" href="#id1">Create</a></li>
+<li><a class="reference internal" href="#id2">Clone</a></li>
+<li><a class="reference internal" href="#id3">Export/Import</a></li>
+<li><a class="reference internal" href="#id4">Delete</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#about-the-s2e-suffix">About the <tt class="docutils literal"><span class="pre">.s2e</span></tt> suffix</a></li>
+</ul>
+</li>
+</ul>
+
+  <h3>This Page</h3>
+  <ul class="this-page-menu">
+    <li><a href="_sources/ManagingVMs.txt"
+           rel="nofollow">Show Source</a></li>
+  </ul>
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             >index</a></li>
+        <li><a href="index.html">Chef 0.9 documentation</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2015, EPFL.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.2.2.
+    </div>
+  </body>
+</html>

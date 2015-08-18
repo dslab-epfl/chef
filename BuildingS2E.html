@@ -51,87 +51,121 @@
             
   <div class="section" id="building-the-s2e-platform">
 <h1><a class="toc-backref" href="#id1">2. Building the S2E Platform</a><a class="headerlink" href="#building-the-s2e-platform" title="Permalink to this headline">¶</a></h1>
-<p>The following steps describe the installation process in detail. We assume the installation
-is performed on an Ubuntu 12.04 64-bit host system (S2E also works on 64-bit Mac systems).</p>
+<p>The following steps describe the installation process in detail. We assume the
+installation is performed on an Ubuntu 14.04 host system.</p>
 <div class="contents topic" id="contents">
 <p class="topic-title first">Contents</p>
 <ul class="simple">
 <li><a class="reference internal" href="#building-the-s2e-platform" id="id1">Building the S2E Platform</a><ul>
-<li><a class="reference internal" href="#required-packages" id="id2">Required Packages</a></li>
-<li><a class="reference internal" href="#checking-out-s2e" id="id3">Checking out S2E</a></li>
-<li><a class="reference internal" href="#building-s2e" id="id4">Building S2E</a></li>
-<li><a class="reference internal" href="#updating-s2e" id="id5">Updating S2E</a></li>
-<li><a class="reference internal" href="#rebuilding-s2e-documentation" id="id6">Rebuilding S2E Documentation</a></li>
+<li><a class="reference internal" href="#getting-the-source" id="id2">Getting the Source</a></li>
+<li><a class="reference internal" href="#preparing-the-environment" id="id3">Preparing the Environment</a></li>
+<li><a class="reference internal" href="#building-s2e" id="id4">Building S²E</a></li>
+<li><a class="reference internal" href="#setting-up-a-vm" id="id5">Setting up a VM</a></li>
+<li><a class="reference internal" href="#reporting-bugs" id="id6">Reporting Bugs</a></li>
+<li><a class="reference internal" href="#updating-s2e" id="id7">Updating S2E</a></li>
+<li><a class="reference internal" href="#rebuilding-s2e-documentation" id="id8">Rebuilding S2E Documentation</a></li>
 </ul>
 </li>
 </ul>
 </div>
-<div class="section" id="required-packages">
-<h2><a class="toc-backref" href="#id2">2.1. Required Packages</a><a class="headerlink" href="#required-packages" title="Permalink to this headline">¶</a></h2>
-<div class="highlight-python"><div class="highlight"><pre>$ sudo apt-get install build-essential subversion git gettext \
-      liblua5.1-0-dev libsdl1.2-dev libsigc++-2.0-dev binutils-dev \
-      python-docutils python-pygments nasm libiberty-dev libc6-dev-i386
+<div class="section" id="getting-the-source">
+<h2><a class="toc-backref" href="#id2">2.1. Getting the Source</a><a class="headerlink" href="#getting-the-source" title="Permalink to this headline">¶</a></h2>
+<p>The source is distributed as a git repository, so you will require the <tt class="docutils literal"><span class="pre">git</span></tt>
+package to be installed on your system:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ sudo apt-get install git
 </pre></div>
 </div>
-<p>The following commands ask <tt class="docutils literal"><span class="pre">apt-get</span></tt> to install build dependencies for llvm-3.0
-and qemu.</p>
-<div class="highlight-python"><div class="highlight"><pre>$ sudo apt-get build-dep llvm-3.3
-$ sudo apt-get build-dep qemu
+<p>While running, S²E will create additional files on the same directory level as
+its source directory, so the following procedure is recommended for fetching the
+source:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ mkdir s2e
+$ git clone https://github.com/dslab-epfl/chef s2e/src
 </pre></div>
 </div>
+<p>This will place the S²E source in the <tt class="docutils literal"><span class="pre">s2e/src</span></tt> subdirectory.</p>
 </div>
-<div class="section" id="checking-out-s2e">
-<h2><a class="toc-backref" href="#id3">2.2. Checking out S2E</a><a class="headerlink" href="#checking-out-s2e" title="Permalink to this headline">¶</a></h2>
-<p>S2E source code can be obtained from the S2E GIT repository using the
-following commands:</p>
-<div class="highlight-python"><div class="highlight"><pre>$ cd $S2EDIR
-$ git clone https://github.com/dslab-epfl/s2e.git
+<div class="section" id="preparing-the-environment">
+<h2><a class="toc-backref" href="#id3">2.2. Preparing the Environment</a><a class="headerlink" href="#preparing-the-environment" title="Permalink to this headline">¶</a></h2>
+<p>The repository should contain a script <tt class="docutils literal"><span class="pre">setup.sh</span></tt>, which will install its
+dependencies and run some additional preparation work. Since it will assume that
+you are part of the <tt class="docutils literal"><span class="pre">sudo</span></tt> group, you may want to check that first:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ id                                                     ↓↓↓↓↓↓↓↓
+uid=1000(s2euser) gid=1000(s2euser) groups=1000(s2euser),27(sudo),...
 </pre></div>
 </div>
-<p>This will clone the S2E repository into <tt class="docutils literal"><span class="pre">$S2EDIR/s2e</span></tt>.</p>
-<p>You can also clone S2E via SSH:</p>
-<div class="highlight-python"><div class="highlight"><pre>$ cd $S2EDIR
-$ git clone git@github.com:dslab-epfl/s2e.git
+<p>Then, launch the script:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ s2e/src/setup.sh --no-keep
 </pre></div>
 </div>
-<p>In order to report bugs, please use GitHub&#8217;s <a class="reference external" href="https://github.com/dslab-epfl/s2e/issues">issue tracker</a>. If you would like
+<p>It will also compile LLVM, which takes a considerable time. So after launching
+the script, you can go make yourself a cup of tea and read the latest <em>What If</em>
+(or get other important things done).</p>
+<p>The <tt class="docutils literal"><span class="pre">--no-keep</span></tt> option tells the script to remove the intermediate files at
+the end of the setup, which makes a difference of about 1 GiB.</p>
+</div>
+<div class="section" id="building-s2e">
+<h2><a class="toc-backref" href="#id4">2.3. Building S²E</a><a class="headerlink" href="#building-s2e" title="Permalink to this headline">¶</a></h2>
+<p>Once the setup script above finishes, it should have generated an LLVM build in
+<tt class="docutils literal"><span class="pre">s2e/build/deps/llvm</span></tt>, which is required to build S²E:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ s2e/src/ctl build
+</pre></div>
+</div>
+<p>This will build S²E using all available cores on the system, and in the default
+configuration (i386, release mode, without address sanitizer). Pass the <tt class="docutils literal"><span class="pre">-h</span></tt>
+option to the build command to get an overview of possible build configurations.</p>
+<p>Since that <tt class="docutils literal"><span class="pre">ctl</span></tt> script is going to be used a lot, it is recommended to either</p>
+<div class="highlight-python"><div class="highlight"><pre>$ alias ctl=/path/to/s2e/src/ctl
+</pre></div>
+</div>
+<p>or to add a symlink from somewhere in the <tt class="docutils literal"><span class="pre">PATH</span></tt> environment. This allows you
+to run <tt class="docutils literal"><span class="pre">ctl</span></tt> as a command from anywhere without having to type
+<tt class="docutils literal"><span class="pre">/path/to/s2e/src/ctl</span></tt> each time, e.g.</p>
+<div class="highlight-python"><div class="highlight"><pre>$ ctl build
+</pre></div>
+</div>
+<p>The resulting build files are placed in <tt class="docutils literal"><span class="pre">s2e/build/i386-release-normal</span></tt>.</p>
+</div>
+<div class="section" id="setting-up-a-vm">
+<h2><a class="toc-backref" href="#id5">2.4. Setting up a VM</a><a class="headerlink" href="#setting-up-a-vm" title="Permalink to this headline">¶</a></h2>
+<p>The <tt class="docutils literal"><span class="pre">ctl</span></tt> script provides a <tt class="docutils literal"><span class="pre">vm</span></tt> command for managing virtual machines for
+S²E. A prepared VM can be fetched and imported to S²E:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ wget https://dslab.epfl.ch/s2e/Debian.tar.gz
+$ ctl vm import Debian.tar.gz MyExampleBox
+</pre></div>
+</div>
+<p>Once it&#8217;s done, the newly imported VM should appear in the list of managed VMs:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ ctl vm list
+MyExampleBox
+  Size: 10240.0MiB
+</pre></div>
+</div>
+<p>See <a class="reference internal" href="ManagingVMs.html"><em>Managing VMs</em></a> for more details.</p>
+</div>
+<div class="section" id="reporting-bugs">
+<h2><a class="toc-backref" href="#id6">2.5. Reporting Bugs</a><a class="headerlink" href="#reporting-bugs" title="Permalink to this headline">¶</a></h2>
+<p>In order to report bugs, please use GitHub&#8217;s
+<a class="reference external" href="https://github.com/dslab-epfl/s2e/issues">issue tracker</a>.</p>
+<p>If you would like
 to contribute to S2E, please create your own personal clone of S2E on GitHub, push your changes to it and then send us a
 pull request.</p>
 <p>You can find more information about using git on <a class="reference external" href="http://gitref.org/">http://gitref.org/</a> or on
 <a class="reference external" href="http://progit.org/">http://progit.org/</a>.</p>
 </div>
-<div class="section" id="building-s2e">
-<h2><a class="toc-backref" href="#id4">2.3. Building S2E</a><a class="headerlink" href="#building-s2e" title="Permalink to this headline">¶</a></h2>
-<p>The recommended method of building S2E is using the S2E Makefile:</p>
-<div class="highlight-python"><div class="highlight"><pre>$ mkdir $S2EDIR/build
-$ cd $S2EDIR/build
-$ make -f ../s2e/Makefile
-
-&gt; Go make some coffee, this will take a lot of time
-</pre></div>
-</div>
-<p>By default, the <tt class="docutils literal"><span class="pre">make</span></tt> command compiles S2E in release mode. The resulting
-binary is placed in <tt class="docutils literal"><span class="pre">$S2EDIR/build/qemu-release/i386-s2e-softmmu/qemu-system-i386</span></tt>.
-To compile in Debug mode, use <tt class="docutils literal"><span class="pre">make</span> <span class="pre">all-debug</span></tt>. The Makefile automatically
-uses the maximum number of available processors in order to speed up compilation.</p>
-<p>You can also build each component of S2E manually. Refer to the Makefile for
-the commands required to build all inidividual components.</p>
-</div>
 <div class="section" id="updating-s2e">
-<h2><a class="toc-backref" href="#id5">2.4. Updating S2E</a><a class="headerlink" href="#updating-s2e" title="Permalink to this headline">¶</a></h2>
-<p>You can use the same Makefile to recompile S2E either when changing it
-yourself or when pulling new versions through <tt class="docutils literal"><span class="pre">git</span></tt>. Note that the Makefile
-will not automatically reconfigure the packages; for deep changes you might need
-to either start from scratch by issuing <tt class="docutils literal"><span class="pre">make</span> <span class="pre">clean</span></tt> or to force
-the reconfiguration of specific modules by deleting  the corresponding files from
-the <tt class="docutils literal"><span class="pre">stamps</span></tt> subdirectory.</p>
+<h2><a class="toc-backref" href="#id7">2.6. Updating S2E</a><a class="headerlink" href="#updating-s2e" title="Permalink to this headline">¶</a></h2>
+<p>You can rerun <tt class="docutils literal"><span class="pre">ctl</span> <span class="pre">build</span></tt> to recompile S²E either when changing it or when
+pulling new versions through <tt class="docutils literal"><span class="pre">git</span></tt>. Note that by default, the packages are not
+automatically reconfigured; for deep changes you will need to pass the packages
+to the <tt class="docutils literal"><span class="pre">-f</span></tt> option.</p>
 </div>
 <div class="section" id="rebuilding-s2e-documentation">
-<h2><a class="toc-backref" href="#id6">2.5. Rebuilding S2E Documentation</a><a class="headerlink" href="#rebuilding-s2e-documentation" title="Permalink to this headline">¶</a></h2>
-<p>The S2E documentation is written in <a class="reference external" href="http://docutils.sourceforge.net/rst.html">reStructuredText</a> format. For convenience, we also
-keep generated HTML files in the repository. Never change HTML files
-manually and always recompile them (by invoking <tt class="docutils literal"><span class="pre">make</span></tt> in the docs folder)
-after changing any <tt class="docutils literal"><span class="pre">RST</span></tt> files.</p>
+<h2><a class="toc-backref" href="#id8">2.7. Rebuilding S2E Documentation</a><a class="headerlink" href="#rebuilding-s2e-documentation" title="Permalink to this headline">¶</a></h2>
+<p>The S2E documentation is written in the <a class="reference external" href="http://docutils.sourceforge.net/rst.html">reStructuredText</a> format and works with the <a class="reference external" href="http://sphinx-doc.org">Sphinx</a> documentation tool. After changing the documentation
+source, regenerate it by running</p>
+<div class="highlight-python"><div class="highlight"><pre>$ make html
+</pre></div>
+</div>
+<p>in the <tt class="docutils literal"><span class="pre">s2e/src/docs</span></tt> folder.</p>
 </div>
 </div>
 
@@ -144,11 +178,13 @@ after changing any <tt class="docutils literal"><span class="pre">RST</span></tt
   <h3><a href="index.html">Table Of Contents</a></h3>
   <ul>
 <li><a class="reference internal" href="#">2. Building the S2E Platform</a><ul>
-<li><a class="reference internal" href="#required-packages">2.1. Required Packages</a></li>
-<li><a class="reference internal" href="#checking-out-s2e">2.2. Checking out S2E</a></li>
-<li><a class="reference internal" href="#building-s2e">2.3. Building S2E</a></li>
-<li><a class="reference internal" href="#updating-s2e">2.4. Updating S2E</a></li>
-<li><a class="reference internal" href="#rebuilding-s2e-documentation">2.5. Rebuilding S2E Documentation</a></li>
+<li><a class="reference internal" href="#getting-the-source">2.1. Getting the Source</a></li>
+<li><a class="reference internal" href="#preparing-the-environment">2.2. Preparing the Environment</a></li>
+<li><a class="reference internal" href="#building-s2e">2.3. Building S²E</a></li>
+<li><a class="reference internal" href="#setting-up-a-vm">2.4. Setting up a VM</a></li>
+<li><a class="reference internal" href="#reporting-bugs">2.5. Reporting Bugs</a></li>
+<li><a class="reference internal" href="#updating-s2e">2.6. Updating S2E</a></li>
+<li><a class="reference internal" href="#rebuilding-s2e-documentation">2.7. Rebuilding S2E Documentation</a></li>
 </ul>
 </li>
 </ul>
