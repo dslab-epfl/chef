@@ -165,15 +165,30 @@ class VM:
         self.scan_snapshots()
 
 
-    def _import(self, targz: str, force: bool, **kwargs: dict):
+    def import_raw(self, raw: str, force: bool):
+        if not os.path.exists(raw):
+            utils.fail("%s: file not found" % raw)
+            exit(1)
+
+        self.initialise(force)
+
+        utils.pend("copy disk image")
+        utils.execute(['cp', raw, self.path_raw])
+        utils.ok()
+
+
+    def _import(self, targz: str, raw: bool, force: bool, **kwargs: dict):
+        if raw:
+            self.import_raw(targz, force)
+            return
+
         if not os.path.exists(targz):
             utils.fail("%s: file not found" % targz)
             exit(1)
-        self.initialise(force)
-
         targz = os.path.abspath(targz)
         tar = '%s/%s' % (self.path, os.path.basename(os.path.splitext(targz)[0]))
 
+        self.initialise(force)
         os.chdir(self.path)     # create intermediate files in VM's path
 
         utils.pend("decompress package", msg="may take some time")
@@ -272,6 +287,8 @@ class VM:
         pimport = pcmd.add_parser('import',
                                   help="Import a VM from a package file")
         pimport.set_defaults(action=VM._import)
+        pimport.add_argument('-r','--raw', action='store_true', default=False,
+                             help="Import raw disk image, instead of a package")
         pimport.add_argument('-f','--force', action='store_true', default=False,
                              help="Force import, even if VM already exists")
         pimport.add_argument('targz', help="Package name")

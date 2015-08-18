@@ -4,33 +4,72 @@ Managing VMs
 
 .. contents::
 
+In this document, we cover most of the functionality of the ``vm`` command,
+which is used to manage virtual machines in a convenient way. However, we may
+leave out some details. Passing the ``-h`` option will show and explain all
+available options and arguments.
 
-Virtual machines are conveniently managed through the ``vm`` subcommand of the
-``ctl`` script.
+**Note**: ``$S2EDIR`` denotes the location into which the project's source code
+and other related files have been placed into. Furthermore, this guide will make
+extensive use of the ``$S2EDIR/src/ctl`` script, and runs it simply as the
+``ctl`` command. You may achieve the same effect by ::
 
-In this document, we cover most of the functionality of the ``vm`` command, but
-may leave out some details. Passing the ``-h`` option will show and explain
-all available options and arguments.
+    $ alias ctl=$S2EDIR/src/ctl
 
 
-With ``ctl``
-============
+About the VM Images
+===================
+
+S²E operates on raw qemu disk images as hard drive files. In order to reduce the
+used space, they are stored as `sparse files
+<https://en.wikipedia.org/wiki/Sparse_file>`_, so even a 10GiB image should only
+take a few gigabytes (depending on what's installed on it, of course).
+
+
+About the ``.s2e`` suffix
+=========================
+
+In some runtime configurations (preparation and symbolic mode), S²E should treat
+the hard drives as having the "S²E format" so that it won't write changes back
+to it and cause data corruption.
+
+In order to do so, the option ``-drive format=s2e`` can be passed to S²E/qemu.
+Alternatively, the hard drive will automatically be treated as having the S²E
+format if its filename has the ``.s2e`` suffix.
+
+To prevent data corruption upon forgetting to declare the hard drive format as
+``s2e``, in practice, S²E will refuse to operate on a drive file that does not
+have the ``.s2e`` suffix (even if explicitely specified with ``-drive
+format=s2e``).
+
+In general, you should not face these issues if you are using the ``ctl`` script
+to interact with S²E. Furthermore, if you are intersted, running ``ctl run``
+will print the full qemu command line to the terminal.
+
+
+Reusing an existing VM
+======================
+
+See how to :ref:`import VMs <ExportImportVMs>`.
+
+
+Managing VMs With ``ctl``
+=========================
 
 Create
 ------
 
-A new, empty VM can be created with the ``ctl`` script::
+::
 
     $ ctl vm create MyBox 7680M
     [ OK ] initialise VM
     [ OK ] create 7680MiB image
 
-The resulting VM should then show up in the list of managed VMs::
+The resulting VM should show up in the list of managed VMs::
 
     $ ctl vm list
     MyBox
       Size: 7680.0MiB
-
 
 Clone
 -----
@@ -74,6 +113,7 @@ After this, the result is::
 Note that cloning takes both time and disk space. Depending on your tasks,
 creating snapshots may be a better solution.
 
+.. _ExportImportVMs:
 
 Export/Import
 -------------
@@ -117,6 +157,11 @@ and should appear in the list of managed VMs::
         base
         asdfölkj
 
+If you wish to import just a raw image, you can pass the ``--raw`` option::
+
+    $ ctl vm import --raw /path/to/disk.raw AnImportedBox
+    [ OK ] initialise VM
+    [ OK ] copy disk image
 
 Delete
 ------
@@ -133,8 +178,8 @@ By omitting the snapshot name, we can lay the entire VM into ashes::
     [ OK ] delete MyBox
 
 
-Manually
-========
+Managing VMs Manually
+=====================
 
 Each of the abovementioned actions can also be done without ``ctl``, and are
 rather simple. In this section, we will simply list the "manual" equivalent to
@@ -149,8 +194,8 @@ Create
     $ ctl vm create MyBox 7680M
     ___
 
-    $ mkdir /path/to/s2e/vm/MyBox
-    $ /path/to/s2e/build/i386-release/normal/qemu/qemu-img create -f raw /path/to/s2e/vm/MyBox/disk.s2e 7680M
+    $ mkdir $S2EDIR/vm/MyBox
+    $ $S2EDIR/build/i386-release/normal/qemu/qemu-img create -f raw $S2EDIR/vm/MyBox/disk.s2e 7680M
 
 Clone
 -----
@@ -160,7 +205,7 @@ Clone
     $ ctl vm clone MyBox MyClonedBox
     ___
 
-    $ cp -r /path/to/s2e/vm/MyBox /path/to/s2e/vm/MyClonedBox
+    $ cp -r $S2EDIR/vm/MyBox $S2EDIR/vm/MyClonedBox
 
 Export/Import
 -------------
@@ -170,23 +215,22 @@ Export/Import
     $ ctl vm export MyBox MyBox.tar.gz
     ___
 
-    $ cd /path/to/s2e/vm/MyBox/
+    $ cd $S2EDIR/vm/MyBox/
     $ tar czf MyBox.tar.gz disk.s2e*
     $ cd -
-    $ mv /path/to/s2e/vm/MyBox/MyBox.tar.gz .
+    $ mv $S2EDIR/vm/MyBox/MyBox.tar.gz .
 
 and ::
 
     $ ctl vm import MyBox.tar.gz AnotherBox
     ___
 
-    $ mkdir /path/to/s2e/vm/AnotherBox
-    $ cd /path/to/s2e/vm/AnotherBox/
+    $ mkdir $S2EDIR/vm/AnotherBox
+    $ cd $S2EDIR/vm/AnotherBox/
     $ tar xzf /path/to/MyBox.tar.gz
     $ cd -
 
 This also reveals how VM packages are structured.
-
 
 Delete
 ------
@@ -196,29 +240,11 @@ Delete
     $ ctl vm delete MyBox:asdfölkj
     ___
 
-    $ rm /path/to/s2e/vm/MyBox/disk.s2e.asdfölkj
+    $ rm $S2EDIR/vm/MyBox/disk.s2e.asdfölkj
 
 and ::
 
     $ ctl vm delete MyBox
     ___
 
-    $ rm -r /path/to/s2e/vm/MyBox
-
-
-About the ``.s2e`` suffix
-=========================
-
-S²E operates on raw qemu disk images as hard drive files. In some runtime
-configurations however (preparation and symbolic mode), S²E should treat the
-hard drives as having the "S²E format" so that it won't write changes back to it
-and cause corruption.
-
-In order to do so, the option ``-drive format=s2e`` can be passed to S²E/qemu.
-Alternatively, the hard drive will automatically be treated as having the S²E
-format if its filename has the ``.s2e`` suffix.
-
-To prevent data corruption upon forgetting to declare the hard drive format as
-``s2e``, in practice, S²E will refuse to operate on a drive file that does not
-have the ``.s2e`` suffix (even if explicitely specified with ``-drive
-format=s2e``).
+    $ rm -r $S2EDIR/vm/MyBox
