@@ -21,9 +21,10 @@ its source directory, so the following procedure is recommended for fetching the
 source::
 
     $ mkdir s2e
-    $ git clone https://github.com/dslab-epfl/chef s2e/src
+    $ git clone --recursive https://github.com/dslab-epfl/chef s2e/src
 
-This will place the S²E source in the ``s2e/src`` subdirectory.
+This will place the S²E source in the ``s2e/src`` subdirectory, together with
+its sub-components.
 
 
 Preparing the Environment
