@@ -82,8 +82,8 @@ Setting up a VM
 The ``ctl`` script provides a ``vm`` command for managing virtual machines for
 S²E. A prepared VM can be fetched and imported to S²E::
 
-    $ wget https://dslab.epfl.ch/s2e/Debian.tar.gz
-    $ ctl vm import Debian.tar.gz MyExampleBox
+    $ wget https://s3.amazonaws.com/chef.dslab.epfl.ch/vm/s2e-base.tar.gz
+    $ ctl vm import s2e-base.tar.gz MyExampleBox
 
 Once it's done, the newly imported VM should appear in the list of managed VMs::
 
