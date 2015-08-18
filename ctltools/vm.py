@@ -93,9 +93,10 @@ class VM:
     def create(self, size: str, force: bool, **kwargs: dict):
         self.initialise(force)
 
-        utils.pend("create %sB image" % size)
+        utils.pend("create %s%sB image"
+                   % (size, ('i', '')[size[-1] in '0123456789']))
         utils.execute(['%s/qemu-img' % self.path_executable,
-                       'create', self.path_raw, size],
+                       'create', '-f', 'raw', self.path_raw, size],
                       msg="execute qemu-img")
         self.size = size
         utils.ok()
@@ -138,7 +139,7 @@ class VM:
         utils.info("exporting to %s" % targz)
         tar = '%s/%s' % (self.path, os.path.basename(os.path.splitext(targz)[0]))
         if os.path.exists(targz):
-            utils.fail("%s: gzipped tarball already exists" % targz)
+            utils.fail("%s: package already exists" % targz)
             exit(1)
 
         os.chdir(self.path)  # create intermediate files in VM's path
@@ -153,7 +154,7 @@ class VM:
             utils.execute(['tar', '-rf', tar, local_snapshot])
             utils.ok()
 
-        utils.pend("compress tarball", msg="may take some time")
+        utils.pend("compress package", msg="may take some time")
         utils.execute(['gzip', '-c', tar], outfile=targz)
         utils.ok()
 
@@ -175,11 +176,11 @@ class VM:
 
         os.chdir(self.path)     # create intermediate files in VM's path
 
-        utils.pend("decompress tarball", msg="may take some time")
+        utils.pend("decompress package", msg="may take some time")
         utils.execute(['gzip', '-cd', targz], outfile=tar)
         utils.ok()
 
-        utils.pend("scan tarball")
+        utils.pend("scan package")
         _, file_list, _ = utils.execute(['tar', '-tf', tar], iowrap=True)
         utils.ok()
 
@@ -261,19 +262,19 @@ class VM:
 
         # export
         pexport = pcmd.add_parser('export',
-                                  help="Export VM to a gzipped tarball")
+                                  help="Export VM to a package file")
         pexport.set_defaults(action=VM.export)
         pexport.add_argument('name', help="Machine name")
         pexport.add_argument('targz', default=None, nargs='?',
-                             help="Tarball name [default=./<Machine name>.tar.gz]")
+                             help="Package name [default=./<Machine name>.tar.gz]")
 
         # import
         pimport = pcmd.add_parser('import',
-                                  help="Import a VM from a gzipped tarball")
+                                  help="Import a VM from a package file")
         pimport.set_defaults(action=VM._import)
         pimport.add_argument('-f','--force', action='store_true', default=False,
                              help="Force import, even if VM already exists")
-        pimport.add_argument('targz', help="Tarball name")
+        pimport.add_argument('targz', help="Package name")
         pimport.add_argument('name', help="Machine name")
 
         # clone

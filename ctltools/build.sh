@@ -569,6 +569,9 @@ get_options()
 			'?') die_help 'Invalid option: -%s' "$OPTARG";;
 		esac
 	done
+	for c in $COMPS_FORCE $COMPS_EXCLUDE; do
+		list_contains "$COMPS" "$c" || die_help '%s: no such component' "$c"
+	done
 	ARGSHIFT=$(($OPTIND - 1))
 }
 
