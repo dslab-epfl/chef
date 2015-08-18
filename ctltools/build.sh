@@ -133,19 +133,9 @@ compiler_rt_compile()   { :; } # override generic_compile
 
 llvm_native_prepare()
 {
-	# This is a little tricky:
-	# - Source in llvm-native.src
-	# - Build in llvm-native.build
-	# - Install in llvm-native
 	SRCPATH="${LLVM_NATIVE}.src"
 	BUILDPATH="${LLVM_NATIVE}.build"
 	INSTALLPATH="$LLVM_NATIVE"
-	echo
-	echo "LLVM native:"
-	echo "  SRCPATH=$SRCPATH"
-	echo "  BUILDPATH=$BUILDPATH"
-	echo "  INSTALLPATH=$INSTALLPATH"
-	echo
 }
 
 llvm_native_fetch()   { llvm_generic_fetch   llvm || return $?; }
@@ -181,19 +171,9 @@ llvm_native_install() {
 
 llvm_prepare()
 {
-	# This is a little less tricky than llvm-native:
-	# - Source in llvm-3.2.src
-	# - Build in llvm-3.2.build
-	# - Do not install
 	SRCPATH="$LLVM_SRC"
 	BUILDPATH="$LLVM_BUILD"
 	INSTALLPATH="$BUILDPATH"
-	echo
-	echo "LLVM:"
-	echo "  SRCPATH=$SRCPATH"
-	echo "  BUILDPATH=$BUILDPATH"
-	echo "  INSTALLPATH=$INSTALLPATH"
-	echo
 }
 
 llvm_fetch()   { llvm_generic_fetch   llvm || return $?; }
@@ -569,9 +549,6 @@ get_options()
 			'?') die_help 'Invalid option: -%s' "$OPTARG";;
 		esac
 	done
-	for c in $COMPS_FORCE $COMPS_EXCLUDE; do
-		list_contains "$COMPS" "$c" || die_help '%s: no such component' "$c"
-	done
 	ARGSHIFT=$(($OPTIND - 1))
 }
 
@@ -622,6 +599,11 @@ main()
 	# Forced/excluded components:
 	test "$COMPS_FORCE" != 'all' || COMPS_FORCE="$COMPS"
 	test "$COMPS_EXCLUDE" != 'all' || COMPS_EXCLUDE="$COMPS"    # uhm...
+
+	# Check if components exist:
+	for c in $COMPS_FORCE $COMPS_EXCLUDE; do
+		list_contains "$COMPS" "$c" || die_help '%s: no such component' "$c"
+	done
 
 	# Special action exit:
 	test $DRYRUN -eq $FALSE || dryrun
