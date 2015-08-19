@@ -6,7 +6,7 @@
   <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
     
-    <title>6. Testing a Simple Program with S2E &mdash; Chef 0.9 documentation</title>
+    <title>5. Testing a Simple Program with S2E &mdash; Chef 0.9 documentation</title>
     
     <link rel="stylesheet" href="_static/default.css" type="text/css" />
     <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
@@ -24,8 +24,8 @@
     <script type="text/javascript" src="_static/underscore.js"></script>
     <script type="text/javascript" src="_static/doctools.js"></script>
     <link rel="top" title="Chef 0.9 documentation" href="index.html" />
-    <link rel="next" title="7. How to symbolically execute Linux binaries?" href="Howtos/init_env.html" />
-    <link rel="prev" title="5. Quickly Uploading Programs to the Guest with s2eget" href="UsingS2EGet.html" /> 
+    <link rel="next" title="6. How to symbolically execute Linux binaries?" href="Howtos/init_env.html" />
+    <link rel="prev" title="4. Quickly Uploading Programs to the Guest with s2eget" href="UsingS2EGet.html" /> 
   </head>
   <body>
     <div class="related">
@@ -35,10 +35,10 @@
           <a href="genindex.html" title="General Index"
              accesskey="I">index</a></li>
         <li class="right" >
-          <a href="Howtos/init_env.html" title="7. How to symbolically execute Linux binaries?"
+          <a href="Howtos/init_env.html" title="6. How to symbolically execute Linux binaries?"
              accesskey="N">next</a> |</li>
         <li class="right" >
-          <a href="UsingS2EGet.html" title="5. Quickly Uploading Programs to the Guest with s2eget"
+          <a href="UsingS2EGet.html" title="4. Quickly Uploading Programs to the Guest with s2eget"
              accesskey="P">previous</a> |</li>
         <li><a href="index.html">Chef 0.9 documentation</a> &raquo;</li> 
       </ul>
@@ -50,7 +50,7 @@
           <div class="body">
             
   <div class="section" id="testing-a-simple-program-with-s2e">
-<h1><a class="toc-backref" href="#id1">6. Testing a Simple Program with S2E</a><a class="headerlink" href="#testing-a-simple-program-with-s2e" title="Permalink to this headline">¶</a></h1>
+<h1><a class="toc-backref" href="#id1">5. Testing a Simple Program with S2E</a><a class="headerlink" href="#testing-a-simple-program-with-s2e" title="Permalink to this headline">¶</a></h1>
 <p>This tutorial assumes that you have already built S2E and prepared VM image as described
 on the <a class="reference internal" href="BuildingS2E.html"><em>Building the S2E Framework</em></a> page.</p>
 <div class="contents topic" id="contents">
@@ -68,7 +68,7 @@ on the <a class="reference internal" href="BuildingS2E.html"><em>Building the S2
 </ul>
 </div>
 <div class="section" id="program-to-test">
-<h2><a class="toc-backref" href="#id2">6.1. Program to Test</a><a class="headerlink" href="#program-to-test" title="Permalink to this headline">¶</a></h2>
+<h2><a class="toc-backref" href="#id2">5.1. Program to Test</a><a class="headerlink" href="#program-to-test" title="Permalink to this headline">¶</a></h2>
 <p>We want to cover all of the code of the following program by exploring all
 the possible paths through it.</p>
 <div class="highlight-c"><div class="highlight"><pre><span class="cp">#include &lt;stdio.h&gt;</span>
@@ -106,7 +106,7 @@ the possible paths through it.</p>
 </div>
 </div>
 <div class="section" id="compiling-the-program-in-the-guest">
-<h2><a class="toc-backref" href="#id3">6.2. Compiling the Program in the Guest</a><a class="headerlink" href="#compiling-the-program-in-the-guest" title="Permalink to this headline">¶</a></h2>
+<h2><a class="toc-backref" href="#id3">5.2. Compiling the Program in the Guest</a><a class="headerlink" href="#compiling-the-program-in-the-guest" title="Permalink to this headline">¶</a></h2>
 <p>Before testing the program in S2E, compile and run it in the native QEMU build
 (the one in the <tt class="docutils literal"><span class="pre">i386-softmmu</span></tt> directory).
 Launch QEMU with the following command:</p>
@@ -131,7 +131,7 @@ First and second chars are not the same
 </div>
 </div>
 <div class="section" id="preparing-the-program-for-s2e">
-<h2><a class="toc-backref" href="#id4">6.3. Preparing the Program for S2E</a><a class="headerlink" href="#preparing-the-program-for-s2e" title="Permalink to this headline">¶</a></h2>
+<h2><a class="toc-backref" href="#id4">5.3. Preparing the Program for S2E</a><a class="headerlink" href="#preparing-the-program-for-s2e" title="Permalink to this headline">¶</a></h2>
 <p>In order to execute the program symbolically, it is necessary to specify what
 values should become symbolic. There are many ways to do it in S2E, but the
 simplest one is to use the S2E opcodes library. This library provides a way for
@@ -213,7 +213,7 @@ Illegal instruction
 special CPU opcodes that are only recognized by S2E.</p>
 </div>
 <div class="section" id="running-the-program-in-s2e">
-<h2><a class="toc-backref" href="#id5">6.4. Running the Program in S2E</a><a class="headerlink" href="#running-the-program-in-s2e" title="Permalink to this headline">¶</a></h2>
+<h2><a class="toc-backref" href="#id5">5.4. Running the Program in S2E</a><a class="headerlink" href="#running-the-program-in-s2e" title="Permalink to this headline">¶</a></h2>
 <p>To run a program in S2E, we have to write a configuration file, then reboot
 the system in S2E.</p>
 <div class="highlight-lua"><div class="highlight"><pre><span class="c1">-- File: config.lua</span>
@@ -266,7 +266,7 @@ also saved into the <tt class="docutils literal"><span class="pre">s2e-last/mess
 execution history of a state through the log file.</p>
 </div>
 <div class="section" id="exploring-the-program-faster">
-<h2><a class="toc-backref" href="#id6">6.5. Exploring the Program Faster</a><a class="headerlink" href="#exploring-the-program-faster" title="Permalink to this headline">¶</a></h2>
+<h2><a class="toc-backref" href="#id6">5.5. Exploring the Program Faster</a><a class="headerlink" href="#exploring-the-program-faster" title="Permalink to this headline">¶</a></h2>
 <p>In the previous section, we made the program run along multiple execution
 paths.  However, each path continued to run even after the program terminated,
 executing operating system code.  This is great to visually experience how
@@ -320,7 +320,7 @@ Launch it right after the invocation to the program that can crash, e.g., as fol
 </div>
 </div>
 <div class="section" id="minimal-configuration-file">
-<h2><a class="toc-backref" href="#id7">6.6. Minimal Configuration File</a><a class="headerlink" href="#minimal-configuration-file" title="Permalink to this headline">¶</a></h2>
+<h2><a class="toc-backref" href="#id7">5.6. Minimal Configuration File</a><a class="headerlink" href="#minimal-configuration-file" title="Permalink to this headline">¶</a></h2>
 <p>The following is a minimal configuration file that you can use to run this example:</p>
 <div class="highlight-lua"><div class="highlight"><pre><span class="c1">-- File: config.lua</span>
 <span class="n">s2e</span> <span class="o">=</span> <span class="p">{</span>
@@ -349,23 +349,23 @@ and there will not be any progress.</p>
         <div class="sphinxsidebarwrapper">
   <h3><a href="index.html">Table Of Contents</a></h3>
   <ul>
-<li><a class="reference internal" href="#">6. Testing a Simple Program with S2E</a><ul>
-<li><a class="reference internal" href="#program-to-test">6.1. Program to Test</a></li>
-<li><a class="reference internal" href="#compiling-the-program-in-the-guest">6.2. Compiling the Program in the Guest</a></li>
-<li><a class="reference internal" href="#preparing-the-program-for-s2e">6.3. Preparing the Program for S2E</a></li>
-<li><a class="reference internal" href="#running-the-program-in-s2e">6.4. Running the Program in S2E</a></li>
-<li><a class="reference internal" href="#exploring-the-program-faster">6.5. Exploring the Program Faster</a></li>
-<li><a class="reference internal" href="#minimal-configuration-file">6.6. Minimal Configuration File</a></li>
+<li><a class="reference internal" href="#">5. Testing a Simple Program with S2E</a><ul>
+<li><a class="reference internal" href="#program-to-test">5.1. Program to Test</a></li>
+<li><a class="reference internal" href="#compiling-the-program-in-the-guest">5.2. Compiling the Program in the Guest</a></li>
+<li><a class="reference internal" href="#preparing-the-program-for-s2e">5.3. Preparing the Program for S2E</a></li>
+<li><a class="reference internal" href="#running-the-program-in-s2e">5.4. Running the Program in S2E</a></li>
+<li><a class="reference internal" href="#exploring-the-program-faster">5.5. Exploring the Program Faster</a></li>
+<li><a class="reference internal" href="#minimal-configuration-file">5.6. Minimal Configuration File</a></li>
 </ul>
 </li>
 </ul>
 
   <h4>Previous topic</h4>
   <p class="topless"><a href="UsingS2EGet.html"
-                        title="previous chapter">5. Quickly Uploading Programs to the Guest with <tt class="docutils literal"><span class="pre">s2eget</span></tt></a></p>
+                        title="previous chapter">4. Quickly Uploading Programs to the Guest with <tt class="docutils literal"><span class="pre">s2eget</span></tt></a></p>
   <h4>Next topic</h4>
   <p class="topless"><a href="Howtos/init_env.html"
-                        title="next chapter">7. How to symbolically execute Linux binaries?</a></p>
+                        title="next chapter">6. How to symbolically execute Linux binaries?</a></p>
   <h3>This Page</h3>
   <ul class="this-page-menu">
     <li><a href="_sources/TestingMinimalProgram.txt"
@@ -395,10 +395,10 @@ and there will not be any progress.</p>
           <a href="genindex.html" title="General Index"
              >index</a></li>
         <li class="right" >
-          <a href="Howtos/init_env.html" title="7. How to symbolically execute Linux binaries?"
+          <a href="Howtos/init_env.html" title="6. How to symbolically execute Linux binaries?"
              >next</a> |</li>
         <li class="right" >
-          <a href="UsingS2EGet.html" title="5. Quickly Uploading Programs to the Guest with s2eget"
+          <a href="UsingS2EGet.html" title="4. Quickly Uploading Programs to the Guest with s2eget"
              >previous</a> |</li>
         <li><a href="index.html">Chef 0.9 documentation</a> &raquo;</li> 
       </ul>

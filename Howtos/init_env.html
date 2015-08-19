@@ -6,7 +6,7 @@
   <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
     
-    <title>7. How to symbolically execute Linux binaries? &mdash; Chef 0.9 documentation</title>
+    <title>6. How to symbolically execute Linux binaries? &mdash; Chef 0.9 documentation</title>
     
     <link rel="stylesheet" href="../_static/default.css" type="text/css" />
     <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
@@ -24,8 +24,8 @@
     <script type="text/javascript" src="../_static/underscore.js"></script>
     <script type="text/javascript" src="../_static/doctools.js"></script>
     <link rel="top" title="Chef 0.9 documentation" href="../index.html" />
-    <link rel="next" title="8. Analyzing Large Programs Using Concolic Execution" href="Concolic.html" />
-    <link rel="prev" title="6. Testing a Simple Program with S2E" href="../TestingMinimalProgram.html" /> 
+    <link rel="next" title="7. Analyzing Large Programs Using Concolic Execution" href="Concolic.html" />
+    <link rel="prev" title="5. Testing a Simple Program with S2E" href="../TestingMinimalProgram.html" /> 
   </head>
   <body>
     <div class="related">
@@ -35,10 +35,10 @@
           <a href="../genindex.html" title="General Index"
              accesskey="I">index</a></li>
         <li class="right" >
-          <a href="Concolic.html" title="8. Analyzing Large Programs Using Concolic Execution"
+          <a href="Concolic.html" title="7. Analyzing Large Programs Using Concolic Execution"
              accesskey="N">next</a> |</li>
         <li class="right" >
-          <a href="../TestingMinimalProgram.html" title="6. Testing a Simple Program with S2E"
+          <a href="../TestingMinimalProgram.html" title="5. Testing a Simple Program with S2E"
              accesskey="P">previous</a> |</li>
         <li><a href="../index.html">Chef 0.9 documentation</a> &raquo;</li> 
       </ul>
@@ -50,7 +50,7 @@
           <div class="body">
             
   <div class="section" id="how-to-symbolically-execute-linux-binaries">
-<h1><a class="toc-backref" href="#id1">7. How to symbolically execute Linux binaries?</a><a class="headerlink" href="#how-to-symbolically-execute-linux-binaries" title="Permalink to this headline">¶</a></h1>
+<h1><a class="toc-backref" href="#id1">6. How to symbolically execute Linux binaries?</a><a class="headerlink" href="#how-to-symbolically-execute-linux-binaries" title="Permalink to this headline">¶</a></h1>
 <div class="contents topic" id="contents">
 <p class="topic-title first">Contents</p>
 <ul class="simple">
@@ -72,14 +72,14 @@ This tutorial shows how to do this directly from the program&#8217;s command lin
 This library intercepts the call to the <tt class="docutils literal"><span class="pre">main</span></tt> function and inserts user-configured symbolic arguments.
 This library can also restrict symbolic execution to the program itself or to all the code in the program&#8217;s address space.</p>
 <div class="section" id="obtaining-and-compiling-init-env">
-<h2><a class="toc-backref" href="#id2">7.1. 1. Obtaining and compiling <tt class="docutils literal"><span class="pre">init_env</span></tt></a><a class="headerlink" href="#obtaining-and-compiling-init-env" title="Permalink to this headline">¶</a></h2>
+<h2><a class="toc-backref" href="#id2">6.1. 1. Obtaining and compiling <tt class="docutils literal"><span class="pre">init_env</span></tt></a><a class="headerlink" href="#obtaining-and-compiling-init-env" title="Permalink to this headline">¶</a></h2>
 <p>The <tt class="docutils literal"><span class="pre">init_env</span></tt> library can be found in the <tt class="docutils literal"><span class="pre">guest</span></tt> folder of the S2E
 distribution. Copy the entire guest directory to your guest virtual machine, and
 run <tt class="docutils literal"><span class="pre">make</span></tt>. This will compile <tt class="docutils literal"><span class="pre">init_env</span></tt> along with some other useful
 tools.</p>
 </div>
 <div class="section" id="configuring-s2e-for-use-with-init-env">
-<h2><a class="toc-backref" href="#id3">7.2. 2. Configuring S2E for use with <tt class="docutils literal"><span class="pre">init_env</span></tt></a><a class="headerlink" href="#configuring-s2e-for-use-with-init-env" title="Permalink to this headline">¶</a></h2>
+<h2><a class="toc-backref" href="#id3">6.2. 2. Configuring S2E for use with <tt class="docutils literal"><span class="pre">init_env</span></tt></a><a class="headerlink" href="#configuring-s2e-for-use-with-init-env" title="Permalink to this headline">¶</a></h2>
 <p><tt class="docutils literal"><span class="pre">init_env</span></tt> communicates with several S2E plugins in order to restrict
 symbolic execution to the program of interest. The S2E configuration
 file must contain default settings for these plugins, as follows:</p>
@@ -104,7 +104,7 @@ file must contain default settings for these plugins, as follows:</p>
 for <tt class="docutils literal"><span class="pre">RawMonitor</span></tt>, <tt class="docutils literal"><span class="pre">ModuleExecutionDetector</span></tt>, or <tt class="docutils literal"><span class="pre">CodeSelector</span></tt>.</p>
 </div>
 <div class="section" id="using-init-env">
-<h2><a class="toc-backref" href="#id4">7.3. 3. Using <tt class="docutils literal"><span class="pre">init_env</span></tt></a><a class="headerlink" href="#using-init-env" title="Permalink to this headline">¶</a></h2>
+<h2><a class="toc-backref" href="#id4">6.3. 3. Using <tt class="docutils literal"><span class="pre">init_env</span></tt></a><a class="headerlink" href="#using-init-env" title="Permalink to this headline">¶</a></h2>
 <p>The <tt class="docutils literal"><span class="pre">init_env</span></tt> library needs to be pre-loaded to your binary using
 <tt class="docutils literal"><span class="pre">LD_PRELOAD</span></tt>. <tt class="docutils literal"><span class="pre">init_env</span></tt> intercepts the program&#8217;s entry point invocation, parses
 the command line arguments of the program, configures symbolic execution, and removes <tt class="docutils literal"><span class="pre">init_env</span></tt>-related
@@ -140,7 +140,7 @@ the <tt class="docutils literal"><span class="pre">--select-process-code</span><
 is <tt class="docutils literal"><span class="pre">--help</span></tt>.</p>
 </div>
 <div class="section" id="analyzing-large-programs-with-concolic-execution">
-<h2><a class="toc-backref" href="#id5">7.4. 4. Analyzing large programs with concolic execution</a><a class="headerlink" href="#analyzing-large-programs-with-concolic-execution" title="Permalink to this headline">¶</a></h2>
+<h2><a class="toc-backref" href="#id5">6.4. 4. Analyzing large programs with concolic execution</a><a class="headerlink" href="#analyzing-large-programs-with-concolic-execution" title="Permalink to this headline">¶</a></h2>
 <p>Depending on the program under analysis, normal symbolic execution may get stuck in the constraint
 solver. It is better in general to use <a class="reference internal" href="Concolic.html"><em>concolic execution</em></a>. The following
 command runs <tt class="docutils literal"><span class="pre">echo</span></tt> in concolic mode, based on the concrete parameter <tt class="docutils literal"><span class="pre">abc</span></tt> (i.e., the first
@@ -152,7 +152,7 @@ path will print <tt class="docutils literal"><span class="pre">abc</span></tt>, 
 when printing symbolic content.</p>
 </div>
 <div class="section" id="what-about-other-symbolic-input">
-<h2><a class="toc-backref" href="#id6">7.5. 5. What about other symbolic input?</a><a class="headerlink" href="#what-about-other-symbolic-input" title="Permalink to this headline">¶</a></h2>
+<h2><a class="toc-backref" href="#id6">6.5. 5. What about other symbolic input?</a><a class="headerlink" href="#what-about-other-symbolic-input" title="Permalink to this headline">¶</a></h2>
 <p>You can easily feed symbolic data to your program via <tt class="docutils literal"><span class="pre">stdin</span></tt>.
 The idea is to pipe the symbolic output of one program to the input of another.
 Symbolic output can be generated using the <tt class="docutils literal"><span class="pre">s2ecmd</span></tt> utility, located in the
@@ -178,22 +178,22 @@ command: it should print something similar to <tt class="docutils literal"><span
         <div class="sphinxsidebarwrapper">
   <h3><a href="../index.html">Table Of Contents</a></h3>
   <ul>
-<li><a class="reference internal" href="#">7. How to symbolically execute Linux binaries?</a><ul>
-<li><a class="reference internal" href="#obtaining-and-compiling-init-env">7.1. 1. Obtaining and compiling <tt class="docutils literal"><span class="pre">init_env</span></tt></a></li>
-<li><a class="reference internal" href="#configuring-s2e-for-use-with-init-env">7.2. 2. Configuring S2E for use with <tt class="docutils literal"><span class="pre">init_env</span></tt></a></li>
-<li><a class="reference internal" href="#using-init-env">7.3. 3. Using <tt class="docutils literal"><span class="pre">init_env</span></tt></a></li>
-<li><a class="reference internal" href="#analyzing-large-programs-with-concolic-execution">7.4. 4. Analyzing large programs with concolic execution</a></li>
-<li><a class="reference internal" href="#what-about-other-symbolic-input">7.5. 5. What about other symbolic input?</a></li>
+<li><a class="reference internal" href="#">6. How to symbolically execute Linux binaries?</a><ul>
+<li><a class="reference internal" href="#obtaining-and-compiling-init-env">6.1. 1. Obtaining and compiling <tt class="docutils literal"><span class="pre">init_env</span></tt></a></li>
+<li><a class="reference internal" href="#configuring-s2e-for-use-with-init-env">6.2. 2. Configuring S2E for use with <tt class="docutils literal"><span class="pre">init_env</span></tt></a></li>
+<li><a class="reference internal" href="#using-init-env">6.3. 3. Using <tt class="docutils literal"><span class="pre">init_env</span></tt></a></li>
+<li><a class="reference internal" href="#analyzing-large-programs-with-concolic-execution">6.4. 4. Analyzing large programs with concolic execution</a></li>
+<li><a class="reference internal" href="#what-about-other-symbolic-input">6.5. 5. What about other symbolic input?</a></li>
 </ul>
 </li>
 </ul>
 
   <h4>Previous topic</h4>
   <p class="topless"><a href="../TestingMinimalProgram.html"
-                        title="previous chapter">6. Testing a Simple Program with S2E</a></p>
+                        title="previous chapter">5. Testing a Simple Program with S2E</a></p>
   <h4>Next topic</h4>
   <p class="topless"><a href="Concolic.html"
-                        title="next chapter">8. Analyzing Large Programs Using Concolic Execution</a></p>
+                        title="next chapter">7. Analyzing Large Programs Using Concolic Execution</a></p>
   <h3>This Page</h3>
   <ul class="this-page-menu">
     <li><a href="../_sources/Howtos/init_env.txt"
@@ -223,10 +223,10 @@ command: it should print something similar to <tt class="docutils literal"><span
           <a href="../genindex.html" title="General Index"
              >index</a></li>
         <li class="right" >
-          <a href="Concolic.html" title="8. Analyzing Large Programs Using Concolic Execution"
+          <a href="Concolic.html" title="7. Analyzing Large Programs Using Concolic Execution"
              >next</a> |</li>
         <li class="right" >
-          <a href="../TestingMinimalProgram.html" title="6. Testing a Simple Program with S2E"
+          <a href="../TestingMinimalProgram.html" title="5. Testing a Simple Program with S2E"
              >previous</a> |</li>
         <li><a href="../index.html">Chef 0.9 documentation</a> &raquo;</li> 
       </ul>
