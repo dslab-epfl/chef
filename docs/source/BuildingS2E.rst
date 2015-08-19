@@ -34,7 +34,7 @@ The repository should contain a script ``setup.sh``, which will install its
 dependencies and run some additional preparation work. Since it will assume that
 you are part of the ``sudo`` group, you may want to check that first::
 
-    $ id                                                     ↓↓↓↓↓↓↓↓
+    $ id
     uid=1000(s2euser) gid=1000(s2euser) groups=1000(s2euser),27(sudo),...
 
 Then, launch the script::

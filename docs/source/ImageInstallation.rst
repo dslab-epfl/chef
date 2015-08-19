@@ -9,7 +9,7 @@ any x86 operating system inside the VM.
 
 There are several ways of getting a VM that can be used with S²E. In this
 document, we will quickly cover three of them. For more information about
-managing S²E VMs and how things work underneath, see :doc:`ManagingVMs`.
+managing S²E VMs and how things work underneath, see :doc:`Howtos/ManagingVMs`.
 
 **Note**: In this document, ``$S2EDIR`` denotes the location where all the S²E
 related files lie in, as explained in :doc:`BuildingS2E`. Furthermore, this
@@ -71,7 +71,7 @@ Next, get an installation CD with the distribution of your choice, e.g. ::
 Now, the previously created VM is started using ``ctl``'s ``run`` command::
 
     $ ctl run -q=-drive -q file=debian-7.7.0-i386-CD-1.iso MyBox kvm
-                 ↑         ↑
+                 ^         ^
                  QEMU options
 
 Once the installation is finished, it is recommended to get some development
