@@ -153,12 +153,12 @@ util_dryrun()
 	ARCH=$ARCH
 	TARGET=$TARGET
 	MODE=$MODE
-	RELEASE=$RELEASE
-	RELEASEPATH=$RELEASEPATH
+	BUILD=$BUILD
+	BUILDPATH=$BUILDPATH
 	DEFAULT_ARCH=$DEFAULT_ARCH
 	DEFAULT_TARGET=$DEFAULT_TARGET
 	DEFAULT_MODE=$DEFAULT_MODE
-	DEFAULT_RELEASE=$DEFAULT_RELEASE
+	DEFAULT_BUILD=$DEFAULT_BUILD
 	ARCHS=$ARCHS
 	TARGETS=$TARGETS
 	MODES=$MODES
@@ -424,9 +424,9 @@ MODES='normal asan libmemtracer'
 DEFAULT_ARCH='i386'
 DEFAULT_TARGET='release'
 DEFAULT_MODE='normal'
-DEFAULT_RELEASE="$DEFAULT_ARCH:$DEFAULT_TARGET:$DEFAULT_MODE"
+DEFAULT_BUILD="$DEFAULT_ARCH:$DEFAULT_TARGET:$DEFAULT_MODE"
 
-parse_release()
+parse_build()
 {
 	IFS=: read ARCH TARGET MODE <<- EOF
 	$(echo "$1:")
@@ -441,8 +441,8 @@ parse_release()
 	if ! list_contains "$MODES" "${MODE:="$DEFAULT_MODE"}"; then
 		die_help 'Unknown mode: %s' "$MODE"
 	fi
-	RELEASE="$ARCH:$TARGET:$MODE"
-	RELEASEPATH="$CHEFROOT_BUILD/$ARCH-$TARGET-$MODE"
+	BUILD="$ARCH:$TARGET:$MODE"
+	BUILDPATH="$CHEFROOT_BUILD/$ARCH-$TARGET-$MODE"
 	case "$TARGET" in
 		release)
 			ASSERTS='Release+Asserts'
@@ -450,7 +450,7 @@ parse_release()
 		debug)
 			ASSERTS='Debug+Asserts'
 			LLVM_BUILD="$LLVM_BUILD_DEBUG" ;;
-		*) internal_error 'parse_release(): unknown target %s' "$TARGET"
+		*) internal_error 'parse_build(): unknown target %s' "$TARGET"
 		   die_internal ;;
 	esac
 }

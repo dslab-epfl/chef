@@ -34,7 +34,7 @@ z3_fetch()
 
 z3_extract()
 {
-	unzip -d "$BUILDPATH" "$z3_tarball" || return $FAILURE
+	unzip -d "$DSTPATH" "$z3_tarball" || return $FAILURE
 }
 
 z3_configure()
@@ -65,7 +65,7 @@ protobuf_fetch()
 protobuf_extract()
 {
 	tar xvzf "$protobuf_tarball" || return $FAILURE
-	mv "$protobuf_dirname" "$BUILDPATH" || return $FAILURE
+	mv "$protobuf_dirname" "$DSTPATH" || return $FAILURE
 }
 
 protobuf_configure()
@@ -115,7 +115,7 @@ llvm_generic_patch()
 
 # CLANG ========================================================================
 
-clang_prepare()   { SRCPATH="$BUILDPATH"; }
+clang_prepare()   { SRCPATH="$DSTPATH"; }
 clang_fetch()     { llvm_generic_fetch   clang || return $?; }
 clang_extract()   { llvm_generic_extract clang || return $?; }
 clang_configure() { llvm_generic_patch   clang || return $?; }
@@ -123,7 +123,7 @@ clang_compile()   { :; } # override generic_compile
 
 # COMPILER-RT ==================================================================
 
-compiler_rt_prepare()   { SRCPATH="$BUILDPATH"; }
+compiler_rt_prepare()   { SRCPATH="$DSTPATH"; }
 compiler_rt_fetch()     { llvm_generic_fetch   compiler-rt || return $?; }
 compiler_rt_extract()   { llvm_generic_extract compiler-rt || return $?; }
 compiler_rt_configure() { llvm_generic_patch   compiler-rt || return $?; }
@@ -133,19 +133,9 @@ compiler_rt_compile()   { :; } # override generic_compile
 
 llvm_native_prepare()
 {
-	# This is a little tricky:
-	# - Source in llvm-native.src
-	# - Build in llvm-native.build
-	# - Install in llvm-native
 	SRCPATH="${LLVM_NATIVE}.src"
-	BUILDPATH="${LLVM_NATIVE}.build"
+	DSTPATH="${LLVM_NATIVE}.build"
 	INSTALLPATH="$LLVM_NATIVE"
-	echo
-	echo "LLVM native:"
-	echo "  SRCPATH=$SRCPATH"
-	echo "  BUILDPATH=$BUILDPATH"
-	echo "  INSTALLPATH=$INSTALLPATH"
-	echo
 }
 
 llvm_native_fetch()   { llvm_generic_fetch   llvm || return $?; }
@@ -153,14 +143,14 @@ llvm_native_fetch()   { llvm_generic_fetch   llvm || return $?; }
 llvm_native_extract()
 {
 	llvm_generic_extract llvm || return $FAILURE
-	mkdir "$BUILDPATH" || return $FAILURE
+	mkdir "$DSTPATH" || return $FAILURE
 }
 
 llvm_native_configure()
 {
 	llvm_generic_patch || return $FAILURE
-	cp -r "$BUILDPATH_BASE/clang" "$SRCPATH/tools/clang"
-	cp -r "$BUILDPATH_BASE/compiler-rt" "$SRCPATH/projects/compiler-rt"
+	cp -r "$BUILDPATH/clang" "$SRCPATH/tools/clang"
+	cp -r "$BUILDPATH/compiler-rt" "$SRCPATH/projects/compiler-rt"
 	"$SRCPATH"/configure \
 		--prefix="$INSTALLPATH" \
 		--enable-jit \
@@ -181,26 +171,16 @@ llvm_native_install() {
 
 llvm_prepare()
 {
-	# This is a little less tricky than llvm-native:
-	# - Source in llvm-3.2.src
-	# - Build in llvm-3.2.build
-	# - Do not install
 	SRCPATH="$LLVM_SRC"
-	BUILDPATH="$LLVM_BUILD"
-	INSTALLPATH="$BUILDPATH"
-	echo
-	echo "LLVM:"
-	echo "  SRCPATH=$SRCPATH"
-	echo "  BUILDPATH=$BUILDPATH"
-	echo "  INSTALLPATH=$INSTALLPATH"
-	echo
+	DSTPATH="$LLVM_BUILD"
+	INSTALLPATH="$DSTPATH"
 }
 
 llvm_fetch()   { llvm_generic_fetch   llvm || return $?; }
 llvm_extract()
 {
 	llvm_generic_extract llvm || return $FAILURE
-	mkdir -p "$BUILDPATH" || return $FAILURE
+	mkdir -p "$DSTPATH" || return $FAILURE
 }
 
 llvm_configure()
@@ -251,7 +231,7 @@ lua_fetch()
 lua_extract()
 {
 	tar xvzf "$lua_tarball" || return $FAILURE
-	mv "$lua_dir" "$BUILDPATH" || return $FAILURE
+	mv "$lua_dir" "$DSTPATH" || return $FAILURE
 }
 
 lua_compile()
@@ -263,14 +243,14 @@ lua_compile()
 
 stp_extract()
 {
-	cp -r "$SRCPATH" "$BUILDPATH" || return $FAILURE
-	SRCPATH="$BUILDPATH"
+	cp -r "$SRCPATH" "$DSTPATH" || return $FAILURE
+	SRCPATH="$DSTPATH"
 }
 
 stp_configure()
 {
 	"$SRCPATH/scripts"/configure \
-		--with-prefix="$BUILDPATH" \
+		--with-prefix="$DSTPATH" \
 		--with-fpic \
 		--with-gcc="$LLVM_NATIVE_CC" \
 		--with-g++="$LLVM_NATIVE_CXX" \
@@ -296,12 +276,12 @@ klee_configure()
 		klee_ldflags="$klee_ldflags -fsanizite=address"
 	fi
 	"$SRCPATH"/configure \
-		--prefix="$BUILDPATH_BASE/opt" \
+		--prefix="$BUILDPATH/opt" \
 		--with-llvmsrc="$LLVM_SRC" \
 		--with-llvmobj="$LLVM_BUILD" \
 		--target=x86_64 \
 		--enable-exceptions \
-		--with-stp="$BUILDPATH_BASE/stp" \
+		--with-stp="$BUILDPATH/stp" \
 		CC="$LLVM_NATIVE_CC" \
 		CXX="$LLVM_NATIVE_CXX" \
 		CFLAGS="$klee_cflags" \
@@ -325,10 +305,10 @@ klee_compile()
 qemu_configure()
 {
 	"$SRCPATH"/configure \
-		--with-klee="$BUILDPATH_BASE/klee/$ASSERTS" \
+		--with-klee="$BUILDPATH/klee/$ASSERTS" \
 		--with-llvm="$LLVM_BUILD/$ASSERTS" \
 		$(test "$TARGET" = 'debug' && echo '--enable-debug') \
-		--prefix="$BUILDPATH_BASE/opt" \
+		--prefix="$BUILDPATH/opt" \
 		--cc="$LLVM_NATIVE_CC" \
 		--cxx="$LLVM_NATIVE_CXX" \
 		--target-list="$ARCH-s2e-softmmu,$ARCH-softmmu" \
@@ -339,7 +319,7 @@ qemu_configure()
 		--extra-cxxflags=-mno-sse3 \
 		--disable-virtfs \
 		--disable-fdt \
-		--with-stp="$BUILDPATH_BASE/stp" \
+		--with-stp="$BUILDPATH/stp" \
 		$(test "$MODE" = 'asan' && printf '%s' '--enable-address-sanitizer') \
 		$QEMU_FLAGS \
 	|| return $FAILURE
@@ -381,7 +361,7 @@ guest_compile()
 
 # ALL/GENERIC ==================================================================
 
-generic_extract() { mkdir -p "$BUILDPATH" || return $FAILURE; }
+generic_extract() { mkdir -p "$DSTPATH" || return $FAILURE; }
 generic_compile() { make -j$JOBS || return $FAILURE; }
 
 all_build()
@@ -389,11 +369,11 @@ all_build()
 	llvm_seen=$FALSE
 	for component in $COMPS
 	do
-		BUILDPATH="$BUILDPATH_BASE/$component"
+		DSTPATH="$BUILDPATH/$component"
 		SRCPATH="$CHEFROOT_SRC/$component"
-		LOGFILE="${BUILDPATH}.log"
+		LOGFILE="${DSTPATH}.log"
 		rm -f "$LOGFILE"
-		cd "$BUILDPATH_BASE"
+		cd "$BUILDPATH"
 
 		# XXX LLVM Hack (is run twice):
 		if [ "$component" = 'llvm' ]; then
@@ -405,7 +385,7 @@ all_build()
 				# second encounter with LLVM:
 				TARGET=debug
 			fi
-			parse_release "$ARCH:$TARGET:$MODE" # sets LLVM_BUILD
+			parse_build "$ARCH:$TARGET:$MODE" # sets LLVM_BUILD
 		fi
 
 		# Prepare:
@@ -420,7 +400,7 @@ all_build()
 		# Exclude/force-build component?
 		if list_contains "$COMPS_FORCE" "$component"; then
 			info 'force-building %s' "$component"
-			rm -rf "$BUILDPATH"
+			rm -rf "$DSTPATH"
 		elif list_contains "$COMPS_EXCLUDE" "$component"; then
 			skip '%s: excluded' "$component"
 			continue
@@ -430,13 +410,13 @@ all_build()
 		requires_configure=$FALSE
 		for action in fetch extract configure compile install
 		do
-			# if at *any* point there's no build path, we'll need to configure:
-			if [ ! -d "$BUILDPATH" ]; then
+			# if at *any* moment there's no destination path, need to configure:
+			if [ ! -d "$DSTPATH" ]; then
 				requires_configure=$TRUE
 			fi
 
 			# determine whether to skip:
-			if [ "$action" = 'extract' ] && [ -d "$BUILDPATH" ] \
+			if [ "$action" = 'extract' ] && [ -d "$DSTPATH" ] \
 			|| [ "$action" = 'configure' ] && [ $requires_configure -ne $TRUE ]; then
 				skip '%s %s' "$(lang_continuous $action)" "$component"
 				continue
@@ -444,8 +424,8 @@ all_build()
 
 			# CWD:
 			case "$action" in
-				fetch|extract) cd "$BUILDPATH_BASE" ;;
-				configure|compile|install) cd "$BUILDPATH" ;;
+				fetch|extract) cd "$BUILDPATH" ;;
+				configure|compile|install) cd "$DSTPATH" ;;
 				*) internal_error 'Unknown action: %s' "$action"
 				   die_internal ;;
 			esac
@@ -463,7 +443,7 @@ all_build()
 
 		LOGFILE="$NULL"
 	done
-	success "Build complete in %s.\n" "$BUILDPATH_BASE"
+	success "Build complete in %s.\n" "$BUILDPATH"
 	return $SUCCESS
 }
 
@@ -572,14 +552,14 @@ get_options()
 	ARGSHIFT=$(($OPTIND - 1))
 }
 
-get_release()
+get_build()
 {
 	if [ -z "$1" ]; then
 		ARGSHIFT=0
 	else
 		ARGSHIFT=1
 	fi
-	parse_release "$1"
+	parse_build "$1"
 }
 
 main()
@@ -595,23 +575,23 @@ main()
 
 	# Command line arguments:
 	get_options "$@" && shift $ARGSHIFT
-	get_release "$@" && shift $ARGSHIFT
+	get_build "$@" && shift $ARGSHIFT
 	test $# -eq 0 || die_help "trailing arguments: $@"
 
 	# Procedure:
 	case "$PROCEDURE" in
 		chef|default|'')
 			COMPS="$COMPS_CHEF"
-			BUILDPATH_BASE="$RELEASEPATH" ;;
+			BUILDPATH="$BUILDPATH" ;;
 		llvm)
 			COMPS="$COMPS_LLVM"
-			BUILDPATH_BASE="$LLVM_BASE" ;;
+			BUILDPATH="$LLVM_BASE" ;;
 		z3)
 			COMPS="$COMPS_Z3"
-			BUILDPATH_BASE="$CHEFROOT_BUILD_DEPS" ;;
+			BUILDPATH="$CHEFROOT_BUILD_DEPS" ;;
 		protobuf)
 			COMPS="$COMPS_PROTOBUF"
-			BUILDPATH_BASE="$CHEFROOT_BUILD_DEPS" ;;
+			BUILDPATH="$CHEFROOT_BUILD_DEPS" ;;
 		*) die_help 'invalid procedure: %s' "$PROCEDURE" ;;
 	esac
 	test -d "$CHEFROOT_BUILD" || mkdir "$CHEFROOT_BUILD"
@@ -620,12 +600,17 @@ main()
 	test "$COMPS_FORCE" != 'all' || COMPS_FORCE="$COMPS"
 	test "$COMPS_EXCLUDE" != 'all' || COMPS_EXCLUDE="$COMPS"    # uhm...
 
+	# Check if components exist:
+	for c in $COMPS_FORCE $COMPS_EXCLUDE; do
+		list_contains "$COMPS" "$c" || die_help '%s: no such component' "$c"
+	done
+
 	# Special action exit:
-	test $DRYRUN -eq $FALSE || dryrun
+	test $DRYRUN -eq $FALSE || dry_run
 	test $LIST -eq $FALSE || list_builds
 
-	mkdir -p "$BUILDPATH_BASE" || die 1 'Permission denied'
-	info 'building to %s (jobs: %d)' "$BUILDPATH_BASE" $JOBS
+	mkdir -p "$BUILDPATH" || die 1 'Permission denied'
+	info 'building to %s (jobs: %d)' "$BUILDPATH" $JOBS
 	all_build
 }
 main "$@"
