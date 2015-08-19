@@ -89,21 +89,21 @@ CHEFROOT_BUILD = '%s/build' % CHEFROOT
 INVOKENAME = os.environ.get('INVOKENAME', sys.argv[0])
 
 # Build configurations:
-ARCHS    = ['i386', 'x86_64', 'arm']
-TARGETS  = ['release', 'debug']
-MODES    = ['normal', 'asan']
-ARCH     = ARCHS[0]
-TARGET   = TARGETS[0]
-MODE     = MODES[0]
-RELEASE  = '%s:%s:%s' % (ARCH, TARGET, MODE)
+ARCHS   = ['i386', 'x86_64', 'arm']
+TARGETS = ['release', 'debug']
+MODES   = ['normal', 'asan']
+ARCH    = ARCHS[0]
+TARGET  = TARGETS[0]
+MODE    = MODES[0]
+BUILD   = '%s:%s:%s' % (ARCH, TARGET, MODE)
 
-def parse_release(release: str=None):
-    global ARCH, TARGET, MODE, RELEASE, ARCHS, TARGET, MODES
-    RELEASE = release or RELEASE
-    release_tuple = RELEASE.split(':')
-    arch, target, mode = release_tuple + [''] * (3 - len(release_tuple))
-    if len(release_tuple) > 3:
-        warn("trailing tokens in tuple: %s" % ':'.join(release_tuple[3:]))
+def parse_build(build: str=None):
+    global ARCH, TARGET, MODE, BUILD, ARCHS, TARGET, MODES
+    BUILD = build or BUILD
+    build_tuple = BUILD.split(':')
+    arch, target, mode = build_tuple + [''] * (3 - len(build_tuple))
+    if len(build_tuple) > 3:
+        warn("trailing tokens in tuple: %s" % ':'.join(build_tuple[3:]))
     ARCH = arch or ARCHS[0]
     TARGET = target or TARGETS[0]
     MODE = mode or MODES[0]

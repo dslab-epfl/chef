@@ -13,16 +13,11 @@
 import os
 import argparse
 import sys
-import psutil
 import utils
 import shutil
 import re
 
 class VM:
-    cores = os.cpu_count()
-    memory = min(max(psutil.virtual_memory().total / 4, 2 * 1024), 4 * 1024)
-
-
     def __init__(self, name: str):
         self.name = name
         self.path = '%s/%s' % (utils.CHEFROOT_VM, name)
@@ -255,8 +250,8 @@ class VM:
     def parse_args(argv: [str]):
         p = argparse.ArgumentParser(description="Handle Virtual Machines",
                                     prog=utils.INVOKENAME)
-        p.add_argument('-r', '--release', type=str, default=utils.RELEASE,
-                       help="Release tuple architecture:target:mode")
+        p.add_argument('-b', '--build', type=str, default=utils.BUILD,
+                       help="Build tuple architecture:target:mode")
 
         pcmd = p.add_subparsers(dest="Action")
         pcmd.required = True
@@ -333,7 +328,7 @@ class VM:
 if __name__ == '__main__':
     # Parse command line arguments:
     args = VM.parse_args(sys.argv)
-    utils.parse_release(args['release'])
+    utils.parse_build(args['build'])
 
     # Check environment:
     if not os.path.isdir(utils.CHEFROOT_VM):

@@ -385,7 +385,7 @@ all_build()
 				# second encounter with LLVM:
 				TARGET=debug
 			fi
-			parse_release "$ARCH:$TARGET:$MODE" # sets LLVM_BUILD
+			parse_build "$ARCH:$TARGET:$MODE" # sets LLVM_BUILD
 		fi
 
 		# Prepare:
@@ -552,14 +552,14 @@ get_options()
 	ARGSHIFT=$(($OPTIND - 1))
 }
 
-get_release()
+get_build()
 {
 	if [ -z "$1" ]; then
 		ARGSHIFT=0
 	else
 		ARGSHIFT=1
 	fi
-	parse_release "$1"
+	parse_build "$1"
 }
 
 main()
@@ -575,7 +575,7 @@ main()
 
 	# Command line arguments:
 	get_options "$@" && shift $ARGSHIFT
-	get_release "$@" && shift $ARGSHIFT
+	get_build "$@" && shift $ARGSHIFT
 	test $# -eq 0 || die_help "trailing arguments: $@"
 
 	# Procedure:

@@ -28,16 +28,12 @@ __author__ = "stefan.bucur@epfl.ch (Stefan Bucur)"
 import argparse
 import http.client
 import json
-import multiprocessing
 import os
 import signal
 import socket
-import fcntl
-import struct
 import sys
-import pipes
 import time
-import subprocess
+import psutil
 import utils
 from datetime import datetime
 from vm import VM
@@ -53,6 +49,12 @@ TIMEOUT_CMD = 60
 CONFIGFILE = '%s/config/default-config.lua' % utils.CHEFROOT_SRC
 NETWORK_MODE = 'user'
 TAP_INTERFACE = 'tap0'
+KVM_MEMORY_MIN = 512 * utils.MEBI
+KVM_MEMORY_MAX =   4 * utils.GIBI
+HOST_MEMORY = psutil.virtual_memory().total
+KVM_MEMORY = '%dM' % (min(KVM_MEMORY_MAX, max(HOST_MEMORY / 4, KVM_MEMORY_MIN))
+                      / utils.MEBI)
+KVM_CORES = os.cpu_count()
 
 TIMESTAMP = time.strftime('%Y-%m-%dT%H:%M:%S.'
                           + datetime.utcnow().strftime('%f')[:3]
@@ -181,7 +183,9 @@ def execute(args, cmd_line):
         utils.info("VNC: port %d (connect with `$vncclient %s:%d`)"
                    % (args['vnc_port'], ip, args['vnc_display']))
     if args['mode'] == 'sym':
-        utils.info("Watchdog: port %d" % args['command_port'])
+        utils.info("Experiment name: %s" % args['expname'])
+        if args['script'] or args['command']:
+            utils.info("Watchdog: port %d" % args['command_port'])
     utils.debug("Command line:\n%s" % ' '.join(cmd_line))
 
     if args['dry_run']:
@@ -230,20 +234,20 @@ def parse_cmd_line():
     parser = argparse.ArgumentParser(description="High-level interface to running Chef.",
                                      prog=utils.INVOKENAME)
 
-    # Chef release:
-    parser.add_argument('-r', '--release', default=utils.RELEASE,
-                        help="Tuple (architecture:target:mode) describing the Chef binary release")
+    # Chef build:
+    parser.add_argument('-b', '--build', default=utils.BUILD,
+                        help="Tuple (architecture:target:mode) describing the Chef build")
 
     # Qemu:
-    parser.add_argument('-q', '--qemu-opts', type=str, action='append',
+    parser.add_argument('-q', '--qemu-opt', type=str, action='append',
                         help="Additional arguments passed to qemu (may be passed multiple times)")
-    parser.add_argument('-n','--network', default='user', choices=['none','user','tap'],
+    parser.add_argument('-n', '--network', default='user', choices=['none','user','tap'],
                         help="Network mode [default=user]")
-    parser.add_argument('-m','--monitor-port', type=int,
-                        default=MONITOR_PORT,
+    parser.add_argument('-m','--memory', default=None,
+                        help="Amount of main memory available to the VM")
+    parser.add_argument('--monitor-port', type=int, default=MONITOR_PORT,
                         help="Port on which the qemu monitor is accessible")
-    parser.add_argument('-v','--vnc-display', type=int,
-                        default=VNC_DISPLAY,
+    parser.add_argument('--vnc-display', type=int, default=VNC_DISPLAY,
                         help="VNC display number on which the VM is accessible")
     parser.add_argument('--headless', action='store_true', default=False,
                         help="Run qemu without graphical output")
@@ -269,8 +273,7 @@ def parse_cmd_line():
     #             Run mode: KVM:
     kvm_mode = modes.add_parser('kvm', help="KVM mode")
     kvm_mode.set_defaults(mode='kvm')
-    kvm_mode.add_argument('-j', '--cores', type=int,
-                          default=multiprocessing.cpu_count(),
+    kvm_mode.add_argument('-j', '--cores', type=int, default=KVM_CORES,
                           help="Number of virtual cores")
 
     #             Run mode: Preparation:
@@ -290,7 +293,7 @@ def parse_cmd_line():
                                help="Environment variable for the command (can be used multiple times)")
     symbolic_mode.add_argument('--script', nargs=2,
                                help="Execute script given as a pair <test file, test name>")
-    symbolic_mode.add_argument('-b','--batch-file', default=None,
+    symbolic_mode.add_argument('--batch-file', default=None,
                                help="YAML file that contains the commands to be executed")
     symbolic_mode.add_argument('--batch-delay', type=int, default=1,
                                help="Seconds to wait before executing next command")
@@ -308,6 +311,8 @@ def parse_cmd_line():
     kwargs['VM'] = vm_snapshot[0]
     kwargs['snapshot'] = vm_snapshot[1] if len(vm_snapshot) > 1 else None
     kwargs['vnc_port'] = VNC_PORT_BASE + kwargs['vnc_display']
+    if not kwargs['memory']:
+        kwargs['memory'] = ('128M', KVM_MEMORY)[kwargs['mode'] == 'kvm']
     if kwargs['mode'] == 'sym':
         kwargs['config_file'] = os.path.abspath(kwargs['config_file'])
         kwargs['exppath'] = os.path.join(utils.CHEFROOT_EXPDATA, kwargs['expname'])
@@ -316,9 +321,9 @@ def parse_cmd_line():
     return kwargs
 
 
-# BUILD COMMAND LINE ===========================================================
+# ASSEMBLE COMMAND LINE ========================================================
 
-def build_qemu_cmd_line(args):
+def assemble_qemu_cmd_line(args):
     qemu_cmd_line = []
 
     # Debug:
@@ -328,7 +333,7 @@ def build_qemu_cmd_line(args):
         qemu_cmd_line.append('strace')
 
     # Qemu path:
-    utils.parse_release(args['release'])
+    utils.parse_build(args['build'])
     arch, target, mode = utils.ARCH, utils.TARGET, utils.MODE
     qemu_path = os.path.join(
         utils.CHEFROOT_BUILD,
@@ -363,11 +368,12 @@ def build_qemu_cmd_line(args):
             utils.fail("%s: no such snapshot" % args['snapshot'])
         qemu_cmd_line.extend(['-loadvm', args['snapshot']])
 
-    # General: VM image, CPU, qemu monitor, VNC:
+    # General: CPU, memory, qemu monitor, VNC:
     qemu_cmd_line.extend([
         # Non-Pentium instructions cause spurious concretizations
         '-cpu', 'pentium',
         '-monitor', 'tcp::%d,server,nowait' % args['monitor_port'],
+        '-m', args['memory'],
     ])
     if args['headless']:
         qemu_cmd_line.extend(['-vnc', ':%d' % args['vnc_display']])
@@ -382,7 +388,7 @@ def build_qemu_cmd_line(args):
             qemu_cmd_line.extend(['-net', 'tap,ifname=%s' % TAP_INTERFACE])
         else:
             qemu_cmd_line.extend(['-net', 'user'])
-            if args['mode'] == 'sym':
+            if args['mode'] == 'sym' and (args['script'] or args['command']):
                 qemu_cmd_line.extend([
                     '-redir', 'tcp:%d::4321' % args['command_port']
                 ])
@@ -400,18 +406,18 @@ def build_qemu_cmd_line(args):
         qemu_cmd_line.extend(['-s2e-output-dir', args['exppath']])
 
     # User-defined qemu options:
-    if args['qemu_opts']:
-        qemu_cmd_line.extend(args['qemu_opts'])
+    if args['qemu_opt']:
+        qemu_cmd_line.extend(args['qemu_opt'])
 
     return qemu_cmd_line
 
 
-def build_parallel_cmd_line(args: dict):
+def assemble_parallel_cmd_line(args: dict):
     return ['parallel', '-u', '--line-buffer', '--delay', '%d' % args['batch_delay']]
 
 
-def build_cmd_line(args):
-    cmd_line = build_qemu_cmd_line(args)
+def assemble_cmd_line(args):
+    cmd_line = assemble_qemu_cmd_line(args)
     return cmd_line
 
 
@@ -444,7 +450,7 @@ def batch_execute(args: dict):
                         % (args['monitor_port'] + batch_offset)])
         cmd_line.extend(['--vnc-display', '%d'
                         % (args['vnc_display'] + batch_offset)])
-        cmd_line.extend(['--release', utils.RELEASE])
+        cmd_line.extend(['--build', utils.BUILD])
         cmd_line.extend(['--network', args['network']])
         cmd_line.extend([args['VM[:snapshot]']])
         cmd_line.extend(['sym'])
@@ -462,9 +468,8 @@ def batch_execute(args: dict):
 
         # counter:
         batch_offset += 1
-        utils.debug('%s' % cmd_line)
 
-    utils.execute(build_parallel_cmd_line(args), stdin='\n'.join(cmd_lines))
+    utils.execute(assemble_parallel_cmd_line(args), stdin='\n'.join(cmd_lines))
 
 
 def main():
@@ -473,7 +478,7 @@ def main():
     if args['mode'] == 'sym' and args['batch_file']:
         batch_execute(args)
     else:
-        execute(args, build_cmd_line(args))
+        execute(args, assemble_cmd_line(args))
 
 
 if __name__ == "__main__":
