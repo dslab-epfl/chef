@@ -1,0 +1,283 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>4. S²E Workflow &mdash; Chef 0.9 documentation</title>
+    
+    <link rel="stylesheet" href="_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    './',
+        VERSION:     '0.9',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <link rel="top" title="Chef 0.9 documentation" href="index.html" />
+    <link rel="next" title="5. Quickly Uploading Programs to the Guest with s2eget" href="UsingS2EGet.html" />
+    <link rel="prev" title="3. Preparing VM Images for S²E" href="ImageInstallation.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="UsingS2EGet.html" title="5. Quickly Uploading Programs to the Guest with s2eget"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="ImageInstallation.html" title="3. Preparing VM Images for S²E"
+             accesskey="P">previous</a> |</li>
+        <li><a href="index.html">Chef 0.9 documentation</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <div class="section" id="s2e-workflow">
+<h1><a class="toc-backref" href="#id1">4. S²E Workflow</a><a class="headerlink" href="#s2e-workflow" title="Permalink to this headline">¶</a></h1>
+<p>This document describes a recommended workflow when working with S²E. A more
+detailed example of how to use S²E to test a program is given at
+<a class="reference internal" href="TestingMinimalProgram.html"><em>Testing a Simple Program with S2E</em></a>.</p>
+<div class="contents topic" id="contents">
+<p class="topic-title first">Contents</p>
+<ul class="simple">
+<li><a class="reference internal" href="#s2e-workflow" id="id1">S²E Workflow</a><ul>
+<li><a class="reference internal" href="#kvm-mode-preparing-the-vm" id="id2">KVM mode: Preparing the VM</a></li>
+<li><a class="reference internal" href="#preparation-mode-preparing-the-experiment" id="id3">Preparation mode: Preparing the Experiment</a></li>
+<li><a class="reference internal" href="#symbolic-mode-running-the-experiment" id="id4">Symbolic mode: Running the Experiment</a></li>
+<li><a class="reference internal" href="#experimental-kvm-snapshot-support" id="id5">Experimental KVM Snapshot Support</a></li>
+</ul>
+</li>
+</ul>
+</div>
+<p><strong>Note</strong>: In this document, <tt class="docutils literal"><span class="pre">$S2EDIR</span></tt> denotes the location where all the S²E
+related files lie in, as explained in <a class="reference internal" href="BuildingS2E.html"><em>Building the S²E Platform</em></a>. Furthermore, this
+document makes extensive use of the <tt class="file docutils literal"><span class="pre">$S2EDIR/src/ctl</span></tt> script, and runs it
+simply as the <tt class="kbd docutils literal"><span class="pre">ctl</span></tt> command. You may achieve the same effect by</p>
+<div class="highlight-python"><div class="highlight"><pre>$ alias ctl=$S2EDIR/src/ctl
+</pre></div>
+</div>
+<p>or by adding a symbolic link from somewhere in your <tt class="docutils literal"><span class="pre">PATH</span></tt> environment.</p>
+<div class="section" id="kvm-mode-preparing-the-vm">
+<h2><a class="toc-backref" href="#id2">4.1. KVM mode: Preparing the VM</a><a class="headerlink" href="#kvm-mode-preparing-the-vm" title="Permalink to this headline">¶</a></h2>
+<p>Once you have set up a VM as described in <a class="reference internal" href="ImageInstallation.html"><em>Preparing VM Images for S²E</em></a>, you will
+likely need to install additional programs and apply changes that are specific
+to the experiment you would like to run. It is recommended to do as much
+preparation work as possible in vanilla QEMU with KVM, as the dynamic binary
+translation mode (described below) tends to be rather slow.</p>
+<p>Let&#8217;s assume you have got a freshly installed Debian system that you would like
+to use for the experiment:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ ctl vm list
+Debian
+  Size: 10240.0MiB
+</pre></div>
+</div>
+<p>If you wish to reuse this VM for other experiments later, it is a good idea to
+first create a &#8220;backup&#8221; copy of your machine (otherwise you can just skip
+this):</p>
+<div class="highlight-python"><div class="highlight"><pre>$ ctl vm clone Debian Debian_base
+[ OK ] initialise VM
+[ OK ] copy disk image
+</pre></div>
+</div>
+<p>The image can now be run in KVM mode as follows:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ ctl run Debian kvm
+[INFO] Qemu monitor: port 12345 (connect with `{nc,telnet} XXX.XX.XX.XXX 12345)
+[DEBUG] Command line:
+$S2EDIR/build/i386-release-normal/qemu/i386-softmmu/qemu-system-i386 -drive file=$S2EDIR/vm/Debian/disk.s2e,if=virtio,format=raw -cpu pentium -monitor tcp::12345,server,nowait -m 2048M -net nic,model=pcnet -net user -enable-kvm -smp 4
+...
+</pre></div>
+</div>
+<p>Inside the running machine, install packages, adjust configurations, etc. so
+that you can run the experiment afterwards. Finally, shut down the machine
+normally, e.g. through the <tt class="kbd docutils literal"><span class="pre">poweroff</span></tt> command.</p>
+</div>
+<div class="section" id="preparation-mode-preparing-the-experiment">
+<h2><a class="toc-backref" href="#id3">4.2. Preparation mode: Preparing the Experiment</a><a class="headerlink" href="#preparation-mode-preparing-the-experiment" title="Permalink to this headline">¶</a></h2>
+<p>In theory we could now launch the VM in symbolic mode and start the experiment.
+However, binary translation in S²E mode (also referred to as <em>symbolic mode</em>) is
+extremely slow. Therefore, in this intermediary step, we use the ordinary binary
+translation (non-S²E mode) to boot the system up:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ ctl run Debian prep
+[INFO] Qemu monitor: port 12345 (connect with `{nc,telnet} XXX.XX.XX.XXX 12345)
+[DEBUG] Command line:
+$S2EDIR/build/i386-release-normal/qemu/i386-softmmu/qemu-system-i386 -drive file=$S2EDIR/vm/Debian/disk.s2e,cache=writeback,format=s2e -cpu pentium -monitor tcp::12345,server,nowait -m 128M -net nic,model=pcnet -net user
+...
+</pre></div>
+</div>
+<p>Once the system has booted up, we put the machine in a state where we can launch
+the experiment, e.g. launch services, <tt class="kbd docutils literal"><span class="pre">cd</span></tt> in some directory, etc. Then, we
+save a snapshot &#8212; you may have noticed this output:</p>
+<div class="highlight-python"><div class="highlight"><pre>Qemu monitor: port 12345 (connect with `{nc,telnet} XXX.XX.XX.XXX 12345)
+</pre></div>
+</div>
+<p>QEMU provides a <a class="reference external" href="http://wiki.qemu.org/download/qemu-doc.html#pcsys_005fmonitor">monitor</a> that can be
+used to control the running VM. In our case, that monitor is accessible on port
+12345 and can be accessed through a TCP client of our choice. We use the monitor
+to save a snapshot of the current state:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ nc localhost 12345
+QEMU 1.0.50 monitor - type &#39;help&#39; for more information
+(qemu) savevm prepared
+savevm prepared
+</pre></div>
+</div>
+<p>If everything is fine, this has now created a snapshot <tt class="docutils literal"><span class="pre">prepared</span></tt> for our
+machine:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ ctl vm list
+Debian
+  Size: 10240.0MiB
+  Snapshots:
+    prepared
+</pre></div>
+</div>
+<p>We may now stop the running VM through the QEMU monitor:</p>
+<div class="highlight-python"><div class="highlight"><pre>(qemu) quit
+quit
+</pre></div>
+</div>
+<p><em>(or just ^C the QEMU process)</em></p>
+</div>
+<div class="section" id="symbolic-mode-running-the-experiment">
+<h2><a class="toc-backref" href="#id4">4.3. Symbolic mode: Running the Experiment</a><a class="headerlink" href="#symbolic-mode-running-the-experiment" title="Permalink to this headline">¶</a></h2>
+<p>Finally, we can run S²E in symbolic mode by resuming from the snapshot we
+created above:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ ctl run Debian:prepared sym
+[INFO] Qemu monitor: port 12345 (connect with `{nc,telnet} XXX.XX.XX.XXX 12345)
+[INFO] Experiment name: auto_2015-08-19T17:04:45.819+0200
+[DEBUG] Command line:
+$S2EDIR/build/i386-release-normal/qemu/i386-s2e-softmmu/qemu-system-i386 -drive file=$S2EDIR/vm/Debian/disk.s2e,cache=writeback,format=s2e -cpu pentium -monitor tcp::12345,server,nowait -m 128M -net nic,model=pcnet -net user -s2e-config-file $S2EDIR/src/config/default-config.lua -s2e-verbose -s2e-output-dir $S2EDIR/expdata/auto_2015-08-19T17:04:45.819+0200
+...
+</pre></div>
+</div>
+<p>Each time you run a VM in symbolic mode, S²E assumes that you will symbolically
+execute some process. It therefore creates logs and experiment data and stores
+them in a folder in <tt class="file docutils literal"><span class="pre">$S2EDIR/expdata</span></tt>. You can specify the name of the
+experiment as follows:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ ctl run Debian:prepared sym --expname MyExperiment
+</pre></div>
+</div>
+<p>which will result in an experiment data folder
+<tt class="file docutils literal"><span class="pre">$S2EDIR/expdata/MyExperiment</span></tt>. If you omit the experiment name, <tt class="docutils literal"><span class="pre">ctl</span>
+<span class="pre">run</span></tt> will auto-generate a name containing a human-readable timestamp (so you
+can still find it later). In the example above, it was
+<tt class="docutils literal"><span class="pre">auto_2015-08-19T17:04:45.819+0200</span></tt>.</p>
+</div>
+<div class="section" id="experimental-kvm-snapshot-support">
+<h2><a class="toc-backref" href="#id5">4.4. Experimental KVM Snapshot Support</a><a class="headerlink" href="#experimental-kvm-snapshot-support" title="Permalink to this headline">¶</a></h2>
+<p>It is possible to boot an image in KVM mode, take a snapshot, and resume it in
+the dynamic binary translation (DBT) mode that QEMU normally uses.  This is
+useful if your guest system is large and avoids cumbersome manipulations to
+workaround the relative slowness of the DBT (e.g., starting in QEMU, setting up,
+rebooting again in DBT mode, etc.).</p>
+<div class="highlight-python"><div class="highlight"><pre>$ $S2EDIR/build/x86_64-release-normal/qemu/x86_64-softmmu/qemu-system-x86_64 -enable-kvm -cpu core2duo -net none
+... (set up the guest, save a snapshot, quit the machine)
+
+$ $S2EDIR/build/x86_64-release-normal/qemu/x86_64-softmmu/qemu-system-x86_64 -cpu core2duo -net none -loadvm mysnapshot
+... (finish setup, save another snapshot, quit the machine)
+
+$ $S2EDIR/build/x86_64-release-normal/qemu/x86_64-s2e-softmmu/qemu-system-x86_64 -cpu core2duo -net none -loadvm mysnapshot
+... (run experiment)
+</pre></div>
+</div>
+<p>Limitations:</p>
+<ul class="simple">
+<li>The host CPU in KVM mode must match the virtual CPU in DBT mode. For example,
+you cannot save a KVM snapshot on an Intel CPU and resume it with default
+settings in DBT mode (i.e., -cpu qemu64, which uses the AMD variations of some
+instructions).</li>
+<li>The CPUID flags should be matched between KVM and DBT mode. Mismatches do not
+seem to matter for simple experiments, but may lead to guest kernel crashes.
+You can dump <tt class="file docutils literal"><span class="pre">/proc/cpuinfo</span></tt> in KVM and DBT mode, compare both and add
+the corresponding tweaks to the <tt class="docutils literal"><span class="pre">-cpu</span></tt> parameter.</li>
+<li>KVM mode does not support S²E custom instructions. They cause an invalid
+opcode exception in the guest. Therefore, you might need to save a second
+snapshot in DBT mode when using tools such as <tt class="docutils literal"><span class="pre">s2eget</span></tt>.</li>
+<li>It is possible that the guest hangs when resumed in DBT mode from a KVM
+snapshot. Try to save and resume again.</li>
+<li>Resuming DBT snapshots in KVM mode does not seem to work.</li>
+</ul>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+  <h3><a href="index.html">Table Of Contents</a></h3>
+  <ul>
+<li><a class="reference internal" href="#">4. S²E Workflow</a><ul>
+<li><a class="reference internal" href="#kvm-mode-preparing-the-vm">4.1. KVM mode: Preparing the VM</a></li>
+<li><a class="reference internal" href="#preparation-mode-preparing-the-experiment">4.2. Preparation mode: Preparing the Experiment</a></li>
+<li><a class="reference internal" href="#symbolic-mode-running-the-experiment">4.3. Symbolic mode: Running the Experiment</a></li>
+<li><a class="reference internal" href="#experimental-kvm-snapshot-support">4.4. Experimental KVM Snapshot Support</a></li>
+</ul>
+</li>
+</ul>
+
+  <h4>Previous topic</h4>
+  <p class="topless"><a href="ImageInstallation.html"
+                        title="previous chapter">3. Preparing VM Images for S²E</a></p>
+  <h4>Next topic</h4>
+  <p class="topless"><a href="UsingS2EGet.html"
+                        title="next chapter">5. Quickly Uploading Programs to the Guest with <tt class="docutils literal"><span class="pre">s2eget</span></tt></a></p>
+  <h3>This Page</h3>
+  <ul class="this-page-menu">
+    <li><a href="_sources/Workflow.txt"
+           rel="nofollow">Show Source</a></li>
+  </ul>
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="UsingS2EGet.html" title="5. Quickly Uploading Programs to the Guest with s2eget"
+             >next</a> |</li>
+        <li class="right" >
+          <a href="ImageInstallation.html" title="3. Preparing VM Images for S²E"
+             >previous</a> |</li>
+        <li><a href="index.html">Chef 0.9 documentation</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2015, EPFL.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.2.2.
+    </div>
+  </body>
+</html>

@@ -6,7 +6,7 @@
   <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
     
-    <title>7. Analyzing Large Programs Using Concolic Execution &mdash; Chef 0.9 documentation</title>
+    <title>8. Analyzing Large Programs Using Concolic Execution &mdash; Chef 0.9 documentation</title>
     
     <link rel="stylesheet" href="../_static/default.css" type="text/css" />
     <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
@@ -24,8 +24,8 @@
     <script type="text/javascript" src="../_static/underscore.js"></script>
     <script type="text/javascript" src="../_static/doctools.js"></script>
     <link rel="top" title="Chef 0.9 documentation" href="../index.html" />
-    <link rel="next" title="8. Equivalence Testing" href="../EquivalenceTesting.html" />
-    <link rel="prev" title="6. How to symbolically execute Linux binaries?" href="init_env.html" /> 
+    <link rel="next" title="9. Equivalence Testing" href="../EquivalenceTesting.html" />
+    <link rel="prev" title="7. How to symbolically execute Linux binaries?" href="init_env.html" /> 
   </head>
   <body>
     <div class="related">
@@ -35,10 +35,10 @@
           <a href="../genindex.html" title="General Index"
              accesskey="I">index</a></li>
         <li class="right" >
-          <a href="../EquivalenceTesting.html" title="8. Equivalence Testing"
+          <a href="../EquivalenceTesting.html" title="9. Equivalence Testing"
              accesskey="N">next</a> |</li>
         <li class="right" >
-          <a href="init_env.html" title="6. How to symbolically execute Linux binaries?"
+          <a href="init_env.html" title="7. How to symbolically execute Linux binaries?"
              accesskey="P">previous</a> |</li>
         <li><a href="../index.html">Chef 0.9 documentation</a> &raquo;</li> 
       </ul>
@@ -50,7 +50,7 @@
           <div class="body">
             
   <div class="section" id="analyzing-large-programs-using-concolic-execution">
-<h1>7. Analyzing Large Programs Using Concolic Execution<a class="headerlink" href="#analyzing-large-programs-using-concolic-execution" title="Permalink to this headline">¶</a></h1>
+<h1>8. Analyzing Large Programs Using Concolic Execution<a class="headerlink" href="#analyzing-large-programs-using-concolic-execution" title="Permalink to this headline">¶</a></h1>
 <p>In the previous tutorials, we have seen how to use symbolic execution in order
 to explore different program paths. In practice, symbolic execution
 requires the S2E user to inject symbolic values in the program&#8217;s inputs so that
@@ -98,7 +98,7 @@ that would allow execution to reach that state. If the solver fails to find the 
 S2E discards the state. Otherwise, S2E uses the computed concrete inputs to resume
 concolic execution.</p>
 <div class="section" id="setting-up-s2e-for-concolic-execution">
-<h2>7.1. Setting up S2E for Concolic Execution<a class="headerlink" href="#setting-up-s2e-for-concolic-execution" title="Permalink to this headline">¶</a></h2>
+<h2>8.1. Setting up S2E for Concolic Execution<a class="headerlink" href="#setting-up-s2e-for-concolic-execution" title="Permalink to this headline">¶</a></h2>
 <p>The following is a minimal S2E configuration file that enables concolic execution.</p>
 <div class="highlight-python"><div class="highlight"><pre>s2e = {
   kleeArgs = {}
@@ -131,9 +131,9 @@ plugins = {
 </div>
 </div>
 <div class="section" id="executing-programs-in-concolic-mode">
-<h2>7.2. Executing Programs in Concolic Mode<a class="headerlink" href="#executing-programs-in-concolic-mode" title="Permalink to this headline">¶</a></h2>
+<h2>8.2. Executing Programs in Concolic Mode<a class="headerlink" href="#executing-programs-in-concolic-mode" title="Permalink to this headline">¶</a></h2>
 <div class="section" id="using-custom-instructions">
-<h3>7.2.1. Using custom instructions<a class="headerlink" href="#using-custom-instructions" title="Permalink to this headline">¶</a></h3>
+<h3>8.2.1. Using custom instructions<a class="headerlink" href="#using-custom-instructions" title="Permalink to this headline">¶</a></h3>
 <p>The <tt class="docutils literal"><span class="pre">s2e_make_concolic</span></tt> custom instruction injects symbolic values while keeping the original concrete values.
 It is used in the same way as <tt class="docutils literal"><span class="pre">s2e_make_symbolic</span></tt>. It reads the original concrete values from memory, stores them in an internal cache,
 and overwrites the memory with symbolic values. The cache maps the symbolic values to the actual
@@ -141,7 +141,7 @@ concrete values and allows the substitution of symbolic inputs with the concrete
 expression evaluation (e.g., at fork points).</p>
 </div>
 <div class="section" id="using-the-init-env-plugin">
-<h3>7.2.2. Using the <tt class="docutils literal"><span class="pre">init_env</span></tt> plugin<a class="headerlink" href="#using-the-init-env-plugin" title="Permalink to this headline">¶</a></h3>
+<h3>8.2.2. Using the <tt class="docutils literal"><span class="pre">init_env</span></tt> plugin<a class="headerlink" href="#using-the-init-env-plugin" title="Permalink to this headline">¶</a></h3>
 <p>The <a class="reference internal" href="init_env.html"><em>init_env</em></a> library enables symbolic execution without modifying the program&#8217;s source code.
 This library also supports concolic execution with the <tt class="docutils literal"><span class="pre">--concolic</span></tt> switch, that can be added right before the concrete program arguments.
 The following example invokes the <tt class="docutils literal"><span class="pre">tr</span></tt> Unix utility via the <tt class="docutils literal"><span class="pre">tr</span> <span class="pre">ab</span> <span class="pre">ab</span> <span class="pre">ab</span></tt> command. The library automatically assigns
@@ -152,7 +152,7 @@ symbolic arguments to all arguments while keeping the concrete <tt class="docuti
 </div>
 </div>
 <div class="section" id="faq">
-<h2>7.3. FAQ<a class="headerlink" href="#faq" title="Permalink to this headline">¶</a></h2>
+<h2>8.3. FAQ<a class="headerlink" href="#faq" title="Permalink to this headline">¶</a></h2>
 <ul>
 <li><p class="first"><em>Can I use s2e_make_symbolic in concolic mode?</em></p>
 <p>Yes. S2E will automatically assign default concrete values satisfying the path constraints during concolic execution.</p>
@@ -183,24 +183,24 @@ problem by itself. It merley helps getting to deep parts of the program faster.<
         <div class="sphinxsidebarwrapper">
   <h3><a href="../index.html">Table Of Contents</a></h3>
   <ul>
-<li><a class="reference internal" href="#">7. Analyzing Large Programs Using Concolic Execution</a><ul>
-<li><a class="reference internal" href="#setting-up-s2e-for-concolic-execution">7.1. Setting up S2E for Concolic Execution</a></li>
-<li><a class="reference internal" href="#executing-programs-in-concolic-mode">7.2. Executing Programs in Concolic Mode</a><ul>
-<li><a class="reference internal" href="#using-custom-instructions">7.2.1. Using custom instructions</a></li>
-<li><a class="reference internal" href="#using-the-init-env-plugin">7.2.2. Using the <tt class="docutils literal"><span class="pre">init_env</span></tt> plugin</a></li>
+<li><a class="reference internal" href="#">8. Analyzing Large Programs Using Concolic Execution</a><ul>
+<li><a class="reference internal" href="#setting-up-s2e-for-concolic-execution">8.1. Setting up S2E for Concolic Execution</a></li>
+<li><a class="reference internal" href="#executing-programs-in-concolic-mode">8.2. Executing Programs in Concolic Mode</a><ul>
+<li><a class="reference internal" href="#using-custom-instructions">8.2.1. Using custom instructions</a></li>
+<li><a class="reference internal" href="#using-the-init-env-plugin">8.2.2. Using the <tt class="docutils literal"><span class="pre">init_env</span></tt> plugin</a></li>
 </ul>
 </li>
-<li><a class="reference internal" href="#faq">7.3. FAQ</a></li>
+<li><a class="reference internal" href="#faq">8.3. FAQ</a></li>
 </ul>
 </li>
 </ul>
 
   <h4>Previous topic</h4>
   <p class="topless"><a href="init_env.html"
-                        title="previous chapter">6. How to symbolically execute Linux binaries?</a></p>
+                        title="previous chapter">7. How to symbolically execute Linux binaries?</a></p>
   <h4>Next topic</h4>
   <p class="topless"><a href="../EquivalenceTesting.html"
-                        title="next chapter">8. Equivalence Testing</a></p>
+                        title="next chapter">9. Equivalence Testing</a></p>
   <h3>This Page</h3>
   <ul class="this-page-menu">
     <li><a href="../_sources/Howtos/Concolic.txt"
@@ -230,10 +230,10 @@ problem by itself. It merley helps getting to deep parts of the program faster.<
           <a href="../genindex.html" title="General Index"
              >index</a></li>
         <li class="right" >
-          <a href="../EquivalenceTesting.html" title="8. Equivalence Testing"
+          <a href="../EquivalenceTesting.html" title="9. Equivalence Testing"
              >next</a> |</li>
         <li class="right" >
-          <a href="init_env.html" title="6. How to symbolically execute Linux binaries?"
+          <a href="init_env.html" title="7. How to symbolically execute Linux binaries?"
              >previous</a> |</li>
         <li><a href="../index.html">Chef 0.9 documentation</a> &raquo;</li> 
       </ul>

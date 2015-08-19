@@ -1,5 +1,5 @@
 =========================
-Building the S2E Platform
+Building the S²E Platform
 =========================
 
 The following steps describe the installation process in detail. We assume the
@@ -21,9 +21,10 @@ its source directory, so the following procedure is recommended for fetching the
 source::
 
     $ mkdir s2e
-    $ git clone https://github.com/dslab-epfl/chef s2e/src
+    $ git clone --recursive https://github.com/dslab-epfl/chef s2e/src
 
-This will place the S²E source in the ``s2e/src`` subdirectory.
+This will place the S²E source in the ``s2e/src`` subdirectory, together with
+its sub-components.
 
 
 Preparing the Environment
@@ -52,7 +53,7 @@ Building S²E
 ============
 
 Once the setup script above finishes, it should have generated an LLVM build in
-``s2e/build/deps/llvm``, which is required to build S²E::
+``s2e/build/deps/llvm``, which is required to build S²E. We do so by::
 
     $ s2e/src/ctl build
 
@@ -60,37 +61,7 @@ This will build S²E using all available cores on the system, and in the default
 configuration (i386, release mode, without address sanitizer). Pass the ``-h``
 option to the build command to get an overview of possible build configurations.
 
-Since that ``ctl`` script is going to be used a lot, it is recommended to either
-
-::
-
-    $ alias ctl=/path/to/s2e/src/ctl
-
-or to add a symlink from somewhere in the ``PATH`` environment. This allows you
-to run ``ctl`` as a command from anywhere without having to type
-``/path/to/s2e/src/ctl`` each time, e.g. ::
-
-    $ ctl build
-
 The resulting build files are placed in ``s2e/build/i386-release-normal``.
-
-
-Setting up a VM
-===============
-
-The ``ctl`` script provides a ``vm`` command for managing virtual machines for
-S²E. A prepared VM can be fetched and imported to S²E::
-
-    $ wget https://dslab.epfl.ch/s2e/Debian.tar.gz
-    $ ctl vm import Debian.tar.gz MyExampleBox
-
-Once it's done, the newly imported VM should appear in the list of managed VMs::
-
-    $ ctl vm list
-    MyExampleBox
-      Size: 10240.0MiB
-
-See :doc:`ManagingVMs` for more details.
 
 
 Reporting Bugs
@@ -99,27 +70,29 @@ Reporting Bugs
 In order to report bugs, please use GitHub's
 `issue tracker <https://github.com/dslab-epfl/s2e/issues>`_.
 
-If you would like
-to contribute to S2E, please create your own personal clone of S2E on GitHub, push your changes to it and then send us a
-pull request.
+If you would like to contribute to S²E, please create your own personal clone of
+S²E on GitHub, push your changes to it and then send us a pull request.
 
-You can find more information about using git on `http://gitref.org/ <http://gitref.org/>`_ or on
-`http://progit.org/ <http://progit.org/>`_.
+You can find more information about using git on http://gitref.org/ or on
+http://progit.org/.
 
 
-Updating S2E
+Updating S²E
 ============
 
 You can rerun ``ctl build`` to recompile S²E either when changing it or when
-pulling new versions through ``git``. Note that by default, the packages are not
-automatically reconfigured; for deep changes you will need to pass the packages
-to the ``-f`` option.
+pulling new versions through ``git``. Note that by default, the components are
+not automatically reconfigured; for deep changes you will need to pass the
+``-f`` option together with the components you wish to reconfigure, e.g. for
+force-rebuilding STP and KLEE::
+
+    $ s2e/src/ctl build -f stp,klee
 
 
-Rebuilding S2E Documentation
+Rebuilding S²E Documentation
 =============================
 
-The S2E documentation is written in the `reStructuredText
+The S²E documentation is written in the `reStructuredText
 <http://docutils.sourceforge.net/rst.html>`_ format and works with the `Sphinx
 <http://sphinx-doc.org>`_ documentation tool. After changing the documentation
 source, regenerate it by running ::

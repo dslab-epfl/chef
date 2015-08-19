@@ -1,136 +1,97 @@
 =============================
-Preparing VM Images for S2E
+Preparing VM Images for S²E
 =============================
+
+To run S²E, you need a QEMU-compatible virtual machine disk image. S²E can run
+any x86 operating system inside the VM.
 
 .. contents::
 
-To run S2E, you need a QEMU-compatible virtual machine disk image. S2E can run
-any x86 operating system inside the VM.
-In this section, we describe how to build a Linux image and present general
-requirements and guidelines for various operating systems.
+There are several ways of getting a VM that can be used with S²E. In this
+document, we will quickly cover three of them. For more information about
+managing S²E VMs and how things work underneath, see :doc:`ManagingVMs`.
+
+**Note**: In this document, ``$S2EDIR`` denotes the location where all the S²E
+related files lie in, as explained in :doc:`BuildingS2E`. Furthermore, this
+document makes extensive use of the :file:`$S2EDIR/src/ctl` script, and runs it
+simply as the :kbd:`ctl` command. You may achieve the same effect by ::
+
+    $ alias ctl=$S2EDIR/src/ctl
+
+or by adding a symbolic link from somewhere in your ``PATH`` environment.
 
 
-Preparing a Linux VM Image
-==========================
+Fetching a Prepared VM
+======================
 
-In the following, we describe how to install a minimal version of Debian Linux in QEMU.
+A prepared VM is available on Amazon S3, and can be fetched and imported as
+follows::
 
-**Please make sure that you perform all the steps below using QEMU that ships with S2E.**
-There will be compatibility problems if you use QEMU that comes with your system (especially
-when saving/restoring snapshots).
+    $ wget https://s3.amazonaws.com/chef.dslab.epfl.ch/vm/s2e-base.tar.gz
+    $ ctl vm import s2e-base.tar.gz MyBox
 
-``$S2EDIR`` refers to the directory where S2E is installed. The paths below assume you
-followed the installation tutorials.
+Once it's done, the newly imported VM should appear in the list of managed VMs::
 
-::
+    $ ctl vm list
+    MyBox
+      Size: 10240.0MiB
 
-   $ # Create an empty disk image
-   $ $S2EDIR/build/qemu-release/qemu-img create -f raw s2e_disk.raw 2G
+Using an existing VM
+====================
 
-   $ # Download debian install CD (the exact version doesn't really matter, below is an example)
-   $ wget http://cdimage.debian.org/debian-cd/7.7.0/i386/iso-cd/debian-7.7.0-i386-CD-1.iso
+If you have already got an existing QEMU-compatible VM, it can be used by S²E if
+if it has the ``raw`` format. For other formats, you will first need to run
+:kbd:`qemu-img convert` on the disk image file, e.g. for files in the ``qcow2``
+format::
 
-   $ # Run QEMU and install the OS
-   $ $S2EDIR/build/qemu-release/i386-softmmu/qemu-system-i386 s2e_disk.raw -enable-kvm -m 1024 -cdrom debian-7.7.0-i386-CD-1.iso
-   > Follow on-screen instructions to install Debian Linux inside VM (use the most basic setup that includes ssh)
-   > If you have trouble navigating the menus, try specifying a keymap (e.g., add "-k en-us") 
-   > Using "-enable-kvm" is faster, but KVM must be installed and you must be in the 'kvm' group (otherwise remove "-enable-kvm")
+    $ qemu-img convert -f qcow2 -O raw disk.qcow disk.raw
 
-   $ # When your system is installed and rebooted, run the following command
-   $ # inside the guest to install C and C++ compilers
+The raw disk image can then be imported with ::
+
+    $ ctl vm import --raw disk.raw MyBox
+
+Installing a new VM
+===================
+
+**Note**: Any QEMU-compatible VM can be made ready-for-use with S²E, so
+installing it the classic way with a vanilla QEMU and importing it as seen above
+is perfectly reasonable. This subsection shows an alternative way to perform the
+installation with the ``ctl`` script.
+
+First, a new virtual machine must be created. This is conveniently done by ::
+
+    $ ctl vm create MyBox 5120M
+    [ OK ] initialise VM
+    [ OK ] create 5120MiB image
+
+Next, get an installation CD with the distribution of your choice, e.g. ::
+
+    $ wget http://cdimage.debian.org/debian-cd/7.7.0/i386/iso-cd/debian-7.7.0-i386-CD-1.iso
+
+Now, the previously created VM is started using ``ctl``'s ``run`` command::
+
+    $ ctl run -q=-drive -q file=debian-7.7.0-i386-CD-1.iso MyBox kvm
+                 ↑         ↑
+                 QEMU options
+
+Once the installation is finished, it is recommended to get some development
+tools (C/C++ compiler) in the guest machine; in the example of Debian, you'd
+run ::
+
    guest$ su -c "apt-get install build-essential"
 
-You have just set up a disk image in RAW format. You will need to give it
-a .s2e extension for use with S2E (the reasons for this are described in 
-the next section).  The S2E image format is identical to the RAW format, so
-no conversion needs to take place.  We therefore create a .raw.s2e copy that
-will be treated as read-only by S2E, and we keep around the .raw image in
-case we want to make modifications to the base image in the future.
 
-::
+Recommendations
+===============
 
-   $ ln s2e_disk.raw s2e_disk.raw.s2e
-
-The S2E VM Image Format
-=======================
-
-Existing image formats are not suitable for multi-path execution, because
-they usually mutate internal bookkeeping structures on read operations.
-Worse, they may write these mutations back to the disk image file, causing
-VM image corruptions. QCOW2 is one example of such formats.
-
-The S2E image format, unlike the other formats, is multi-path aware.
-When in S2E mode, writes are local to each state and do not clobber other states.
-Moreover, writes are NEVER propagated from the state to the image (or the snapshot). This makes it possible
-to share one disk image and snapshots among many instances of S2E.
-
-The S2E image format stores snapshots in a separate file, suffixed by the name of the
-snapshot. For example, if the base image is called "my_image.raw.s2e",
-the snapshot ``ready`` (generated with ``savevm ready``) will be saved in the file
-``my_image.raw.s2e.ready`` in the same folder as ``my_image.raw.s2e``.
-
-
-General Requirements and Guidelines for VM Images
-=================================================
-
-When running in S2E mode, the image **must** be in S2E format. S2E does not support any other image format.
-
-Any x86 image that boots in vanilla QEMU will work in S2E. However, we enumerate a list of tips
-and optimizations that will make administration easier and symbolic execution faster.
-*These tips should be used as guidelines and are not mandatory.*
-
-Here is a checklist we recommend to follow:
-
-
-* Install your operating system in the vanilla QEMU. It is the fastest approach. In general, all installation and setup tasks should be done in vanilla QEMU.
-
-* Keep a fresh copy of your OS installation. It is recommended to start with a fresh copy for each analysis task. For instance, if you use an image to test a device driver, avoid using this same image to analyze some spreadsheet component. One image = one analysis. It is easier to manage and your results will be easier to reproduce.
-
-* Once your image (in S2E format) is set up and ready to be run in symbolic execution mode, take a snapshot and resume that snapshot in the S2E-enabled QEMU. This step is not necessary, but it greatly shortens boot times. Booting an image in S2E can take a (very) long time.
-
-* It is recommended to use 128MiB of RAM for the guest OS (or less). S2E is not limited by the amount of memory in any way (it is 64-bit), but your physical machine is.
-
-* Disable fancy desktop themes. Most OSes have a GUI, which consumes resources. Disabling all visual effects will make program analysis faster.
+* Disable fancy desktop themes. Most OSes have a GUI, which consumes resources.
+  Disabling all visual effects will make program analysis faster.
 
 * Disable the screen saver.
 
-* Disable unnecessary services to save memory and speed up the guest. Services like file sharing, printing, wireless network configuration, or firewall are useless unless you want to test them in S2E.
+* Disable unnecessary services to save memory and speed up the guest. Services
+  like file sharing, printing, wireless network configuration, or firewall are
+  useless unless you want to test them in S²E.
 
-* Avoid the QEMU ``virtio`` network interface for now. In the version of QEMU that is bundled into S2E, there can be random crashes.
-
-
-Experimental KVM Snapshot Support
-=================================
-
-It is possible to boot an image in KVM mode, take a snapshot, and resume
-it in the dynamic binary translation (DBT) mode that QEMU normally uses.
-This is useful if your guest system is large and avoids cumbersome manipulations to workaround the relative slowness of the DBT
-(e.g., starting in QEMU, setting up, converting the disk image to S2E, rebooting again in DBT mode, etc.).
-
-::
-
-    # Set up the guest, take a snapshot
-    $ ./qemu-release/x86_64-softmmu/qemu-system-x86_64 -enable-kvm -cpu core2duo -net none
-
-    # Resume the snapshot in DBT mode using vanilla QEMU, to finish the setup
-    $ ./qemu-release/x86_64-softmmu/qemu-system-x86_64 -cpu core2duo -net none -loadvm mysnapshot
-
-    # Resume the snapshot in S2E mode
-    $ ./qemu-release/x86_64-s2e-softmmu/qemu-system-x86_64 -cpu core2duo -net none -loadvm mysnapshot
-
-Limitations:
-
-- The host CPU in KVM mode must match the virtual CPU in DBT mode. For example, you cannot save a KVM snapshot
-  on an Intel CPU and resume it with default settings in DBT mode (i.e., -cpu qemu64, which uses the AMD variations of some instructions).
-
-- The CPUID flags should be matched between KVM and DBT mode. Mismatches do not seem to matter for simple experiments, but may
-  lead to guest kernel crashes. You can dump ``/proc/cpuinfo`` in KVM and DBT mode, compare both and add the corresponding tweaks
-  to the ``-cpu`` parameter.
-
-- KVM mode does not support S2E custom instructions. They cause an invalid opcode exception in the guest.
-  Therefore, you might need to save a second snapshot in DBT mode when using tools such as ``s2eget``.
-
-- It is possible that the guest hangs when resumed in DBT mode from a KVM snapshot.
-  Try to save and resume again.
-
-- Resuming DBT snapshots in KVM mode does not seem to work.
+* Avoid the QEMU ``virtio`` network interface for now. In the version of QEMU
+  that is bundled into S²E, there can be random crashes.

@@ -18,6 +18,7 @@ Getting Started
    GettingStarted
    BuildingS2E
    ImageInstallation
+   Workflow
    UsingS2EGet
    TestingMinimalProgram
    Howtos/init_env

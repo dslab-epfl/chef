@@ -47,41 +47,47 @@
 <p class="topic-title first">Contents</p>
 <ul class="simple">
 <li><a class="reference internal" href="#managing-vms" id="id5">Managing VMs</a><ul>
-<li><a class="reference internal" href="#with-ctl" id="id6">With <tt class="docutils literal"><span class="pre">ctl</span></tt></a><ul>
+<li><a class="reference internal" href="#managing-vms-with-ctl" id="id6">Managing VMs With <tt class="docutils literal"><span class="pre">ctl</span></tt></a><ul>
 <li><a class="reference internal" href="#create" id="id7">Create</a></li>
 <li><a class="reference internal" href="#clone" id="id8">Clone</a></li>
 <li><a class="reference internal" href="#export-import" id="id9">Export/Import</a></li>
 <li><a class="reference internal" href="#delete" id="id10">Delete</a></li>
 </ul>
 </li>
-<li><a class="reference internal" href="#manually" id="id11">Manually</a><ul>
+<li><a class="reference internal" href="#managing-vms-manually" id="id11">Managing VMs Manually</a><ul>
 <li><a class="reference internal" href="#id1" id="id12">Create</a></li>
 <li><a class="reference internal" href="#id2" id="id13">Clone</a></li>
 <li><a class="reference internal" href="#id3" id="id14">Export/Import</a></li>
 <li><a class="reference internal" href="#id4" id="id15">Delete</a></li>
 </ul>
 </li>
-<li><a class="reference internal" href="#about-the-s2e-suffix" id="id16">About the <tt class="docutils literal"><span class="pre">.s2e</span></tt> suffix</a></li>
+<li><a class="reference internal" href="#the-s2e-vm-image-format" id="id16">The S²E VM Image Format</a><ul>
+<li><a class="reference internal" href="#the-s2e-file-name-suffix" id="id17">The <tt class="docutils literal"><span class="pre">.s2e</span></tt> file name suffix</a></li>
+<li><a class="reference internal" href="#snapshots" id="id18">Snapshots</a></li>
+</ul>
+</li>
 </ul>
 </li>
 </ul>
 </div>
-<p>Virtual machines are conveniently managed through the <tt class="docutils literal"><span class="pre">vm</span></tt> subcommand of the
-<tt class="docutils literal"><span class="pre">ctl</span></tt> script.</p>
-<p>In this document, we cover most of the functionality of the <tt class="docutils literal"><span class="pre">vm</span></tt> command, but
-may leave out some details. Passing the <tt class="docutils literal"><span class="pre">-h</span></tt> option will show and explain
-all available options and arguments.</p>
-<div class="section" id="with-ctl">
-<h2><a class="toc-backref" href="#id6">With <tt class="docutils literal"><span class="pre">ctl</span></tt></a><a class="headerlink" href="#with-ctl" title="Permalink to this headline">¶</a></h2>
+<p><strong>Note</strong>: In this document, <tt class="docutils literal"><span class="pre">$S2EDIR</span></tt> denotes the location where all the S²E
+related files lie in, as explained in <a class="reference internal" href="BuildingS2E.html"><em>Building the S²E Platform</em></a>. Furthermore, this
+document makes extensive use of the <tt class="docutils literal"><span class="pre">$S2EDIR/src/ctl</span></tt> script, and runs it
+simply as the <tt class="docutils literal"><span class="pre">ctl</span></tt> command. You may achieve the same effect by</p>
+<div class="highlight-python"><div class="highlight"><pre>$ alias ctl=$S2EDIR/src/ctl
+</pre></div>
+</div>
+<p>or by adding a symbolic link from somewhere in your <tt class="docutils literal"><span class="pre">PATH</span></tt> environment.</p>
+<div class="section" id="managing-vms-with-ctl">
+<h2><a class="toc-backref" href="#id6">Managing VMs With <tt class="docutils literal"><span class="pre">ctl</span></tt></a><a class="headerlink" href="#managing-vms-with-ctl" title="Permalink to this headline">¶</a></h2>
 <div class="section" id="create">
 <h3><a class="toc-backref" href="#id7">Create</a><a class="headerlink" href="#create" title="Permalink to this headline">¶</a></h3>
-<p>A new, empty VM can be created with the <tt class="docutils literal"><span class="pre">ctl</span></tt> script:</p>
 <div class="highlight-python"><div class="highlight"><pre>$ ctl vm create MyBox 7680M
 [ OK ] initialise VM
 [ OK ] create 7680MiB image
 </pre></div>
 </div>
-<p>The resulting VM should then show up in the list of managed VMs:</p>
+<p>The resulting VM should show up in the list of managed VMs:</p>
 <div class="highlight-python"><div class="highlight"><pre>$ ctl vm list
 MyBox
   Size: 7680.0MiB
@@ -89,8 +95,8 @@ MyBox
 </div>
 </div>
 <div class="section" id="clone">
-<h3><a class="toc-backref" href="#id8">Clone</a><a class="headerlink" href="#clone" title="Permalink to this headline">¶</a></h3>
-<p>Assuming we want to split the development on a machine</p>
+<span id="clonevms"></span><h3><a class="toc-backref" href="#id8">Clone</a><a class="headerlink" href="#clone" title="Permalink to this headline">¶</a></h3>
+<p>Assume we&#8217;ve got the following machine:</p>
 <div class="highlight-python"><div class="highlight"><pre>$ ctl vm list
 MyBox
   Size: 7680.0MiB
@@ -100,8 +106,9 @@ MyBox
     asdföklj
 </pre></div>
 </div>
-<p>or just fiddle around on it and have a &#8220;safe copy&#8221; in case something goes
-wrong:</p>
+<p>Now we may want to split the development on this machine, or just fiddle around
+on it and have a &#8220;safe copy&#8221; in case something goes wrong, then we can <em>clone</em>
+it:</p>
 <div class="highlight-python"><div class="highlight"><pre>$ ctl vm clone MyBox MyClonedBox
 [ OK ] initialise VM
 [ OK ] copy disk image
@@ -130,7 +137,7 @@ MyClonedBox
 creating snapshots may be a better solution.</p>
 </div>
 <div class="section" id="export-import">
-<h3><a class="toc-backref" href="#id9">Export/Import</a><a class="headerlink" href="#export-import" title="Permalink to this headline">¶</a></h3>
+<span id="exportimportvms"></span><h3><a class="toc-backref" href="#id9">Export/Import</a><a class="headerlink" href="#export-import" title="Permalink to this headline">¶</a></h3>
 <p>To facilitate collaboration, VMs can be packaged:</p>
 <div class="highlight-python"><div class="highlight"><pre>$ ctl vm export MyBox
 [INFO] exporting to /path/to/working/directory/MyBox.tar.gz
@@ -170,6 +177,12 @@ AnImportedBox
     asdfölkj
 </pre></div>
 </div>
+<p>If you wish to import just a raw image, you can pass the <tt class="docutils literal"><span class="pre">--raw</span></tt> option:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ ctl vm import --raw /path/to/disk.raw AnImportedBox
+[ OK ] initialise VM
+[ OK ] copy disk image
+</pre></div>
+</div>
 </div>
 <div class="section" id="delete">
 <h3><a class="toc-backref" href="#id10">Delete</a><a class="headerlink" href="#delete" title="Permalink to this headline">¶</a></h3>
@@ -186,8 +199,8 @@ Delete VM MyBox? [y/N] y
 </div>
 </div>
 </div>
-<div class="section" id="manually">
-<h2><a class="toc-backref" href="#id11">Manually</a><a class="headerlink" href="#manually" title="Permalink to this headline">¶</a></h2>
+<div class="section" id="managing-vms-manually">
+<h2><a class="toc-backref" href="#id11">Managing VMs Manually</a><a class="headerlink" href="#managing-vms-manually" title="Permalink to this headline">¶</a></h2>
 <p>Each of the abovementioned actions can also be done without <tt class="docutils literal"><span class="pre">ctl</span></tt>, and are
 rather simple. In this section, we will simply list the &#8220;manual&#8221; equivalent to
 each of the commands mentioned above.</p>
@@ -196,8 +209,8 @@ each of the commands mentioned above.</p>
 <div class="highlight-python"><div class="highlight"><pre>$ ctl vm create MyBox 7680M
 ___
 
-$ mkdir /path/to/s2e/vm/MyBox
-$ /path/to/s2e/build/i386-release/normal/qemu/qemu-img create -f raw /path/to/s2e/vm/MyBox/disk.s2e 7680M
+$ mkdir $S2EDIR/vm/MyBox
+$ $S2EDIR/build/i386-release/normal/qemu/qemu-img create -f raw $S2EDIR/vm/MyBox/disk.s2e 7680M
 </pre></div>
 </div>
 </div>
@@ -206,7 +219,7 @@ $ /path/to/s2e/build/i386-release/normal/qemu/qemu-img create -f raw /path/to/s2
 <div class="highlight-python"><div class="highlight"><pre>$ ctl vm clone MyBox MyClonedBox
 ___
 
-$ cp -r /path/to/s2e/vm/MyBox /path/to/s2e/vm/MyClonedBox
+$ cp -r $S2EDIR/vm/MyBox $S2EDIR/vm/MyClonedBox
 </pre></div>
 </div>
 </div>
@@ -215,18 +228,18 @@ $ cp -r /path/to/s2e/vm/MyBox /path/to/s2e/vm/MyClonedBox
 <div class="highlight-python"><div class="highlight"><pre>$ ctl vm export MyBox MyBox.tar.gz
 ___
 
-$ cd /path/to/s2e/vm/MyBox/
+$ cd $S2EDIR/vm/MyBox/
 $ tar czf MyBox.tar.gz disk.s2e*
 $ cd -
-$ mv /path/to/s2e/vm/MyBox/MyBox.tar.gz .
+$ mv $S2EDIR/vm/MyBox/MyBox.tar.gz .
 </pre></div>
 </div>
 <p>and</p>
 <div class="highlight-python"><div class="highlight"><pre>$ ctl vm import MyBox.tar.gz AnotherBox
 ___
 
-$ mkdir /path/to/s2e/vm/AnotherBox
-$ cd /path/to/s2e/vm/AnotherBox/
+$ mkdir $S2EDIR/vm/AnotherBox
+$ cd $S2EDIR/vm/AnotherBox/
 $ tar xzf /path/to/MyBox.tar.gz
 $ cd -
 </pre></div>
@@ -238,31 +251,62 @@ $ cd -
 <div class="highlight-python"><div class="highlight"><pre>$ ctl vm delete MyBox:asdfölkj
 ___
 
-$ rm /path/to/s2e/vm/MyBox/disk.s2e.asdfölkj
+$ rm $S2EDIR/vm/MyBox/disk.s2e.asdfölkj
 </pre></div>
 </div>
 <p>and</p>
 <div class="highlight-python"><div class="highlight"><pre>$ ctl vm delete MyBox
 ___
 
-$ rm -r /path/to/s2e/vm/MyBox
+$ rm -r $S2EDIR/vm/MyBox
 </pre></div>
 </div>
 </div>
 </div>
-<div class="section" id="about-the-s2e-suffix">
-<h2><a class="toc-backref" href="#id16">About the <tt class="docutils literal"><span class="pre">.s2e</span></tt> suffix</a><a class="headerlink" href="#about-the-s2e-suffix" title="Permalink to this headline">¶</a></h2>
-<p>S²E operates on raw qemu disk images as hard drive files. In some runtime
-configurations however (preparation and symbolic mode), S²E should treat the
-hard drives as having the &#8220;S²E format&#8221; so that it won&#8217;t write changes back to it
-and cause corruption.</p>
-<p>In order to do so, the option <tt class="docutils literal"><span class="pre">-drive</span> <span class="pre">format=s2e</span></tt> can be passed to S²E/qemu.
-Alternatively, the hard drive will automatically be treated as having the S²E
-format if its filename has the <tt class="docutils literal"><span class="pre">.s2e</span></tt> suffix.</p>
-<p>To prevent data corruption upon forgetting to declare the hard drive format as
-<tt class="docutils literal"><span class="pre">s2e</span></tt>, in practice, S²E will refuse to operate on a drive file that does not
-have the <tt class="docutils literal"><span class="pre">.s2e</span></tt> suffix (even if explicitely specified with <tt class="docutils literal"><span class="pre">-drive</span>
-<span class="pre">format=s2e</span></tt>).</p>
+<div class="section" id="the-s2e-vm-image-format">
+<h2><a class="toc-backref" href="#id16">The S²E VM Image Format</a><a class="headerlink" href="#the-s2e-vm-image-format" title="Permalink to this headline">¶</a></h2>
+<p><strong>Note</strong>: This section is informational. In general, you should not face the
+issues described here if you are using the <tt class="docutils literal"><span class="pre">ctl</span></tt> script to interact with S²E.
+However, if you are interested, the output of <tt class="docutils literal"><span class="pre">ctl</span> <span class="pre">run</span></tt> always prints the full
+QEMU command line to the terminal, e.g.</p>
+<div class="highlight-python"><div class="highlight"><pre>$ ctl vm run --dry-run MyBox sym
+[INFO] Qemu monitor: port 12345 (connect with `{nc,telnet} XXX.XX.XX.XXX 12345)
+[DEBUG] Command line:
+$S2EDIR/build/i386-release-normal/qemu/i386-s2e-softmmu/qemu-system-i386 -drive file=$S2EDIR/vm/Debian/disk.s2e,cache=writeback,format=s2e -cpu pentium -monitor tcp::12345,server,nowait -net nic,model=pcnet -net user -s2e-config-file $S2EDIR/src/config/default-config.lua -s2e-verbose -s2e-output-dir $S2EDIR/expdata/auto_2015-08-19T15:06:25.383+0200
+</pre></div>
+</div>
+<hr class="docutils" />
+<p>S²E operates on raw disk images, but it treats them as being in the <em>S²E disk
+image format</em>. The image handler is basically a wrapper around QEMU&#8217;s raw image
+handler.</p>
+<p>When in S²E mode, writes to the disk are local to each state and do not clobber
+other states. Moreover, writes are NEVER propagated from the state to the image
+(or the snapshot). This makes it possible to share one disk image and snapshots
+among many instances of S²E.</p>
+<p>S²E uses the raw format because existing disk image formats are not suitable for
+multi-path execution; they usually mutate internal bookkeeping structures on
+read operations, or worse, they may write these mutations back to the disk image
+file, causing VM image corruptions. QCOW2 is one example of such formats. The
+raw format does not suffer from any of these drawbacks, as there are no internal
+disk handling mechanisms.</p>
+<div class="section" id="the-s2e-file-name-suffix">
+<h3><a class="toc-backref" href="#id17">The <tt class="docutils literal"><span class="pre">.s2e</span></tt> file name suffix</a><a class="headerlink" href="#the-s2e-file-name-suffix" title="Permalink to this headline">¶</a></h3>
+<p>To make S²E handle a disk image with the S²E format, one can pass the
+<tt class="docutils literal"><span class="pre">format=s2e</span></tt> option when specifying the disk image with QEMU&#8217;s <tt class="docutils literal"><span class="pre">-drive</span></tt>
+option. If this is missing, S²E will infer the format from the file name
+extension; in particular, <tt class="docutils literal"><span class="pre">.s2e</span></tt> will denote the S²E image format.</p>
+<p>In practice, however, if running in symbolic mode, S²E will refuse to operate on
+disk image files that do not have the <tt class="docutils literal"><span class="pre">.s2e</span></tt> extension (even if the format is
+explicitly specified through <tt class="docutils literal"><span class="pre">format=s2e</span></tt>). This is to avoid data corruption
+in case one forgets to specify the format.</p>
+</div>
+<div class="section" id="snapshots">
+<h3><a class="toc-backref" href="#id18">Snapshots</a><a class="headerlink" href="#snapshots" title="Permalink to this headline">¶</a></h3>
+<p>The S²E image format stores snapshots in a separate file, suffixed by the name
+of the snapshot. For example, if the base image is called <tt class="docutils literal"><span class="pre">my_image.s2e</span></tt>, the
+snapshot <tt class="docutils literal"><span class="pre">ready</span></tt> (generated with <tt class="docutils literal"><span class="pre">savevm</span> <span class="pre">ready</span></tt>) will be saved in the file
+<tt class="docutils literal"><span class="pre">my_image.s2e.ready</span></tt> in the same folder as <tt class="docutils literal"><span class="pre">my_image.s2e</span></tt>.</p>
+</div>
 </div>
 </div>
 
@@ -275,21 +319,25 @@ have the <tt class="docutils literal"><span class="pre">.s2e</span></tt> suffix 
   <h3><a href="index.html">Table Of Contents</a></h3>
   <ul>
 <li><a class="reference internal" href="#">Managing VMs</a><ul>
-<li><a class="reference internal" href="#with-ctl">With <tt class="docutils literal"><span class="pre">ctl</span></tt></a><ul>
+<li><a class="reference internal" href="#managing-vms-with-ctl">Managing VMs With <tt class="docutils literal"><span class="pre">ctl</span></tt></a><ul>
 <li><a class="reference internal" href="#create">Create</a></li>
 <li><a class="reference internal" href="#clone">Clone</a></li>
 <li><a class="reference internal" href="#export-import">Export/Import</a></li>
 <li><a class="reference internal" href="#delete">Delete</a></li>
 </ul>
 </li>
-<li><a class="reference internal" href="#manually">Manually</a><ul>
+<li><a class="reference internal" href="#managing-vms-manually">Managing VMs Manually</a><ul>
 <li><a class="reference internal" href="#id1">Create</a></li>
 <li><a class="reference internal" href="#id2">Clone</a></li>
 <li><a class="reference internal" href="#id3">Export/Import</a></li>
 <li><a class="reference internal" href="#id4">Delete</a></li>
 </ul>
 </li>
-<li><a class="reference internal" href="#about-the-s2e-suffix">About the <tt class="docutils literal"><span class="pre">.s2e</span></tt> suffix</a></li>
+<li><a class="reference internal" href="#the-s2e-vm-image-format">The S²E VM Image Format</a><ul>
+<li><a class="reference internal" href="#the-s2e-file-name-suffix">The <tt class="docutils literal"><span class="pre">.s2e</span></tt> file name suffix</a></li>
+<li><a class="reference internal" href="#snapshots">Snapshots</a></li>
+</ul>
+</li>
 </ul>
 </li>
 </ul>
