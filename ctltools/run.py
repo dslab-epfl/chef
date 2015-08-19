@@ -287,10 +287,10 @@ def parse_cmd_line():
                                help="The Chef configuration file")
     symbolic_mode.add_argument('-t','--timeout', type=int, default=None,
                                help="Timeout (in seconds)")
-    symbolic_mode.add_argument('-p','--command-port', type=int, default=COMMAND_PORT,
-                               help="Port on which the watchdog is accessible")
     symbolic_mode.add_argument('-e','--env-var', action='append',
                                help="Environment variable for the command (can be used multiple times)")
+    symbolic_mode.add_argument('--command-port', type=int, default=COMMAND_PORT,
+                               help="Port on which the watchdog is accessible")
     symbolic_mode.add_argument('--script', nargs=2,
                                help="Execute script given as a pair <test file, test name>")
     symbolic_mode.add_argument('--batch-file', default=None,
@@ -452,6 +452,7 @@ def batch_execute(args: dict):
                         % (args['vnc_display'] + batch_offset)])
         cmd_line.extend(['--build', utils.BUILD])
         cmd_line.extend(['--network', args['network']])
+        cmd_line.extend(['--memory', args['memory']])
         cmd_line.extend([args['VM[:snapshot]']])
         cmd_line.extend(['sym'])
         cmd_line.extend(['--command-port', '%d'
