@@ -4,53 +4,14 @@ Managing VMs
 
 .. contents::
 
-In this document, we cover most of the functionality of the ``vm`` command,
-which is used to manage virtual machines in a convenient way. However, we may
-leave out some details. Passing the ``-h`` option will show and explain all
-available options and arguments.
-
-**Note**: ``$S2EDIR`` denotes the location into which the project's source code
-and other related files have been placed into. Furthermore, this guide will make
-extensive use of the ``$S2EDIR/src/ctl`` script, and runs it simply as the
-``ctl`` command. You may achieve the same effect by ::
+**Note**: In this document, ``$S2EDIR`` denotes the location where all the S²E
+related files lie in, as explained in :doc:`BuildingS2E`. Furthermore, this
+document makes extensive use of the ``$S2EDIR/src/ctl`` script, and runs it
+simply as the ``ctl`` command. You may achieve the same effect by ::
 
     $ alias ctl=$S2EDIR/src/ctl
 
-
-About the VM Images
-===================
-
-S²E operates on raw qemu disk images as hard drive files. In order to reduce the
-used space, they are stored as `sparse files
-<https://en.wikipedia.org/wiki/Sparse_file>`_, so even a 10GiB image should only
-take a few gigabytes (depending on what's installed on it, of course).
-
-
-About the ``.s2e`` suffix
-=========================
-
-In some runtime configurations (preparation and symbolic mode), S²E should treat
-the hard drives as having the "S²E format" so that it won't write changes back
-to it and cause data corruption.
-
-In order to do so, the option ``-drive format=s2e`` can be passed to S²E/qemu.
-Alternatively, the hard drive will automatically be treated as having the S²E
-format if its filename has the ``.s2e`` suffix.
-
-To prevent data corruption upon forgetting to declare the hard drive format as
-``s2e``, in practice, S²E will refuse to operate on a drive file that does not
-have the ``.s2e`` suffix (even if explicitely specified with ``-drive
-format=s2e``).
-
-In general, you should not face these issues if you are using the ``ctl`` script
-to interact with S²E. Furthermore, if you are intersted, running ``ctl run``
-will print the full qemu command line to the terminal.
-
-
-Reusing an existing VM
-======================
-
-See how to :ref:`import VMs <ExportImportVMs>`.
+or by adding a symbolic link from somewhere in your ``PATH`` environment.
 
 
 Managing VMs With ``ctl``
@@ -71,10 +32,12 @@ The resulting VM should show up in the list of managed VMs::
     MyBox
       Size: 7680.0MiB
 
+.. _CloneVMs:
+
 Clone
 -----
 
-Assuming we want to split the development on a machine ::
+Assume we've got the following machine::
 
     $ ctl vm list
     MyBox
@@ -84,8 +47,9 @@ Assuming we want to split the development on a machine ::
         base
         asdföklj
 
-or just fiddle around on it and have a "safe copy" in case something goes
-wrong::
+Now we may want to split the development on this machine, or just fiddle around
+on it and have a "safe copy" in case something goes wrong, then we can *clone*
+it::
 
     $ ctl vm clone MyBox MyClonedBox
     [ OK ] initialise VM
@@ -248,3 +212,56 @@ and ::
     ___
 
     $ rm -r $S2EDIR/vm/MyBox
+
+
+The S²E VM Image Format
+=======================
+
+**Note**: This section is informational. In general, you should not face the
+issues described here if you are using the ``ctl`` script to interact with S²E.
+However, if you are interested, the output of ``ctl run`` always prints the full
+QEMU command line to the terminal, e.g. ::
+
+    $ ctl vm run --dry-run MyBox sym
+    [INFO] Qemu monitor: port 12345 (connect with `{nc,telnet} XXX.XX.XX.XXX 12345)
+    [DEBUG] Command line:
+    $S2EDIR/build/i386-release-normal/qemu/i386-s2e-softmmu/qemu-system-i386 -drive file=$S2EDIR/vm/Debian/disk.s2e,cache=writeback,format=s2e -cpu pentium -monitor tcp::12345,server,nowait -net nic,model=pcnet -net user -s2e-config-file $S2EDIR/src/config/default-config.lua -s2e-verbose -s2e-output-dir $S2EDIR/expdata/auto_2015-08-19T15:06:25.383+0200
+
+----
+
+S²E operates on raw disk images, but it treats them as being in the *S²E disk
+image format*. The image handler is basically a wrapper around QEMU's raw image
+handler.
+
+When in S²E mode, writes to the disk are local to each state and do not clobber
+other states. Moreover, writes are NEVER propagated from the state to the image
+(or the snapshot). This makes it possible to share one disk image and snapshots
+among many instances of S²E.
+
+S²E uses the raw format because existing disk image formats are not suitable for
+multi-path execution; they usually mutate internal bookkeeping structures on
+read operations, or worse, they may write these mutations back to the disk image
+file, causing VM image corruptions. QCOW2 is one example of such formats. The
+raw format does not suffer from any of these drawbacks, as there are no internal
+disk handling mechanisms.
+
+The ``.s2e`` file name suffix
+-----------------------------
+
+To make S²E handle a disk image with the S²E format, one can pass the
+``format=s2e`` option when specifying the disk image with QEMU's ``-drive``
+option. If this is missing, S²E will infer the format from the file name
+extension; in particular, ``.s2e`` will denote the S²E image format.
+
+In practice, however, if running in symbolic mode, S²E will refuse to operate on
+disk image files that do not have the ``.s2e`` extension (even if the format is
+explicitly specified through ``format=s2e``). This is to avoid data corruption
+in case one forgets to specify the format.
+
+Snapshots
+---------
+
+The S²E image format stores snapshots in a separate file, suffixed by the name
+of the snapshot. For example, if the base image is called ``my_image.s2e``, the
+snapshot ``ready`` (generated with ``savevm ready``) will be saved in the file
+``my_image.s2e.ready`` in the same folder as ``my_image.s2e``.
