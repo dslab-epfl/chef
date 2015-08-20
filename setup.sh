@@ -37,8 +37,12 @@ if [ "$1" = '--no-keep' ]; then
 fi
 
 # Add user to kvm group:
-sudo groupadd -r -g 78 kvm
-sudo usermod -a -G kvm $(id -u)
+if ! getent group kvm; then
+	sudo groupadd -r -g 78 kvm
+fi
+if ! getent group kvm | grep $(id -un); then
+	sudo usermod -a -G kvm $(id -u)
+fi
 
 # dependencies for Chef:
 sudo apt-get install -y gdb strace libdwarf-dev libelf-dev libboost-dev libsqlite3-dev libmemcached-dev libboost-serialization-dev libboost-system-dev

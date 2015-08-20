@@ -369,6 +369,12 @@ all_build()
 	llvm_seen=$FALSE
 	for component in $COMPS
 	do
+		# Exclude component?
+		if list_contains "$COMPS_EXCLUDE" "$component"; then
+			skip '%s: excluded' "$component"
+			continue
+		fi
+
 		DSTPATH="$BUILDPATH/$component"
 		SRCPATH="$CHEFROOT_SRC/$component"
 		LOGFILE="${DSTPATH}.log"
@@ -385,7 +391,7 @@ all_build()
 				# second encounter with LLVM:
 				TARGET=debug
 			fi
-			parse_build "$ARCH:$TARGET:$MODE" # sets LLVM_BUILD
+			refresh_build_llvm  # sets LLVM_BUILD
 		fi
 
 		# Prepare:
@@ -397,13 +403,10 @@ all_build()
 			fi
 		fi
 
-		# Exclude/force-build component?
+		# Force-build component?
 		if list_contains "$COMPS_FORCE" "$component"; then
 			info 'force-building %s' "$component"
 			rm -rf "$DSTPATH"
-		elif list_contains "$COMPS_EXCLUDE" "$component"; then
-			skip '%s: excluded' "$component"
-			continue
 		fi
 
 		# Build:
@@ -459,7 +462,7 @@ help()
 	  -p PROC    Change procedure (see below for more information)
 	  -f COMPS   Comma-separated list of components to be force-compiled from scratch
 	             [default=$COMPS_FORCE]
-	  -x COMPS   Comma-separated list of components to be excluded (-f overrides this)
+	  -x COMPS   Comma-separated list of components to be excluded (has precedence over -f)
 	             [default=$COMPS_EXCLUDE]
 	  -c COMPS   Only build components COMPS (instead of all)
 	  -j N       Compile with N jobs [default=$JOBS]
@@ -559,7 +562,9 @@ get_build()
 	else
 		ARGSHIFT=1
 	fi
-	parse_build "$1"
+	parse_build "$1"    # sets BUILD (+ ARCH, TARGET, MODE)
+	refresh_buildpath   # sets BUILDPATH
+	refresh_build_llvm  # sets ASSERTS and LLVM_BUILD
 }
 
 main()

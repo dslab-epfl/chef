@@ -15,7 +15,6 @@ Getting Started
    :maxdepth: 1
    :numbered:
 
-   GettingStarted
    BuildingS2E
    ImageInstallation
    Workflow
@@ -56,6 +55,7 @@ Howtos
    Howtos/WritingPlugins
    Howtos/Parallel
    Howtos/Debugging
+   Howtos/ManagingVMs
 
 S2E Tools
 ---------

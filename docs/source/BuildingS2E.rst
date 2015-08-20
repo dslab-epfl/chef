@@ -21,10 +21,13 @@ its source directory, so the following procedure is recommended for fetching the
 source::
 
     $ mkdir s2e
-    $ git clone --recursive https://github.com/dslab-epfl/chef s2e/src
+    $ git clone --recursive git@github.com:dslab-epfl/chef s2e/src
 
 This will place the S²E source in the ``s2e/src`` subdirectory, together with
 its sub-components.
+
+**Note**: If you do not have any Github account, you may need to :ref:`change
+the repository's remote URLs <cloneNonGithub>`.
 
 
 Preparing the Environment
@@ -34,7 +37,7 @@ The repository should contain a script ``setup.sh``, which will install its
 dependencies and run some additional preparation work. Since it will assume that
 you are part of the ``sudo`` group, you may want to check that first::
 
-    $ id                                                     ↓↓↓↓↓↓↓↓
+    $ id
     uid=1000(s2euser) gid=1000(s2euser) groups=1000(s2euser),27(sudo),...
 
 Then, launch the script::
