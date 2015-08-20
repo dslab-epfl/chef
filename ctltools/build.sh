@@ -369,6 +369,12 @@ all_build()
 	llvm_seen=$FALSE
 	for component in $COMPS
 	do
+		# Exclude component?
+		if list_contains "$COMPS_EXCLUDE" "$component"; then
+			skip '%s: excluded' "$component"
+			continue
+		fi
+
 		DSTPATH="$BUILDPATH/$component"
 		SRCPATH="$CHEFROOT_SRC/$component"
 		LOGFILE="${DSTPATH}.log"
@@ -397,13 +403,10 @@ all_build()
 			fi
 		fi
 
-		# Exclude/force-build component?
+		# Force-build component?
 		if list_contains "$COMPS_FORCE" "$component"; then
 			info 'force-building %s' "$component"
 			rm -rf "$DSTPATH"
-		elif list_contains "$COMPS_EXCLUDE" "$component"; then
-			skip '%s: excluded' "$component"
-			continue
 		fi
 
 		# Build:
@@ -459,7 +462,7 @@ help()
 	  -p PROC    Change procedure (see below for more information)
 	  -f COMPS   Comma-separated list of components to be force-compiled from scratch
 	             [default=$COMPS_FORCE]
-	  -x COMPS   Comma-separated list of components to be excluded (-f overrides this)
+	  -x COMPS   Comma-separated list of components to be excluded (has precedence over -f)
 	             [default=$COMPS_EXCLUDE]
 	  -c COMPS   Only build components COMPS (instead of all)
 	  -j N       Compile with N jobs [default=$JOBS]
