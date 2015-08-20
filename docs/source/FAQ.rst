@@ -4,6 +4,32 @@ Frequently Asked Questions (FAQ)
 
 .. contents::
 
+Git
+===
+
+
+.. _cloneNonGithub:
+
+How can I clone S²E without a Github account?
+---------------------------------------------
+
+Github provides two ways for accessing its git repositories. One is through SSH,
+the other through HTTPS. Former requires having a Github account and registering
+a public key, while latter is usable for all users.
+
+Since there are submodules involved, changing just the main repository URL when
+cloning isn't enough::
+
+    $ git clone --recursive git@github.com:dslab-epfl/chef s2e/src
+
+becomes thus ::
+
+    $ git clone https://github.com/dslab-epfl/chef s2e/src
+    $ cd s2e/src
+    $ sed -i 's/git@github.com:/https:\/\/github.com\//g' .gitmodules
+    $ git submodule update --init --recursive
+
+
 S2E
 ===
 
