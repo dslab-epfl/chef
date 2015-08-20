@@ -385,7 +385,7 @@ all_build()
 				# second encounter with LLVM:
 				TARGET=debug
 			fi
-			parse_build "$ARCH:$TARGET:$MODE" # sets LLVM_BUILD
+			refresh_build_llvm  # sets LLVM_BUILD
 		fi
 
 		# Prepare:
@@ -559,7 +559,9 @@ get_build()
 	else
 		ARGSHIFT=1
 	fi
-	parse_build "$1"
+	parse_build "$1"    # sets BUILD (+ ARCH, TARGET, MODE)
+	refresh_buildpath   # sets BUILDPATH
+	refresh_build_llvm  # sets ASSERTS and LLVM_BUILD
 }
 
 main()

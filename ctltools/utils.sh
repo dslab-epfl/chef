@@ -442,7 +442,15 @@ parse_build()
 		die_help 'Unknown mode: %s' "$MODE"
 	fi
 	BUILD="$ARCH:$TARGET:$MODE"
+}
+
+refresh_buildpath()
+{
 	BUILDPATH="$CHEFROOT_BUILD/$ARCH-$TARGET-$MODE"
+}
+
+refresh_build_llvm()
+{
 	case "$TARGET" in
 		release)
 			ASSERTS='Release+Asserts'
