@@ -45,9 +45,8 @@ this)::
 The image can now be run in KVM mode as follows::
 
     $ ctl run Debian kvm
-    [INFO] Qemu monitor: port 12345 (connect with `{nc,telnet} XXX.XX.XX.XXX 12345)
     [DEBUG] Command line:
-    $S2EDIR/build/i386-release-normal/qemu/i386-softmmu/qemu-system-i386 -drive file=$S2EDIR/vm/Debian/disk.s2e,if=virtio,format=raw -cpu pentium -monitor tcp::12345,server,nowait -m 2048M -net nic,model=pcnet -net user -enable-kvm -smp 4
+    $S2EDIR/build/i386-release-normal/qemu/i386-softmmu/qemu-system-i386 -drive file=$S2EDIR/vm/Debian/disk.s2e,if=virtio,format=raw -cpu pentium -m 2048M -net nic,model=pcnet -net user -enable-kvm -smp 4
     ...
 
 Inside the running machine, install packages, adjust configurations, etc. so
@@ -64,24 +63,15 @@ extremely slow. Therefore, in this intermediary step, we use the ordinary binary
 translation (non-S²E mode) to boot the system up::
 
     $ ctl run Debian prep
-    [INFO] Qemu monitor: port 12345 (connect with `{nc,telnet} XXX.XX.XX.XXX 12345)
     [DEBUG] Command line:
-    $S2EDIR/build/i386-release-normal/qemu/i386-softmmu/qemu-system-i386 -drive file=$S2EDIR/vm/Debian/disk.s2e,cache=writeback,format=s2e -cpu pentium -monitor tcp::12345,server,nowait -m 128M -net nic,model=pcnet -net user
+    $S2EDIR/build/i386-release-normal/qemu/i386-softmmu/qemu-system-i386 -drive file=$S2EDIR/vm/Debian/disk.s2e,cache=writeback,format=s2e -cpu pentium -m 128M -net nic,model=pcnet -net user
     ...
 
 Once the system has booted up, we put the machine in a state where we can launch
 the experiment, e.g. launch services, :kbd:`cd` in some directory, etc. Then, we
-save a snapshot --- you may have noticed this output::
+save a snapshot by switching to the QEMU monitor (pressing :kbd:`Control+Alt+2`)
+and running :kbd:`savevm`::
 
-    Qemu monitor: port 12345 (connect with `{nc,telnet} XXX.XX.XX.XXX 12345)
-
-QEMU provides a `monitor
-<http://wiki.qemu.org/download/qemu-doc.html#pcsys_005fmonitor>`_ that can be
-used to control the running VM. In our case, that monitor is accessible on port
-12345 and can be accessed through a TCP client of our choice. We use the monitor
-to save a snapshot of the current state::
-
-    $ nc localhost 12345
     QEMU 1.0.50 monitor - type 'help' for more information
     (qemu) savevm prepared
     savevm prepared
@@ -110,10 +100,9 @@ Finally, we can run S²E in symbolic mode by resuming from the snapshot we
 created above::
 
     $ ctl run Debian:prepared sym
-    [INFO] Qemu monitor: port 12345 (connect with `{nc,telnet} XXX.XX.XX.XXX 12345)
     [INFO] Experiment name: auto_2015-08-19T17:04:45.819+0200
     [DEBUG] Command line:
-    $S2EDIR/build/i386-release-normal/qemu/i386-s2e-softmmu/qemu-system-i386 -drive file=$S2EDIR/vm/Debian/disk.s2e,cache=writeback,format=s2e -cpu pentium -monitor tcp::12345,server,nowait -m 128M -net nic,model=pcnet -net user -s2e-config-file $S2EDIR/src/config/default-config.lua -s2e-verbose -s2e-output-dir $S2EDIR/expdata/auto_2015-08-19T17:04:45.819+0200
+    $S2EDIR/build/i386-release-normal/qemu/i386-s2e-softmmu/qemu-system-i386 -drive file=$S2EDIR/vm/Debian/disk.s2e,cache=writeback,format=s2e -cpu pentium -m 128M -net nic,model=pcnet -net user -s2e-config-file $S2EDIR/src/config/default-config.lua -s2e-verbose -s2e-output-dir $S2EDIR/expdata/auto_2015-08-19T17:04:45.819+0200
     ...
 
 Each time you run a VM in symbolic mode, S²E assumes that you will symbolically

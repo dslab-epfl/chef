@@ -548,7 +548,7 @@ get_options()
 			s) VERBOSE=$FALSE ;;
 			l) LIST=$TRUE ;;
 			y) DRYRUN=$TRUE ;;
-			h) help; exit 1 ;;
+			h) help | more; exit 1 ;;
 			'?') die_help 'Invalid option: -%s' "$OPTARG";;
 		esac
 	done

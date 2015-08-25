@@ -46,6 +46,7 @@ MONITOR_PORT = 12345
 VNC_DISPLAY = 0
 VNC_PORT_BASE = 5900
 TIMEOUT_CMD = 60
+TIMEOUT_CMD_SEND = 10
 CONFIGFILE = '%s/config/default-config.lua' % utils.CHEFROOT_SRC
 NETWORK_MODE = 'user'
 TAP_INTERFACE = 'tap0'
@@ -119,30 +120,33 @@ def async_send_command(command, host, port, timeout):
     pid = os.getpid()
     if os.fork() != 0:
         return
+
     # Avoid the pesky KeyboardInterrupts in the child
     signal.signal(signal.SIGINT, signal.SIG_IGN)
+
     command_deadline = datetime.now() + timedelta(seconds=timeout)
+    utils.pend("sending command %s to %s:%d" % (command.args, host, port))
     while True:
-        time.sleep(1)
         try:
-            os.kill(pid, 0)
+            os.kill(pid, 0) # check if parent is still here
         except OSError:
             break
+
         now = datetime.now()
         if now < command_deadline:
             try:
-                utils.pend("sending command %s to %s:%d" % (command.args, host, port))
-                send_command(command, host, port, timeout)
-                utils.ok("command %s successfully sent" % command.args)
+                send_command(command, host, port, TIMEOUT_CMD_SEND)
             except CommandError as e:
                 utils.pend(None, msg="%s, retrying for %d more seconds"
                                  % (e, (command_deadline - now).seconds))
             else:
-                break
+                utils.ok("command %s successfully sent" % command.args)
+                exit(0)
         else:
             utils.abort("command timeout")
             break
-    exit(0)
+        time.sleep(1)
+    exit(1)
 
 
 # EXECUTE ======================================================================
@@ -177,11 +181,11 @@ def kill_me_later(timeout, extra_time=60):
 def execute(args, cmd_line):
     # Informative:
     ip = utils.get_default_ip()
-    utils.info("Qemu monitor: port %d (connect with `{nc,telnet} %s %d)"
-               % (args['monitor_port'], ip, args['monitor_port']))
     if args['headless']:
         utils.info("VNC: port %d (connect with `$vncclient %s:%d`)"
                    % (args['vnc_port'], ip, args['vnc_display']))
+        utils.info("Qemu monitor: port %d (connect with `{nc,telnet} %s %d)"
+                   % (args['monitor_port'], ip, args['monitor_port']))
     if args['mode'] == 'sym':
         utils.info("Experiment name: %s" % args['expname'])
         if args['script'] or args['command']:
@@ -358,8 +362,7 @@ def assemble_qemu_cmd_line(args):
     else:
         qemu_drive_options = 'cache=writeback,format=s2e'
     qemu_cmd_line.extend([
-        '-drive',
-        'file=%s,%s' % (vm.path_raw, qemu_drive_options)
+        '-drive', 'file=%s,%s' % (vm.path_raw, qemu_drive_options)
     ])
 
     # Snapshots:
@@ -372,11 +375,13 @@ def assemble_qemu_cmd_line(args):
     qemu_cmd_line.extend([
         # Non-Pentium instructions cause spurious concretizations
         '-cpu', 'pentium',
-        '-monitor', 'tcp::%d,server,nowait' % args['monitor_port'],
         '-m', args['memory'],
     ])
     if args['headless']:
-        qemu_cmd_line.extend(['-vnc', ':%d' % args['vnc_display']])
+        qemu_cmd_line.extend([
+            '-vnc', ':%d' % args['vnc_display'],
+            '-monitor', 'tcp::%d,server,nowait' % args['monitor_port'],
+        ])
 
     # Network:
     if args['network'] == 'none':

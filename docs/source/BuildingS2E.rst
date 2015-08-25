@@ -39,6 +39,7 @@ you are part of the ``sudo`` group, you may want to check that first::
 
     $ id
     uid=1000(s2euser) gid=1000(s2euser) groups=1000(s2euser),27(sudo),...
+                                                             ^^^^^^^^
 
 Then, launch the script::
 
