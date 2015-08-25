@@ -46,6 +46,7 @@ MONITOR_PORT = 12345
 VNC_DISPLAY = 0
 VNC_PORT_BASE = 5900
 TIMEOUT_CMD = 60
+TIMEOUT_CMD_SEND = 10
 CONFIGFILE = '%s/config/default-config.lua' % utils.CHEFROOT_SRC
 NETWORK_MODE = 'user'
 TAP_INTERFACE = 'tap0'
@@ -119,30 +120,33 @@ def async_send_command(command, host, port, timeout):
     pid = os.getpid()
     if os.fork() != 0:
         return
+
     # Avoid the pesky KeyboardInterrupts in the child
     signal.signal(signal.SIGINT, signal.SIG_IGN)
+
     command_deadline = datetime.now() + timedelta(seconds=timeout)
+    utils.pend("sending command %s to %s:%d" % (command.args, host, port))
     while True:
-        time.sleep(1)
         try:
-            os.kill(pid, 0)
+            os.kill(pid, 0) # check if parent is still here
         except OSError:
             break
+
         now = datetime.now()
         if now < command_deadline:
             try:
-                utils.pend("sending command %s to %s:%d" % (command.args, host, port))
-                send_command(command, host, port, timeout)
-                utils.ok("command %s successfully sent" % command.args)
+                send_command(command, host, port, TIMEOUT_CMD_SEND)
             except CommandError as e:
                 utils.pend(None, msg="%s, retrying for %d more seconds"
                                  % (e, (command_deadline - now).seconds))
             else:
-                break
+                utils.ok("command %s successfully sent" % command.args)
+                exit(0)
         else:
             utils.abort("command timeout")
             break
-    exit(0)
+        time.sleep(1)
+    exit(1)
 
 
 # EXECUTE ======================================================================
