@@ -181,11 +181,11 @@ def kill_me_later(timeout, extra_time=60):
 def execute(args, cmd_line):
     # Informative:
     ip = utils.get_default_ip()
-    utils.info("Qemu monitor: port %d (connect with `{nc,telnet} %s %d)"
-               % (args['monitor_port'], ip, args['monitor_port']))
     if args['headless']:
         utils.info("VNC: port %d (connect with `$vncclient %s:%d`)"
                    % (args['vnc_port'], ip, args['vnc_display']))
+        utils.info("Qemu monitor: port %d (connect with `{nc,telnet} %s %d)"
+                   % (args['monitor_port'], ip, args['monitor_port']))
     if args['mode'] == 'sym':
         utils.info("Experiment name: %s" % args['expname'])
         if args['script'] or args['command']:
@@ -362,8 +362,7 @@ def assemble_qemu_cmd_line(args):
     else:
         qemu_drive_options = 'cache=writeback,format=s2e'
     qemu_cmd_line.extend([
-        '-drive',
-        'file=%s,%s' % (vm.path_raw, qemu_drive_options)
+        '-drive', 'file=%s,%s' % (vm.path_raw, qemu_drive_options)
     ])
 
     # Snapshots:
@@ -376,11 +375,13 @@ def assemble_qemu_cmd_line(args):
     qemu_cmd_line.extend([
         # Non-Pentium instructions cause spurious concretizations
         '-cpu', 'pentium',
-        '-monitor', 'tcp::%d,server,nowait' % args['monitor_port'],
         '-m', args['memory'],
     ])
     if args['headless']:
-        qemu_cmd_line.extend(['-vnc', ':%d' % args['vnc_display']])
+        qemu_cmd_line.extend([
+            '-vnc', ':%d' % args['vnc_display'],
+            '-monitor', 'tcp::%d,server,nowait' % args['monitor_port'],
+        ])
 
     # Network:
     if args['network'] == 'none':

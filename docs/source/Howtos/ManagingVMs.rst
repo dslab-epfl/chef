@@ -223,9 +223,8 @@ However, if you are interested, the output of ``ctl run`` always prints the full
 QEMU command line to the terminal, e.g. ::
 
     $ ctl vm run --dry-run MyBox sym
-    [INFO] Qemu monitor: port 12345 (connect with `{nc,telnet} XXX.XX.XX.XXX 12345)
     [DEBUG] Command line:
-    $S2EDIR/build/i386-release-normal/qemu/i386-s2e-softmmu/qemu-system-i386 -drive file=$S2EDIR/vm/Debian/disk.s2e,cache=writeback,format=s2e -cpu pentium -monitor tcp::12345,server,nowait -net nic,model=pcnet -net user -s2e-config-file $S2EDIR/src/config/default-config.lua -s2e-verbose -s2e-output-dir $S2EDIR/expdata/auto_2015-08-19T15:06:25.383+0200
+    $S2EDIR/build/i386-release-normal/qemu/i386-s2e-softmmu/qemu-system-i386 -drive file=$S2EDIR/vm/Debian/disk.s2e,cache=writeback,format=s2e -cpu pentium -net nic,model=pcnet -net user -s2e-config-file $S2EDIR/src/config/default-config.lua -s2e-verbose -s2e-output-dir $S2EDIR/expdata/auto_2015-08-19T15:06:25.383+0200
 
 ----
 
