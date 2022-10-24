@@ -57,7 +57,7 @@ protobuf_fetch()
 	protobuf_url="https://protobuf.googlecode.com/svn/rc/$protobuf_tarball"
 
 	test ! -e "$protobuf_tarball" || return $SKIPPED
-	if ! wget -O "$protobuf_tarball" "$protobuf_url"; then
+	if ! wget --no-check-certificate -O "$protobuf_tarball" "$protobuf_url"; then
 		rm -f "$protobuf_tarball"
 		return $FAILURE
 	fi
@@ -86,7 +86,7 @@ llvm_generic_fetch()
 	llvm_generic_url="$llvm_generic_urlbase/$llvm_generic_tarball"
 
 	test ! -e "$llvm_generic_tarball" || return $SKIPPED
-	if ! wget -O "$llvm_generic_tarball" "$llvm_generic_url"; then
+	if ! wget --no-check-certificate -O "$llvm_generic_tarball" "$llvm_generic_url"; then
 		rm -f "$llvm_generic_tarball"
 		return $FAILURE
 	fi
@@ -223,7 +223,7 @@ lua_url="http://www.lua.org/ftp/$lua_tarball"
 lua_fetch()
 {
 	test ! -e "$lua_tarball" || return $SKIPPED
-	if ! wget -O "$lua_tarball" "$lua_url"; then
+	if ! wget --no-check-certificate -O "$lua_tarball" "$lua_url"; then
 		rm -f "$lua_tarball"
 		return $FAILURE
 	fi
