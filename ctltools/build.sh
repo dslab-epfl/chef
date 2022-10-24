@@ -18,7 +18,7 @@ COMPS_LLVM='clang compiler-rt llvm-native llvm llvm'
 
 # Z3 ===========================================================================
 
-z3_url='https://github.com/Z3Prover/z3/archive/refs/tags/z3-4.1.1.zip'
+z3_url='https://github.com/Z3Prover/z3/archive/refs/tags/z3-4.3.0.zip'
 z3_tarball='z3.zip'
 
 z3_fetch()
@@ -39,8 +39,8 @@ z3_extract()
 
 z3_configure()
 {
-    mv "z3-z3-4.1.1"/* . || return $FAILURE
-    rm -rf "z3-z3-4.1.1" || return "$FAILURE"
+    mv "z3-z3-4.3.0"/* . || return $FAILURE
+    rm -rf "z3-z3-4.3.0" || return "$FAILURE"
 	python2 scripts/mk_make.py || return $FAILURE
 }
 
