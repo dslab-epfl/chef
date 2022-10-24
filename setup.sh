@@ -3,8 +3,8 @@
 set -e
 
 # check UID:
-if [ "$(id -u)" = '0' ]; then
-	echo 'Please do not run this script as root.'
+if [ "$(id -u)" != '0' ]; then
+	echo 'Please Run this script as root.'
 	exit 1
 fi
 
@@ -12,16 +12,16 @@ fi
 cd "$(readlink -f "$(dirname "$0")")"
 
 # update package tree:
-sudo apt-get update -y
+apt-get update -y
 
 # dependencies for S²E:
-sudo apt-get install -y build-essential subversion git gettext python-docutils python-pygments nasm unzip wget liblua5.1-dev libsdl1.2-dev libsigc++-2.0-dev binutils-dev libiberty-dev libc6-dev-i386
-sudo apt-get build-dep -y llvm-3.3 qemu
+apt-get install -y build-essential subversion git gettext python-docutils python-pygments nasm unzip wget liblua5.1-dev libsdl1.2-dev libsigc++-2.0-dev binutils-dev libiberty-dev libc6-dev-i386
+apt-get build-dep -y llvm-3.3 qemu
 
 # compile and install Z3:
 ./ctl build -p z3
 cd ../build/deps/z3/
-sudo make -C build install
+make -C build install
 cd -
 
 # compile LLVM:
@@ -45,14 +45,14 @@ if ! getent group kvm | grep $(id -un); then
 fi
 
 # dependencies for Chef:
-sudo apt-get install -y gdb strace libdwarf-dev libelf-dev libboost-dev libsqlite3-dev libmemcached-dev libboost-serialization-dev libboost-system-dev
+apt-get install -y gdb strace libdwarf-dev libelf-dev libboost-dev libsqlite3-dev libmemcached-dev libboost-serialization-dev libboost-system-dev
 
 # compile and install protobuf:
 ./ctl build -p protobuf
 cd ../build/deps/protobuf/
-sudo make install
-sudo ldconfig
+make install
+ldconfig
 cd -
 
 # dependencies for ctl:
-sudo apt-get install -y coreutils python3 python3-netifaces python3-psutil python3-requests python3-yaml parallel
+apt-get install -y coreutils python3 python3-netifaces python3-psutil python3-requests python3-yaml parallel
