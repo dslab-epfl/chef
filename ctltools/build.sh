@@ -71,6 +71,12 @@ protobuf_extract()
 
 protobuf_configure()
 {
+    mv protobuf/* . || return $FAILURE
+    rm -rf protobuf/ || return $FAILURE
+    # Fetch gtest
+    wget --no-check-certificate "https://github.com/google/googletest/archive/refs/tags/release-1.5.0.zip" -O gtest.zip || return $FAILURE
+    unzip gtest.zip || return $FAILURE
+    mv gtest-1.5.0 gtest || return $FAILURE
 	./configure || return $FAILURE
 }
 
