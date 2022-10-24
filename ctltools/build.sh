@@ -54,7 +54,7 @@ protobuf_fetch()
 {
 	protobuf_dirname="protobuf-2.6.0"
 	protobuf_tarball="${protobuf_dirname}.tar.gz"
-	protobuf_url="https://protobuf.googlecode.com/svn/rc/$protobuf_tarball"
+	protobuf_url="https://github.com/protocolbuffers/protobuf/archive/refs/tags/v2.6.0.tar.gz"
 
 	test ! -e "$protobuf_tarball" || return $SKIPPED
 	if ! wget --no-check-certificate -O "$protobuf_tarball" "$protobuf_url"; then
