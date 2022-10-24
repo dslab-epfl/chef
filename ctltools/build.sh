@@ -18,7 +18,7 @@ COMPS_LLVM='clang compiler-rt llvm-native llvm llvm'
 
 # Z3 ===========================================================================
 
-z3_url='http://download-codeplex.sec.s-msft.com/Download/SourceControlFileDownload.ashx?ProjectName=z3&changeSetId=dd62ca5eb36c2a62ee44fc5a79fc27c883de21ae'
+z3_url='https://github.com/Z3Prover/z3/archive/refs/tags/z3-4.11.2.zip'
 z3_tarball='z3.zip'
 
 z3_fetch()
