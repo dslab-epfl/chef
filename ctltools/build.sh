@@ -74,7 +74,8 @@ protobuf_configure()
     # Fetch gtest
     wget --no-check-certificate "https://github.com/google/googletest/archive/refs/tags/release-1.5.0.zip" -O gtest.zip || return $FAILURE
     unzip gtest.zip || return $FAILURE
-    mv gtest-1.5.0 gtest || return $FAILURE
+    mv googletest-release-1.5.0 gtest || return $FAILURE
+    rm gtest.zip || return $FAILURE
     ./autogen.sh || return $FAILURE
 	./configure || return $FAILURE
 }
