@@ -38,10 +38,14 @@ fi
 
 # Add user to kvm group:
 if ! getent group kvm; then
-	sudo groupadd -r -g 78 kvm
+	groupadd -r -g 78 kvm
 fi
 if ! getent group kvm | grep $(id -un); then
-	sudo usermod -a -G kvm $(id -u)
+    if [ $(id -u) -eq 0 ]; then
+        usermod -a -G kvm root
+    else
+        usermod -a -G kvm $(id -u)
+    fi
 fi
 
 # dependencies for Chef:
