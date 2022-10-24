@@ -18,29 +18,28 @@ COMPS_LLVM='clang compiler-rt llvm-native llvm llvm'
 
 # Z3 ===========================================================================
 
-z3_url='https://github.com/Z3Prover/z3/archive/refs/tags/z3-4.3.0.zip'
-z3_tarball='z3.zip'
+z3_url='https://github.com/Z3Prover/z3.git'
+z3_commit='dd62ca5eb36c2a62ee44fc5a79fc27c883de21ae'
 
 z3_fetch()
 {
-	if [ -e "$z3_tarball" ]; then
-		return $SKIPPED
-	fi
-	if ! wget -O "$z3_tarball" "$z3_url"; then
-		rm -f "$z3_tarball"
-		return $FAILURE
-	fi
+    if [ -e z3 ]; then
+        return $SKIPPED
+    fi
+
+    git clone "$z3_url" "$DSTPATH" || return $FAILURE
 }
 
 z3_extract()
 {
-	unzip -d "$DSTPATH" "$z3_tarball" || return $FAILURE
+    # Switch to a correct commit
+    cd "$DSTPATH" || return $FAILURE
+    git checkout "$z3_commit" || return $FAILURE
+    cd .. || return $FAILURE
 }
 
 z3_configure()
 {
-    mv "z3-z3-4.3.0"/* . || return $FAILURE
-    rm -rf "z3-z3-4.3.0" || return "$FAILURE"
 	python2 scripts/mk_make.py || return $FAILURE
 }
 
