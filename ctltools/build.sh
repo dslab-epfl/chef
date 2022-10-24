@@ -40,6 +40,7 @@ z3_extract()
 z3_configure()
 {
     mv "z3-z3-4.11.2"/* . || return $FAILURE
+    mv "z3-z3-4.11.2"/.* . || return $FAILURE
     rm -d "z3-z3-4.11.2" || return "$FAILURE"
 	python2 scripts/mk_make.py || return $FAILURE
 }
