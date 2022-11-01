@@ -1,3 +1,3 @@
 [submodule "guest"]
 	path = guest
-	url = git@github.com:dslab-epfl/s2e-guest.git
+	url = https://github.com/dslab-epfl/s2e-guest.git

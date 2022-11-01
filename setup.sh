@@ -41,7 +41,7 @@ if ! getent group kvm; then
 	sudo groupadd -r -g 78 kvm
 fi
 if ! getent group kvm | grep $(id -un); then
-	sudo usermod -a -G kvm $(id -u)
+    sudo usermod -a -G kvm $(id -u)
 fi
 
 # dependencies for Chef:

@@ -18,23 +18,24 @@ COMPS_LLVM='clang compiler-rt llvm-native llvm llvm'
 
 # Z3 ===========================================================================
 
-z3_url='http://download-codeplex.sec.s-msft.com/Download/SourceControlFileDownload.ashx?ProjectName=z3&changeSetId=dd62ca5eb36c2a62ee44fc5a79fc27c883de21ae'
-z3_tarball='z3.zip'
+z3_url='https://github.com/Z3Prover/z3.git'
+z3_commit='dd62ca5eb36c2a62ee44fc5a79fc27c883de21ae'
 
 z3_fetch()
 {
-	if [ -e "$z3_tarball" ]; then
-		return $SKIPPED
-	fi
-	if ! wget -O "$z3_tarball" "$z3_url"; then
-		rm -f "$z3_tarball"
-		return $FAILURE
-	fi
+    if [ -e z3 ]; then
+        return $SKIPPED
+    fi
+
+    git clone "$z3_url" "$DSTPATH" || return $FAILURE
 }
 
 z3_extract()
 {
-	unzip -d "$DSTPATH" "$z3_tarball" || return $FAILURE
+    # Switch to a correct commit
+    cd "$DSTPATH" || return $FAILURE
+    git checkout "$z3_commit" || return $FAILURE
+    cd .. || return $FAILURE
 }
 
 z3_configure()
@@ -53,10 +54,10 @@ protobuf_fetch()
 {
 	protobuf_dirname="protobuf-2.6.0"
 	protobuf_tarball="${protobuf_dirname}.tar.gz"
-	protobuf_url="https://protobuf.googlecode.com/svn/rc/$protobuf_tarball"
+	protobuf_url="https://github.com/protocolbuffers/protobuf/archive/refs/tags/v2.6.0.tar.gz"
 
 	test ! -e "$protobuf_tarball" || return $SKIPPED
-	if ! wget -O "$protobuf_tarball" "$protobuf_url"; then
+	if ! wget --no-check-certificate -O "$protobuf_tarball" "$protobuf_url"; then
 		rm -f "$protobuf_tarball"
 		return $FAILURE
 	fi
@@ -70,6 +71,12 @@ protobuf_extract()
 
 protobuf_configure()
 {
+    # Fetch gtest
+    wget --no-check-certificate "https://github.com/google/googletest/archive/refs/tags/release-1.5.0.zip" -O gtest.zip || return $FAILURE
+    unzip gtest.zip || return $FAILURE
+    mv googletest-release-1.5.0 gtest || return $FAILURE
+    rm gtest.zip || return $FAILURE
+    ./autogen.sh || return $FAILURE
 	./configure || return $FAILURE
 }
 
@@ -85,7 +92,7 @@ llvm_generic_fetch()
 	llvm_generic_url="$llvm_generic_urlbase/$llvm_generic_tarball"
 
 	test ! -e "$llvm_generic_tarball" || return $SKIPPED
-	if ! wget -O "$llvm_generic_tarball" "$llvm_generic_url"; then
+	if ! wget --no-check-certificate -O "$llvm_generic_tarball" "$llvm_generic_url"; then
 		rm -f "$llvm_generic_tarball"
 		return $FAILURE
 	fi
@@ -222,7 +229,7 @@ lua_url="http://www.lua.org/ftp/$lua_tarball"
 lua_fetch()
 {
 	test ! -e "$lua_tarball" || return $SKIPPED
-	if ! wget -O "$lua_tarball" "$lua_url"; then
+	if ! wget --no-check-certificate -O "$lua_tarball" "$lua_url"; then
 		rm -f "$lua_tarball"
 		return $FAILURE
 	fi
